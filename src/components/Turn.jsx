@@ -7,7 +7,7 @@ import NextSteps from './NextSteps'
 
 function Searching({ count }) {
   return (
-    <div className="flex items-center gap-3 rounded-xl border border-line bg-white/60 px-5 py-4 text-[14px] text-ink-3" role="status">
+    <div className="flex items-center gap-3 py-2 text-[14.5px] text-ink-3" role="status">
       <span className="flex gap-1" aria-hidden>
         {[0, 1, 2].map((i) => <span key={i} className="breathe size-1.5 rounded-full bg-accent" style={{ animationDelay: `${i * 160}ms` }} />)}
       </span>
@@ -28,33 +28,40 @@ export default function Turn({ turn, activeId, onActivate, onAsk, activeCount })
   }, [status, verified, reduce])
 
   const scn = { ...scenario, onNearby: () => onAsk('AVL ağaçlarında denge nasıl sağlanır?') }
+  const claims = scenario.claims.map((c, i) => ({ ...c, n: i + 1, tag: c.gap ? 'Yanıt' : `İddia ${i + 1}` }))
+  const sources = new Set(claims.flatMap((c) => c.cites.map((x) => x.doc))).size
+  const meta = status === 'searching'
+    ? null
+    : sources
+      ? `${activeCount} materyalde arandı · ${sources} kaynakta bulundu`
+      : `${activeCount} materyalde arandı · eşleşen kaynak yok`
 
   return (
     <motion.section
       aria-label={scenario.question}
       initial={turn.fresh ? { opacity: 0, y: reduce ? 0 : 10 } : false}
       animate={{ opacity: 1, y: 0, transition: { duration: 0.28, ease: EASE_OUT } }}
-      className="py-8 first:pt-6"
+      className="py-10 first:pt-8"
     >
-      <h2 className="m-0 mb-5 text-[24px] font-semibold leading-[1.2] text-ink sm:text-[26px]">{scenario.question}</h2>
+      <h2 className="display m-0 text-[30px] text-ink sm:text-[36px]">{scenario.question}</h2>
+      <p className="m-0 mb-5 mt-2 h-5 text-[13px] text-ink-3">{meta}</p>
 
       {status === 'searching' ? (
         <Searching count={activeCount} />
       ) : (
         <>
-          <div className="overflow-hidden rounded-xl border border-line-strong bg-surface">
-            {scenario.claims.map((c) => (
+          <div>
+            {claims.map((c) => (
               <ClaimRow
                 key={c.id}
                 turnId={id}
                 claim={c}
-                last={false}
                 active={activeId === `${id}:${c.id}`}
                 onActivate={(claim, cite) => onActivate(id, claim, cite)}
               />
             ))}
-            <KnotStrength knot={scenario.knot} claims={scenario.claims} verified={verified} />
           </div>
+          <KnotStrength knot={scenario.knot} claims={claims} verified={verified} />
           {verified && (
             <motion.div initial={turn.fresh ? { opacity: 0 } : false} animate={{ opacity: 1, transition: { duration: 0.24, ease: EASE_OUT } }}>
               <NextSteps

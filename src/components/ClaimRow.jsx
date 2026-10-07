@@ -1,32 +1,25 @@
 import CitationPill from './Citation'
+import ClaimMark from './ClaimMark'
 
-// Claim Row: büyük balon yok; satır = iddia + kanıt etiketi.
-export default function ClaimRow({ turnId, claim, active, onActivate, last }) {
+// Claim Row: kutu yok. Aktif satır tek bir yüzeyle ayrışır, numara dolar.
+export default function ClaimRow({ turnId, claim, active, onActivate }) {
   const gap = !!claim.gap
-  const partial = claim.cites.some((c) => c.strength === 'partial')
-  const node = active
-    ? 'bg-accent border-accent shadow-[0_0_0_4px_var(--color-accent-tint)]'
-    : gap
-      ? 'border-dashed border-kopuk bg-transparent'
-      : partial
-        ? 'border-gevesek bg-gevesek-tint'
-        : 'border-ink-3 bg-ink-3'
-
   return (
     <div
       role="group"
+      aria-label={`İddia ${claim.n}`}
       data-claim={claim.id}
       data-active={active || undefined}
       onClick={() => onActivate(claim)}
-      className={`grid cursor-pointer grid-cols-[18px_1fr] gap-x-3 px-4 py-3.5 transition-colors duration-200 ease-out sm:px-5 ${last ? '' : 'border-b border-line'} ${
-        active ? 'bg-accent-tint/70' : 'hover:bg-white/60'
+      className={`-mx-3 grid cursor-pointer grid-cols-[22px_1fr] gap-x-3 rounded-xl px-3 py-3 transition-colors duration-200 ease-out ${
+        active ? (gap ? 'bg-kopuk-tint' : 'bg-accent-tint') : 'hover:bg-ink/[0.03]'
       }`}
     >
-      <span aria-hidden className="mt-[0.68rem] grid place-items-center">
-        <span className={`block size-[9px] rounded-full border transition-[background-color,box-shadow,border-color] duration-200 ease-out ${node}`} />
+      <span className="pt-[3px]">
+        <ClaimMark n={gap ? '–' : claim.n} active={active} tone={gap ? 'kopuk' : 'accent'} />
       </span>
       <div className="min-w-0">
-        <p className={`m-0 text-[16.5px] leading-[1.6] text-pretty ${gap ? 'text-ink-2' : 'text-ink'}`} style={{ letterSpacing: '-0.011em' }}>
+        <p className="m-0 text-[17px] leading-[1.62] text-ink text-pretty" style={{ letterSpacing: '-0.012em' }}>
           {claim.text}
           {!gap && claim.cites.map((c) => (
             <span key={c.label + c.seg} className="ml-2 whitespace-nowrap">
@@ -35,12 +28,7 @@ export default function ClaimRow({ turnId, claim, active, onActivate, last }) {
           ))}
         </p>
         {gap && (
-          <>
-            <p className="m-0 mt-1.5 text-[14px] leading-relaxed text-ink-3">{claim.detail}</p>
-            <span className="mt-2.5 inline-flex h-[22px] items-center rounded-md border border-dashed border-kopuk-line px-1.5 font-mono text-[11.5px] font-medium text-kopuk">
-              Kaynak yok
-            </span>
-          </>
+          <p className="m-0 mt-1.5 max-w-[34rem] text-[14.5px] leading-relaxed text-ink-2">{claim.detail}</p>
         )}
       </div>
     </div>

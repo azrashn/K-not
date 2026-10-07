@@ -26,7 +26,7 @@ export function NavButton({ item, current, onSelect, vertical = true }) {
       onClick={() => onSelect(item.id)}
       aria-current={current ? 'page' : undefined}
       className={`press group flex ${vertical ? 'w-14 flex-col items-center gap-1 py-2' : 'w-full flex-row items-center gap-3 px-3 py-2.5'} rounded-xl ${
-        current ? 'bg-ink text-white' : 'text-ink-3 hover:bg-white hover:text-ink'
+        current ? 'bg-ink text-white' : 'text-ink-3 hover:bg-white/70 hover:text-ink'
       }`}
     >
       <Icon size={vertical ? 22 : 20} weight={current ? 'fill' : 'regular'} aria-hidden />
@@ -37,14 +37,14 @@ export function NavButton({ item, current, onSelect, vertical = true }) {
 
 export default function NavRail({ current, onSelect }) {
   return (
-    <nav aria-label="Ana gezinme" className="flex w-[72px] shrink-0 flex-col items-center border-r border-line bg-paper py-4">
-      <div className="mb-5"><KnotMark /></div>
+    <nav aria-label="Ana gezinme" className="flex w-[72px] shrink-0 flex-col items-center bg-rail py-4">
+      <button type="button" onClick={() => onSelect('home')} aria-label="K-not ana sayfa" className="press mb-5 rounded-lg"><KnotMark /></button>
       <ul className="m-0 flex list-none flex-col gap-1 p-0">
         {NAV.map((item) => (
           <li key={item.id}><NavButton item={item} current={current === item.id} onSelect={onSelect} /></li>
         ))}
       </ul>
-      <div className="mt-auto grid size-9 place-items-center rounded-full border border-line-strong bg-white font-mono text-[12px] font-semibold text-ink" title="Öğrenci" aria-label="Profil">
+      <div className="mt-auto grid size-9 place-items-center rounded-full bg-ink/[0.06] font-mono text-[12px] font-semibold text-ink" title="Azra" aria-label="Profil: Azra">
         A
       </div>
     </nav>

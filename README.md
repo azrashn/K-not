@@ -1,16 +1,36 @@
-# React + Vite
+# K-not
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+Üniversite öğrencileri için **kanıt öncelikli** çalışma alanı. Yanıtlar, öğrencinin yüklediği ders materyallerine bağlanır; kanıt yoksa K-not bunu açıkça söyler.
 
-Currently, two official plugins are available:
+```
+CLAIM → KNOT → SOURCE        ASK → PRACTICE → ANSWER → FEEDBACK → REVIEW
+```
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## Çalıştırma
 
-## React Compiler
+```bash
+npm install
+npm run dev      # http://localhost:5173
+npm run build
+```
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## Sayfalar (hash tabanlı rota)
 
-## Expanding the Oxlint configuration
+| Rota | Sayfa |
+| --- | --- |
+| `#/` | Ana Sayfa: kaldığın yerden devam, önerilen tekrar, materyallerine sor |
+| `#/dersler` | Dersler: hazırlık durumu ve ders bazlı bilgi ipi |
+| `#/dersler/:id` | Ders: materyal yönetimi (Yüklendi → Okunuyor → Hazırlanıyor → Hazır / Sorun var) |
+| `#/dersler/veri-yapilari/calisma` | AI Çalışma Alanı: iddia satırları, kaynak etiketi, Düğüm Gücü, kaynak görüntüleyici |
+| `#/quiz` | Quiz: kapsam seç, cevapla, geri bildirim + kaynak sayfası, tekrar |
+| `#/analitik` | Analitik: Bilgi İpi, zayıf konular, kaynak kapsamı |
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and Oxlint's TypeScript related rules in your project.
+Veri tamamen mock'tur (`src/data`). Quiz sonuçları Bilgi İpi'ni ve tekrar listesini canlı günceller.
+
+## Tasarım dili
+
+- **Tipografi:** başlıklarda Newsreader (`.display`), arayüzde Geist, rozet/dosya adı/sayfa numarasında JetBrains Mono.
+- **Renk:** tek vurgu (kobalt). Yeşil / amber / kırmızı yalnızca kanıt durumlarını (SIKI / GEVEŞEK / KOPUK) anlatır.
+- **Hiyerarşi:** kutu ve çizgi yerine boşluk, tipografi ve tek bir aktif yüzey.
+- **Hareket:** 150–400 ms, güçlü ease-out; `prefers-reduced-motion` açıkken iplik çizilmez, hareket kalkar.
+- İplik/düğüm metaforu kalıcı süs değildir: iddia→kaynak bağlantısı yalnızca etkinleştirme anında çizilir.

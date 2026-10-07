@@ -12,22 +12,22 @@ export default function AskBox({ onAsk, busy }) {
     setValue('')
   }
   return (
-    <div className="shrink-0 border-t border-line bg-paper px-4 pb-4 pt-3 sm:px-6">
-      <div className="mx-auto w-full max-w-[44rem]">
-        <div className="mb-2.5 flex gap-2 overflow-x-auto pb-0.5 scroll-quiet [scrollbar-width:none]">
+    <div className="shrink-0 bg-paper px-5 pb-4 pt-2 sm:px-8">
+      <div className="mx-auto w-full max-w-[42rem]">
+        <div className="scroll-quiet mb-2.5 flex gap-1.5 overflow-x-auto pb-0.5 [scrollbar-width:none]">
           {SUGGESTIONS.map((s) => (
             <button
               key={s}
               type="button"
               disabled={busy}
               onClick={() => onAsk(s)}
-              className="press h-8 shrink-0 rounded-lg border border-line-strong bg-white px-3 text-[13px] text-ink-2 hover:border-ink-3 hover:text-ink disabled:opacity-50"
+              className="press h-8 shrink-0 rounded-lg bg-ink/[0.05] px-3 text-[13px] text-ink-2 hover:bg-ink/[0.09] hover:text-ink disabled:opacity-50"
             >
               {s}
             </button>
           ))}
         </div>
-        <form onSubmit={submit} className="flex items-center gap-2 rounded-xl border border-line-strong bg-white py-1.5 pl-4 pr-1.5 transition-colors duration-150 focus-within:border-accent focus-within:shadow-[0_0_0_3px_var(--color-accent-tint)]">
+        <form onSubmit={submit} className="flex items-center gap-2 rounded-2xl bg-white py-1.5 pl-4 pr-1.5 shadow-[0_1px_2px_rgba(22,24,30,0.06),0_0_0_1px_rgba(22,24,30,0.07)] transition-shadow duration-150 focus-within:shadow-[0_0_0_2px_var(--color-accent),0_6px_20px_-10px_rgba(36,64,166,0.4)]">
           <label htmlFor="ask" className="sr-only">Materyallerine bir soru sor</label>
           <input
             id="ask"
@@ -41,7 +41,7 @@ export default function AskBox({ onAsk, busy }) {
             type="submit"
             disabled={!value.trim() || busy}
             aria-label="Soruyu gönder"
-            className="press grid size-9 place-items-center rounded-lg bg-ink text-white hover:bg-accent disabled:bg-line-strong disabled:text-ink-3"
+            className="press grid size-9 place-items-center rounded-xl bg-ink text-white hover:bg-accent disabled:bg-ink/10 disabled:text-ink-3"
           >
             <ArrowUp size={18} weight="bold" />
           </button>

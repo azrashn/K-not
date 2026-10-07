@@ -3,15 +3,17 @@
 /* K-not · Calm Academic Intelligence
    Tek vurgu: kobalt (knot blue). Renk, kanıt durumları ve belge işaretleyicisi dışında kullanılmaz. */
 @theme {
-  --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --font-sans: 'Geist', 'Inter', ui-sans-serif, system-ui, sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', monospace;
-  --font-serif: 'Fraunces', Georgia, serif;
+  --font-serif: 'Newsreader', 'Source Serif 4', Georgia, serif;
 
   --color-paper: #f8f6f1;
+  --color-rail: #f1eee7;
   --color-surface: #fdfcfa;
   --color-desk: #ebe8e0;
   --color-sheet: #ffffff;
   --color-line: #e3dfd4;
+  --color-hair: #ece9e0;
   --color-line-strong: #cbc6b8;
 
   --color-ink: #16181e;
@@ -58,10 +60,10 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
-  font-feature-settings: 'cv11', 'ss01';
 }
 
 h1, h2, h3 { letter-spacing: -0.03em; text-wrap: balance; color: var(--color-ink); }
+.display { font-family: var(--font-serif); font-weight: 450; letter-spacing: -0.022em; font-optical-sizing: auto; line-height: 1.12; }
 p { text-wrap: pretty; }
 .num { font-variant-numeric: tabular-nums; }
 

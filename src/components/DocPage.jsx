@@ -16,6 +16,8 @@ function Evidence({ evidence, pulse, children }) {
 
 function Block({ block, evidence, pulse, serif }) {
   const hit = evidence && evidence.seg === block.id
+  // Kanıt seçiliyken sayfanın geri kalanı geri çekilir; sayfanın üzerine gelince tamamı okunur.
+  const dim = evidence && !hit ? 'opacity-45 group-hover/sheet:opacity-100' : ''
   const content = hit ? <Evidence evidence={evidence} pulse={pulse}>{block.text}</Evidence> : block.text
 
   if (block.type === 'diagram') {
@@ -24,7 +26,7 @@ function Block({ block, evidence, pulse, serif }) {
   }
   if (block.type === 'table') {
     return (
-      <table className="w-full border-collapse mt-[2.4cqw] mb-[1.6cqw]" style={{ fontSize: serif ? '2.9cqw' : '2.5cqw' }}>
+      <table className={`w-full border-collapse mt-[2.4cqw] mb-[1.6cqw] transition-opacity duration-200 ${dim}`} style={{ fontSize: serif ? '2.9cqw' : '2.5cqw' }}>
         <thead>
           <tr>{block.head.map((h) => <th key={h} className="text-left font-semibold text-ink border-b border-ink/70 py-[0.8cqw] pr-[2cqw]">{h}</th>)}</tr>
         </thead>
@@ -38,13 +40,13 @@ function Block({ block, evidence, pulse, serif }) {
   }
   if (block.type === 'li') {
     return (
-      <li className="relative pl-[3.2cqw] mb-[1.8cqw] list-none">
+      <li className={`relative pl-[3.2cqw] mb-[1.8cqw] list-none transition-opacity duration-200 ${dim}`}>
         <span aria-hidden className="absolute left-0 top-[1.15em] w-[1.1cqw] h-[1.1cqw] rounded-full bg-ink-3 -translate-y-1/2" />
         {content}
       </li>
     )
   }
-  return <p className="mb-[2cqw] mt-0">{content}</p>
+  return <p className={`mb-[2cqw] mt-0 transition-opacity duration-200 ${dim}`}>{content}</p>
 }
 
 // Slayt: 16:10 yatay sayfa. Not: dikey, serif, kenar çizgili defter sayfası.
@@ -70,7 +72,7 @@ export default function DocPage({ doc, pageNo, evidence, pulse }) {
 
   return (
     <div
-      className="@container bg-sheet border border-line-strong/70 rounded-[3px] shadow-[0_1px_0_rgba(22,24,30,0.04),0_8px_24px_-12px_rgba(22,24,30,0.18)] mx-auto w-full"
+      className="@container group/sheet bg-sheet rounded-[3px] shadow-[0_1px_2px_rgba(22,24,30,0.08),0_12px_28px_-14px_rgba(22,24,30,0.28)] mx-auto w-full max-w-[36rem]"
       style={{ containerType: 'inline-size' }}
     >
       {slide ? (

@@ -3,22 +3,6 @@
 
 export const COURSE = { name: 'Veri Yapıları', activeCount: 14 }
 
-export const MATERIALS = [
-  { name: 'Hafta1_Giris.pdf', kind: 'Slayt', pages: 24 },
-  { name: 'Hafta2_Diziler_ve_Listeler.pdf', kind: 'Slayt', pages: 30 },
-  { name: 'Hafta3_Yigin_ve_Kuyruk.pdf', kind: 'Slayt', pages: 26 },
-  { name: 'Hafta4_AVL_Agaclari.pdf', kind: 'Slayt', pages: 32 },
-  { name: 'Hafta5_Heap_ve_Oncelik.pdf', kind: 'Slayt', pages: 28 },
-  { name: 'Hafta6_Hash_Tablolari.pdf', kind: 'Slayt', pages: 34 },
-  { name: 'Hafta7_Graflar.pdf', kind: 'Slayt', pages: 40 },
-  { name: 'Hafta8_Siralama.pdf', kind: 'Slayt', pages: 36 },
-  { name: 'VY_Ders_Notlari.pdf', kind: 'Not', pages: 12 },
-  { name: 'Lab3_Agac_Uygulamalari.pdf', kind: 'Lab', pages: 8 },
-  { name: 'Lab4_Dengeli_Agaclar.pdf', kind: 'Lab', pages: 9 },
-  { name: 'Cormen_Bolum12-13.pdf', kind: 'Kitap', pages: 46 },
-  { name: 'Vize_Cikmis_Sorular_2024.pdf', kind: 'Soru', pages: 6 },
-  { name: 'Calisma_Sorulari_Agaclar.pdf', kind: 'Soru', pages: 10 },
-]
 
 // ─── Belgeler ───────────────────────────────────────────────────────────────
 // block.type: h | p | li | diagram | table
@@ -185,6 +169,7 @@ const AVL = {
     explanation: 'Sol çocuğun sağ alt ağacındaki ekleme LR durumudur. Önce sol çocukta sola, sonra düğümde sağa döndürülür.',
     cite: cite('notes', 3, 'n3-lr', 'Notlar · s.3'),
     review: 'LR / RL çift rotasyon',
+    topic: 'lr-rl',
   },
 }
 
@@ -229,6 +214,7 @@ const RB = {
     explanation: 'AVL, kırmızı-siyah ağaca göre daha sıkı dengelidir; bu da aramayı hızlandırır, güncellemeyi biraz yavaşlatır.',
     cite: cite('notes', 1, 'n1-tight', 'Notlar · s.1'),
     review: 'AVL ve kırmızı-siyah ağaç farkı',
+    topic: 'avl-kirmizi-siyah',
   },
 }
 
@@ -242,7 +228,7 @@ export const SUGGESTIONS = [
 const norm = (s) => s.toLocaleLowerCase('tr').replace(/ı/g, 'i')
 
 // Kanıt yoksa uydurma: KOPUK senaryosu.
-function makeGap(question) {
+function makeGap(question, count = 14) {
   return {
     id: 'gap',
     question,
@@ -251,19 +237,19 @@ function makeGap(question) {
         id: 'g1',
         gap: true,
         text: 'Yüklediğin materyallerde bu soruyu yanıtlamaya yetecek bilgi yok.',
-        detail: '14 materyal tarandı. Konuyla en yakın bölüm Hafta 4, s.16 (ikili arama ağacı) ve doğrudan ilgili değil. Tahmin yürütmek yerine durdum.',
+        detail: `${count} materyalde arama yaptım ve bu soruyu yanıtlayan bir bölüm bulamadım. Tahmin yürütmek yerine durdum.`,
         cites: [],
       },
     ],
-    knot: { state: 'KOPUK', supported: 0, total: 1, line: '0/1 iddia kaynakla destekleniyor' },
+    knot: { state: 'KOPUK', supported: 0, total: 1, line: 'Materyallerinde yeterli kanıt yok. Tahmin yürütülmedi.' },
     actions: ['nearby'],
     nearest: { doc: 'slides', page: 16, label: 'Slayt · s.16' },
   }
 }
 
-export function answerFor(question) {
+export function answerFor(question, count = 14) {
   const q = norm(question)
   if (/(kirmizi|red.?black|rb\b)/.test(q) || (q.includes('fark') && q.includes('avl'))) return RB
   if (/(avl|denge|rotasyon)/.test(q) && !/splay|amortize/.test(q)) return AVL
-  return makeGap(question)
+  return makeGap(question, count)
 }
