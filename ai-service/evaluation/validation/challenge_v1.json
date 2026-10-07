@@ -1,0 +1,554 @@
+{
+ "description": "LOCKED real-model challenge set. Written after the citation-lexical-v2 rules were frozen (commit 13ea172) and never used to choose any threshold. Do not tune rules on it; any edit changes its SHA-256 (checked by tests) and voids its status as an independent validation set. Gold labels by the WBS-3 developer; need an independent reviewer.",
+ "version": "challenge.v1",
+ "corpus": "corpus.v2",
+ "course_id": "veri-yapilari",
+ "user_id": "u-ayse",
+ "default_scope": [
+  "doc-vy-hafta4",
+  "doc-vy-notlar",
+  "doc-vy-hafta6",
+  "doc-vy-kitap-siralama",
+  "doc-vy-sinav-2024",
+  "doc-vy-hafta5",
+  "doc-vy-hafta7",
+  "doc-vy-kitap-asimptotik",
+  "doc-vy-sinav-2023"
+ ],
+ "items": [
+  {
+   "id": "dj1",
+   "language": "tr",
+   "category": "out_of_scope_dijkstra",
+   "split": "locked",
+   "question": "Dijkstra'nın en kısa yol algoritması hangi veri yapısını kullanır ve zaman karmaşıklığı nedir?",
+   "expected_chunk_ids": [],
+   "expected_outcome": [
+    "INSUFFICIENT_EVIDENCE"
+   ],
+   "notes": "Priority queues are in scope; Dijkstra is not."
+  },
+  {
+   "id": "dj2",
+   "language": "en",
+   "category": "out_of_scope_dijkstra",
+   "split": "locked",
+   "question": "What is the running time of Dijkstra's algorithm when implemented with a binary heap?",
+   "expected_chunk_ids": [],
+   "expected_outcome": [
+    "INSUFFICIENT_EVIDENCE"
+   ]
+  },
+  {
+   "id": "dj3",
+   "language": "mixed",
+   "category": "out_of_scope_dijkstra",
+   "split": "locked",
+   "question": "Dijkstra shortest path algoritması priority queue ile nasıl çalışır?",
+   "expected_chunk_ids": [],
+   "expected_outcome": [
+    "INSUFFICIENT_EVIDENCE"
+   ]
+  },
+  {
+   "id": "dj4",
+   "language": "tr",
+   "category": "out_of_scope_dijkstra",
+   "split": "locked",
+   "question": "Bellman-Ford ile Dijkstra algoritması arasındaki fark nedir?",
+   "expected_chunk_ids": [],
+   "expected_outcome": [
+    "INSUFFICIENT_EVIDENCE"
+   ]
+  },
+  {
+   "id": "o1",
+   "language": "tr",
+   "category": "out_of_scope",
+   "split": "locked",
+   "question": "Kırmızı-siyah ağaçta ekleme sonrasında yeniden renklendirme nasıl yapılır?",
+   "expected_chunk_ids": [],
+   "expected_outcome": [
+    "INSUFFICIENT_EVIDENCE"
+   ],
+   "notes": "Only another student's private notes mention red-black height."
+  },
+  {
+   "id": "o2",
+   "language": "en",
+   "category": "out_of_scope",
+   "split": "locked",
+   "question": "How does a skip list achieve logarithmic expected search time?",
+   "expected_chunk_ids": [],
+   "expected_outcome": [
+    "INSUFFICIENT_EVIDENCE"
+   ]
+  },
+  {
+   "id": "o3",
+   "language": "tr",
+   "category": "out_of_scope",
+   "split": "locked",
+   "question": "Graf boyama problemi NP-tam bir problem midir?",
+   "expected_chunk_ids": [],
+   "expected_outcome": [
+    "INSUFFICIENT_EVIDENCE"
+   ]
+  },
+  {
+   "id": "o4",
+   "language": "mixed",
+   "category": "out_of_scope",
+   "split": "locked",
+   "question": "Segment tree ile range sum query nasıl yapılır?",
+   "expected_chunk_ids": [],
+   "expected_outcome": [
+    "INSUFFICIENT_EVIDENCE"
+   ]
+  },
+  {
+   "id": "p1",
+   "language": "tr",
+   "category": "partial",
+   "split": "locked",
+   "question": "İkili yığına ekleme maliyeti nedir ve yığın sıralaması adım adım nasıl çalışır?",
+   "expected_chunk_ids": [
+    "doc-vy-hafta7:v1:003"
+   ],
+   "expected_outcome": [
+    "PARTIALLY_ANSWERED"
+   ],
+   "notes": "Insert cost covered; heap sort procedure not."
+  },
+  {
+   "id": "p2",
+   "language": "en",
+   "category": "partial",
+   "split": "locked",
+   "question": "What is the average-case complexity of bubble sort, and how does shell sort improve on it?",
+   "expected_chunk_ids": [
+    "doc-vy-kitap-siralama:v1:004"
+   ],
+   "expected_outcome": [
+    "PARTIALLY_ANSWERED"
+   ],
+   "notes": "Shell sort not covered."
+  },
+  {
+   "id": "p3",
+   "language": "tr",
+   "category": "partial",
+   "split": "locked",
+   "question": "Hash tablosunda zincirleme nasıl çalışır ve guguk kuşu (cuckoo) hash yöntemi nedir?",
+   "expected_chunk_ids": [
+    "doc-vy-hafta6:v1:003"
+   ],
+   "expected_outcome": [
+    "PARTIALLY_ANSWERED"
+   ],
+   "notes": "Cuckoo hashing not covered."
+  },
+  {
+   "id": "p4",
+   "language": "mixed",
+   "category": "partial",
+   "split": "locked",
+   "question": "AVL tree'de LR rotasyonu ne zaman uygulanır ve red-black tree'de recoloring nasıl yapılır?",
+   "expected_chunk_ids": [
+    "doc-vy-notlar:v1:004"
+   ],
+   "expected_outcome": [
+    "PARTIALLY_ANSWERED"
+   ],
+   "notes": "Recoloring not covered."
+  },
+  {
+   "id": "n1",
+   "language": "tr",
+   "category": "negation",
+   "split": "locked",
+   "question": "Hızlı sıralama kararlı bir algoritma değil midir?",
+   "expected_chunk_ids": [
+    "doc-vy-kitap-siralama:v1:005"
+   ],
+   "expected_outcome": [
+    "ANSWERED"
+   ]
+  },
+  {
+   "id": "n2",
+   "language": "en",
+   "category": "negation",
+   "split": "locked",
+   "question": "Is quicksort a stable sorting algorithm?",
+   "expected_chunk_ids": [
+    "doc-vy-kitap-siralama:v1:005"
+   ],
+   "expected_outcome": [
+    "ANSWERED"
+   ]
+  },
+  {
+   "id": "n3",
+   "language": "tr",
+   "category": "negation",
+   "split": "locked",
+   "question": "Birleştirme sıralaması hiç ek bellek gerektirmez, doğru mu?",
+   "expected_chunk_ids": [
+    "doc-vy-kitap-siralama:v1:002"
+   ],
+   "expected_outcome": [
+    "ANSWERED",
+    "PARTIALLY_ANSWERED"
+   ],
+   "notes": "False premise: it needs O(n) extra memory."
+  },
+  {
+   "id": "n4",
+   "language": "tr",
+   "category": "negation",
+   "split": "locked",
+   "question": "Açık adreslemede silinen gözler işaretlenmezse arama zinciri korunur mu?",
+   "expected_chunk_ids": [
+    "doc-vy-hafta6:v1:004"
+   ],
+   "expected_outcome": [
+    "ANSWERED"
+   ],
+   "notes": "Source: the chain breaks."
+  },
+  {
+   "id": "r1",
+   "language": "tr",
+   "category": "paraphrase",
+   "split": "locked",
+   "question": "Her düğümde iki yanının derinliğini neredeyse eşit tutan arama ağacına ne ad verilir?",
+   "expected_chunk_ids": [
+    "doc-vy-hafta4:v1:003",
+    "doc-vy-hafta4:v1:007"
+   ],
+   "expected_outcome": [
+    "ANSWERED"
+   ]
+  },
+  {
+   "id": "r2",
+   "language": "tr",
+   "category": "paraphrase",
+   "split": "locked",
+   "question": "Tablodaki kayıt sayısının konum sayısına oranı nasıl gösterilir?",
+   "expected_chunk_ids": [
+    "doc-vy-sinav-2023:v1:001"
+   ],
+   "expected_outcome": [
+    "ANSWERED"
+   ],
+   "notes": "Load factor α = n/m."
+  },
+  {
+   "id": "r3",
+   "language": "tr",
+   "category": "paraphrase",
+   "split": "locked",
+   "question": "Sıralı bir listede her defasında ortadaki elemana bakarak arama yapmanın maliyeti nedir?",
+   "expected_chunk_ids": [
+    "doc-vy-kitap-asimptotik:v1:003"
+   ],
+   "expected_outcome": [
+    "ANSWERED"
+   ]
+  },
+  {
+   "id": "r4",
+   "language": "en",
+   "category": "paraphrase",
+   "split": "locked",
+   "question": "Which traversal of a binary search tree lists the keys in ascending order?",
+   "expected_chunk_ids": [
+    "doc-vy-hafta5:v1:002"
+   ],
+   "expected_outcome": [
+    "ANSWERED"
+   ]
+  },
+  {
+   "id": "r5",
+   "language": "en",
+   "category": "paraphrase",
+   "split": "locked",
+   "question": "When two keys land in the same slot, how does separate chaining keep both of them?",
+   "expected_chunk_ids": [
+    "doc-vy-hafta6:v1:003"
+   ],
+   "expected_outcome": [
+    "ANSWERED"
+   ]
+  },
+  {
+   "id": "r6",
+   "language": "mixed",
+   "category": "paraphrase",
+   "split": "locked",
+   "question": "Heap'i bottom-up kurmak (build-heap) ne kadar sürer?",
+   "expected_chunk_ids": [
+    "doc-vy-hafta7:v1:004"
+   ],
+   "expected_outcome": [
+    "ANSWERED"
+   ]
+  },
+  {
+   "id": "r7",
+   "language": "tr",
+   "category": "paraphrase",
+   "split": "locked",
+   "question": "Sıralı veriler art arda eklenince ikili arama ağacı neden yavaşlar?",
+   "expected_chunk_ids": [
+    "doc-vy-hafta4:v1:002"
+   ],
+   "expected_outcome": [
+    "ANSWERED"
+   ]
+  },
+  {
+   "id": "e1",
+   "language": "en",
+   "category": "direct",
+   "split": "locked",
+   "question": "How is the balance factor of a node in an AVL tree computed?",
+   "expected_chunk_ids": [
+    "doc-vy-hafta4:v1:005"
+   ],
+   "expected_outcome": [
+    "ANSWERED"
+   ]
+  },
+  {
+   "id": "e2",
+   "language": "en",
+   "category": "direct",
+   "split": "locked",
+   "question": "What is the worst-case time complexity of quicksort?",
+   "expected_chunk_ids": [
+    "doc-vy-kitap-siralama:v1:001"
+   ],
+   "expected_outcome": [
+    "ANSWERED"
+   ]
+  },
+  {
+   "id": "e3",
+   "language": "en",
+   "category": "direct",
+   "split": "locked",
+   "question": "How is a node with two children deleted from a binary search tree?",
+   "expected_chunk_ids": [
+    "doc-vy-hafta5:v1:001"
+   ],
+   "expected_outcome": [
+    "ANSWERED"
+   ]
+  },
+  {
+   "id": "e4",
+   "language": "en",
+   "category": "direct",
+   "split": "locked",
+   "question": "What does Big-O notation express about a function?",
+   "expected_chunk_ids": [
+    "doc-vy-kitap-asimptotik:v1:001"
+   ],
+   "expected_outcome": [
+    "ANSWERED"
+   ]
+  },
+  {
+   "id": "e5",
+   "language": "en",
+   "category": "direct",
+   "split": "locked",
+   "question": "What is the lower bound on comparisons for comparison-based sorting?",
+   "expected_chunk_ids": [
+    "doc-vy-kitap-siralama:v1:006"
+   ],
+   "expected_outcome": [
+    "ANSWERED"
+   ]
+  },
+  {
+   "id": "t1",
+   "language": "tr",
+   "category": "direct",
+   "split": "locked",
+   "question": "Ön sıralı gezinmede düğümler hangi sırayla ziyaret edilir?",
+   "expected_chunk_ids": [
+    "doc-vy-hafta5:v1:003"
+   ],
+   "expected_outcome": [
+    "ANSWERED"
+   ]
+  },
+  {
+   "id": "t2",
+   "language": "tr",
+   "category": "direct",
+   "split": "locked",
+   "question": "Min-yığında en küçük elemana bakmanın maliyeti nedir?",
+   "expected_chunk_ids": [
+    "doc-vy-hafta7:v1:003"
+   ],
+   "expected_outcome": [
+    "ANSWERED"
+   ]
+  },
+  {
+   "id": "t3",
+   "language": "tr",
+   "category": "direct",
+   "split": "locked",
+   "question": "Seçmeli sıralama her durumda kaç karşılaştırma yapar?",
+   "expected_chunk_ids": [
+    "doc-vy-kitap-siralama:v1:004"
+   ],
+   "expected_outcome": [
+    "ANSWERED"
+   ]
+  },
+  {
+   "id": "t4",
+   "language": "tr",
+   "category": "direct",
+   "split": "locked",
+   "question": "AVL ağacına 50, 40, 30 eklenince hangi düğümde denge bozulur?",
+   "expected_chunk_ids": [
+    "doc-vy-sinav-2023:v1:002"
+   ],
+   "expected_outcome": [
+    "ANSWERED"
+   ]
+  },
+  {
+   "id": "t5",
+   "language": "tr",
+   "category": "direct",
+   "split": "locked",
+   "question": "Sayma sıralamasının çalışma süresi nedir?",
+   "expected_chunk_ids": [
+    "doc-vy-kitap-siralama:v1:006"
+   ],
+   "expected_outcome": [
+    "ANSWERED"
+   ]
+  },
+  {
+   "id": "t6",
+   "language": "tr",
+   "category": "direct",
+   "split": "locked",
+   "question": "AVL ağacında silme işleminden sonra kaç rotasyon gerekebilir?",
+   "expected_chunk_ids": [
+    "doc-vy-notlar:v1:005"
+   ],
+   "expected_outcome": [
+    "ANSWERED"
+   ]
+  },
+  {
+   "id": "m1",
+   "language": "mixed",
+   "category": "direct",
+   "split": "locked",
+   "question": "Hash table'da load factor nasıl tanımlanır?",
+   "expected_chunk_ids": [
+    "doc-vy-sinav-2023:v1:001"
+   ],
+   "expected_outcome": [
+    "ANSWERED"
+   ]
+  },
+  {
+   "id": "m2",
+   "language": "mixed",
+   "category": "direct",
+   "split": "locked",
+   "question": "Insertion sort neredeyse sıralı bir array'de ne kadar sürer?",
+   "expected_chunk_ids": [
+    "doc-vy-kitap-siralama:v1:004"
+   ],
+   "expected_outcome": [
+    "ANSWERED"
+   ]
+  },
+  {
+   "id": "m3",
+   "language": "mixed",
+   "category": "direct",
+   "split": "locked",
+   "question": "BST'de inorder traversal anahtarları hangi sırada verir?",
+   "expected_chunk_ids": [
+    "doc-vy-hafta5:v1:002"
+   ],
+   "expected_outcome": [
+    "ANSWERED"
+   ]
+  },
+  {
+   "id": "m4",
+   "language": "mixed",
+   "category": "direct",
+   "split": "locked",
+   "question": "Heap'te child node'ların index'leri nasıl hesaplanır?",
+   "expected_chunk_ids": [
+    "doc-vy-hafta7:v1:002"
+   ],
+   "expected_outcome": [
+    "ANSWERED"
+   ]
+  },
+  {
+   "id": "mp1",
+   "language": "tr",
+   "category": "multi_passage",
+   "split": "locked",
+   "question": "Hızlı sıralama ile birleştirme sıralamasını kararlılık ve ek bellek açısından karşılaştırın.",
+   "expected_chunk_ids": [
+    "doc-vy-kitap-siralama:v1:002",
+    "doc-vy-kitap-siralama:v1:005"
+   ],
+   "expected_outcome": [
+    "ANSWERED"
+   ],
+   "require_all": true
+  },
+  {
+   "id": "mp2",
+   "language": "en",
+   "category": "multi_passage",
+   "split": "locked",
+   "question": "Compare the cost of inserting into a heap one element at a time with building a heap from an array.",
+   "expected_chunk_ids": [
+    "doc-vy-hafta7:v1:003",
+    "doc-vy-hafta7:v1:004"
+   ],
+   "expected_outcome": [
+    "ANSWERED"
+   ],
+   "require_all": true
+  },
+  {
+   "id": "mp3",
+   "language": "mixed",
+   "category": "multi_passage",
+   "split": "locked",
+   "question": "Load factor arttıkça chaining'de arama neden yavaşlar ve başarısız aramanın beklenen maliyeti nedir?",
+   "expected_chunk_ids": [
+    "doc-vy-hafta6:v1:003",
+    "doc-vy-sinav-2023:v1:001"
+   ],
+   "expected_outcome": [
+    "ANSWERED"
+   ],
+   "require_all": true
+  }
+ ]
+}
