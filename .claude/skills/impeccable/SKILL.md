@@ -1,422 +1,86 @@
-# Impeccable
-
-Design guidance for AI coding agents. 1 skill, 23 commands, live browser iteration, and 60 deterministic detector rules for AI-generated frontend design.
-
-> **Quick start:** From your project root, run `npx impeccable install`, then run `/impeccable init` inside your AI coding tool. Full docs: [impeccable.style](https://impeccable.style).
-
-## Why Impeccable?
-
-Anthropic's [frontend-design](https://github.com/anthropics/skills/tree/main/skills/frontend-design) was the first widely-used design skill for Claude. Impeccable started from there.
-
-Every model trained on the same SaaS templates. Skip the guidance and you get the same handful of tells on every project: Inter for everything, purple-to-blue gradients, cards nested in cards, gray text on colored backgrounds, the rounded-square icon tile above every heading.
-
-Impeccable adds:
-- **One setup flow.** `/impeccable init` writes `PRODUCT.md` and offers `DESIGN.md`, so later commands know the audience, brand/product lane, voice, anti-references, colors, type, and components.
-- **23 commands.** A shared design vocabulary with your AI: `polish`, `audit`, `critique`, `distill`, `animate`, `bolder`, `quieter`, and more.
-- **60 deterministic detector rules** plus LLM-only critique checks. The CLI and browser extension run the deterministic rules with no LLM and no API key.
-
-## What's Included
-
-### The Skill: impeccable
-
-The skill installs as one command:
-
-```bash
-/impeccable <command> <target>
-```
-
-Start every new project with:
-
-```bash
-/impeccable init
-```
-
-`init` asks whether the surface is brand (marketing, landing, portfolio) or product (app UI, dashboard, tool), then writes design context that every later command reads.
-
-### 23 Commands
-
-All commands are accessed through `/impeccable`:
-
-| Command | What it does |
-|---------|--------------|
-| `/impeccable craft` | Full shape-then-build flow with visual iteration |
-| `/impeccable init` | One-time setup: gather design context, write PRODUCT.md and DESIGN.md, configure live mode, recommend next steps |
-| `/impeccable document` | Generate root DESIGN.md from existing project code |
-| `/impeccable extract` | Pull reusable components and tokens into the design system |
-| `/impeccable shape` | Plan UX/UI before writing code |
-| `/impeccable critique` | UX design review: hierarchy, clarity, emotional resonance |
-| `/impeccable audit` | Run technical quality checks (a11y, performance, responsive) |
-| `/impeccable polish` | Final pass, design system alignment, and shipping readiness |
-| `/impeccable bolder` | Amplify boring designs |
-| `/impeccable quieter` | Tone down overly bold designs |
-| `/impeccable distill` | Strip to essence |
-| `/impeccable harden` | Error handling, i18n, text overflow, edge cases |
-| `/impeccable onboard` | First-run flows, empty states, activation paths |
-| `/impeccable animate` | Add purposeful motion |
-| `/impeccable colorize` | Introduce strategic color |
-| `/impeccable typeset` | Fix font choices, hierarchy, sizing |
-| `/impeccable layout` | Fix layout, spacing, visual rhythm |
-| `/impeccable delight` | Add moments of joy |
-| `/impeccable overdrive` | Add technically extraordinary effects |
-| `/impeccable clarify` | Improve unclear UX copy |
-| `/impeccable adapt` | Adapt for different devices |
-| `/impeccable optimize` | Performance improvements |
-| `/impeccable live` | Visual variant mode: iterate on elements in the browser |
-
-Use `/impeccable pin <command>` to create standalone shortcuts (e.g., `pin audit` creates `/audit`).
-
-#### Usage Examples
-
-```
-/impeccable audit blog           # Audit blog hub + post pages
-/impeccable critique landing     # UX design review
-/impeccable polish settings      # Final pass before shipping
-/impeccable harden checkout      # Add error handling + edge cases
-```
-
-Or use `/impeccable` directly with a description:
-```
-/impeccable redo this hero section
-```
-
-### Anti-Patterns
-
-The skill includes explicit guidance on what to avoid:
-
-- Don't use overused fonts (Arial, Inter, system defaults)
-- Don't use gray text on colored backgrounds
-- Don't use pure black/gray (always tint)
-- Don't wrap everything in cards or nest cards inside cards
-- Don't use bounce/elastic easing (feels dated)
-
-## See It In Action
-
-Visit [the Neo Mirai case study](https://impeccable.style/cases/neo-mirai) to see a before/after case study of a real project transformed with Impeccable commands.
-
-## Installation
-
-### Option 1: CLI installer (Recommended)
-
-From the root of your project, run:
-
-```bash
-npx impeccable install
-```
-
-This shows the harness folders it detected (for example `~/.claude`, `~/.codex`, `~/.grok`, or project-local `.cursor`), lets you keep the detected set or customize providers, then asks whether to install into the current project or globally. Use `--providers=claude,codex,cursor,grok` and `--scope=project|global` to skip those choices in scripts. On Claude Code, Cursor, Codex, GitHub Copilot, and Grok Build, it also installs the provider-native hook manifest for the current project. Works with Cursor, Claude Code, Gemini CLI, Codex CLI, Grok Build, and every other supported tool. Reload your harness afterward.
-
-To refresh an existing install, run:
-
-```bash
-npx impeccable update
-```
-
-Codex users should open `/hooks` after install or update and approve the project hook when prompted. Codex tracks trust by hook definition, so updates that change `.codex/hooks.json` can require approval again. Grok Build users need project folder trust (`/hooks-trust` or launch with `--trust`) before `.grok/hooks/` scripts run.
-
-### Option 2: Git Submodule
-
-For teams that want to keep Impeccable vendored and updated through Git, add this repo as a submodule and link the compiled provider build into your harness folders:
-
-```bash
-git submodule add https://github.com/pbakaus/impeccable .impeccable
-npx impeccable link --source=.impeccable --providers=claude,cursor
-git add .gitmodules .impeccable .claude .cursor
-git commit -m "Add Impeccable skills"
-```
-
-Use the providers your project needs, for example `claude`, `cursor`, `gemini`, `codex`, `github`, `grok`, `opencode`, `pi`, `qoder`, `trae`, `trae-cn`, `rovo-dev`, or `vibe`. The command links individual skill folders from `.impeccable/dist/universal/` and leaves existing real skill directories untouched unless you pass `--force`.
-
-To update later:
-
-```bash
-git submodule update --remote .impeccable
-npx impeccable link --source=.impeccable --providers=claude,cursor
-```
-
-### Option 3: Plugin install
-
-**Claude Code:**
-```bash
-/plugin marketplace add pbakaus/impeccable
-```
-
-> Claude Code only. After adding the marketplace, open `/plugin` and install Impeccable from the list.
-
-**Grok Build:**
-```bash
-grok plugin install pbakaus/impeccable#plugin --trust
-```
-
-> Grok Build only. The `#plugin` suffix installs the slim plugin package (skills, agents, and hooks) instead of the full monorepo. Then run `/impeccable init` in a Grok session. Project-scoped installs via `npx impeccable install --providers=grok` also work and write `.grok/skills/` plus `.grok/hooks/impeccable.json`.
-
-### Option 4: Download from Website
-
-Visit [impeccable.style](https://impeccable.style), download the ZIP for your tool, and extract to your project.
-
-### Option 5: Copy from Repository
-
-**Cursor:**
-```bash
-cp -r dist/cursor/.cursor your-project/
-```
-
-> **Note:** Cursor skills require setup:
-> 1. Switch to Nightly channel in Cursor Settings → Beta
-> 2. Enable Agent Skills in Cursor Settings → Rules
->
-> [Learn more about Cursor skills](https://cursor.com/docs/context/skills)
-
-**Claude Code:**
-```bash
-# Project-specific
-cp -r dist/claude-code/.claude your-project/
-
-# Or global (applies to all projects)
-cp -r dist/claude-code/.claude/* ~/.claude/
-```
-
-**OpenCode:**
-```bash
-cp -r dist/opencode/.opencode your-project/
-```
-
-**Pi:**
-```bash
-cp -r dist/pi/.pi your-project/
-```
-
-**Gemini CLI:**
-```bash
-cp -r dist/gemini/.gemini your-project/
-```
-
-> **Note:** Gemini CLI skills require setup:
-> 1. Install preview version: `npm i -g @google/gemini-cli@preview`
-> 2. Run `/settings` and enable "Skills"
-> 3. Run `/skills list` to verify installation
->
-> [Learn more about Gemini CLI skills](https://geminicli.com/docs/cli/skills/)
-
-**Codex CLI:**
-```bash
-# Project-local
-cp -r dist/agents/.agents your-project/
-mkdir -p your-project/.codex
-cp dist/codex/.codex/hooks.json your-project/.codex/hooks.json
-
-# Or install the skill user-wide. Copy .codex/hooks.json into each project
-# where you want the design hook to run.
-mkdir -p ~/.agents/skills
-cp -r dist/agents/.agents/skills/* ~/.agents/skills/
-```
-
-> The asset-producer subagent ships nested inside the skill's own `agents/` folder, which Codex auto-discovers. No separate `.codex/agents/` copy is needed. The hook is project-local because Codex discovers hooks from `.codex/hooks.json` next to trusted project config.
-
-**GitHub Copilot:**
-```bash
-cp -r dist/github/.github your-project/
-```
-
-**Trae:**
-```bash
-# Trae China (domestic version)
-cp -r dist/trae/.trae-cn/skills/* ~/.trae-cn/skills/
-
-# Trae International
-cp -r dist/trae/.trae/skills/* ~/.trae/skills/
-```
-
-> **Note:** Trae has two versions with different config directories:
-> - **Trae China**: `~/.trae-cn/skills/`
-> - **Trae International**: `~/.trae/skills/`
->
-> After copying, restart Trae IDE to activate the skills.
-
-**Rovo Dev:**
-```bash
-# Project-specific
-cp -r dist/rovo-dev/.rovodev your-project/
-
-# Or global (applies to all projects)
-cp -r dist/rovo-dev/.rovodev/skills/* ~/.rovodev/skills/
-```
-
-**Qoder:**
-```bash
-# Project-specific
-cp -r dist/qoder/.qoder your-project/
-
-# Or global (applies to all projects)
-cp -r dist/qoder/.qoder/skills/* ~/.qoder/skills/
-```
-
-**Mistral Vibe:**
-```bash
-# Project-specific
-cp -r dist/vibe/.vibe your-project/
-
-# Or global (applies to all projects)
-cp -r dist/vibe/.vibe/skills/* ~/.vibe/skills/
-```
-
-**Grok Build:**
-```bash
-# Project-specific
-cp -r dist/grok/.grok your-project/
-
-# Or global (applies to all projects)
-cp -r dist/grok/.grok/skills/* ~/.grok/skills/
-```
-
-> Prefer `npx impeccable install --providers=grok` or `grok plugin install pbakaus/impeccable#plugin --trust` so the design hook installs too. Project hooks need `/hooks-trust` (or `--trust`) once per folder.
-
-## Usage
-
-Once installed, every command runs through the single `/impeccable` skill:
-
-```
-/impeccable audit        # Find issues
-/impeccable polish       # Final cleanup
-/impeccable distill      # Remove complexity
-/impeccable critique     # Full design review
-```
-
-Type `/impeccable` alone to see the full command list.
-
-Most commands accept an optional argument to focus on a specific area:
-
-```
-/impeccable audit the header
-/impeccable polish the checkout form
-```
-
-If you reach for one command often, pin it with `/impeccable pin audit` to get `/audit` as a standalone shortcut.
-
-**Note:** Codex uses skills here, not `/prompts:` commands. Open `/skills` or type `$impeccable`. Repo-local installs live in `.agents/skills/`; user-wide installs live in `~/.agents/skills/`. GitHub Copilot uses `.github/skills/`. Restart the tool if a newly installed skill does not appear.
-
-## Keeping `.impeccable` out of git
-
-As you run commands, Impeccable writes working files under `.impeccable/`: critique and polish screenshots, live-mode session and preview state, runtime caches, and per-developer config. Most of it is ephemeral and should not be committed, while a few files are shared project artifacts that belong in the repo. Add this block to your project's `.gitignore`:
-
-```gitignore
-# impeccable-ignore-start
-# Ephemeral output, runtime state, and per-dev overrides.
-# Unanchored: .impeccable may sit at the repo root or under a nested
-# workspace (apps/web/.impeccable/...); anchored patterns would miss it.
-# Shared artifacts stay tracked: config.json, live/config.json,
-# design.json, critique/*.md.
-.impeccable/config.local.json
-.impeccable/hook.cache.json
-.impeccable/hook.pending.json
-.impeccable/*.png
-.impeccable/live/server.json
-.impeccable/live/sessions/
-.impeccable/live/previews/
-.impeccable/live/annotations/
-.impeccable/live/cache/
-.impeccable/live/manual-edit-apply-transaction.json
-.impeccable/live/manual-edit-events.jsonl
-.impeccable/live/manual-edit-evidence/
-.impeccable/live/pending-manual-edits.json
-.impeccable/live/deferred-svelte-component-accepts.json
-.impeccable/live/*.png
-# impeccable-ignore-end
-```
-
-The block is wrapped in `# impeccable-ignore-start` / `# impeccable-ignore-end` markers so you can recognize and refresh it later. Patterns are unanchored on purpose: in a monorepo the active project (and its `.impeccable/` directory) often lives under a nested workspace path like `apps/web/`, and a root-anchored pattern would miss it.
-
-**Keep these tracked** (they are shared project artifacts, do not add them to `.gitignore`):
-
-- `.impeccable/config.json` (unified shared config)
-- `.impeccable/live/config.json` (live-mode framework wiring)
-- `.impeccable/design.json` (shared design spec)
-- `.impeccable/critique/*.md` (review reports)
-
-If an ephemeral file (a screenshot, `config.local.json`) was committed before you added the block, `.gitignore` will not untrack it automatically. Run `git rm --cached <path>` to stop tracking it without deleting your local copy.
-
-## Design hook
-
-On Claude Code, GitHub Copilot, Codex, Cursor, and Grok Build, `npx impeccable install` and `npx impeccable update` install a provider-native hook manifest along with the skill payload. The hook runs the Impeccable design detector on direct UI file edits and surfaces findings back into the agent flow. Claude Code, GitHub Copilot, Codex, and Grok Build surface findings after the edit (and run a deeper pass on Stop where supported). Cursor blocks bad proposed writes before they land.
-
-Installed hook surfaces:
-
-- Claude Code: `.claude/settings.local.json` (gitignored, machine-local) runs `${CLAUDE_PROJECT_DIR}/.claude/skills/impeccable/scripts/hook.mjs`. A hook moved into the shared `settings.json` is honored in place.
-- GitHub Copilot: `.github/hooks/impeccable.json` (committed, shared by the Copilot CLI and the cloud agent) runs `.github/skills/impeccable/scripts/hook.mjs`. The Copilot CLI activates it once the file is on the repository's default branch and the folder is trusted.
-- Cursor: `.cursor/hooks.json` runs `.cursor/skills/impeccable/scripts/hook-before-edit.mjs`.
-- Codex: `.codex/hooks.json` runs `.agents/skills/impeccable/scripts/hook.mjs`.
-
-The installer preserves unrelated hook entries and settings. If a hook manifest is malformed, install/update aborts by default; rerun with `--force` to back up the malformed file as `.bak` and replace it.
-
-On an interactive `install`/`update`, Impeccable explains the hook and offers to install it (default yes). Your choice is remembered per-developer in the gitignored `.impeccable/config.local.json`, so you are not asked again; `--no-hooks` skips it for that run without recording anything. Hook lifecycle settings live under the `hook` key of `.impeccable/config.json`; detector ignores live under `detector`, shared by `/impeccable hooks` and `npx impeccable detect`.
-
-For debugging, set `hook.auditLog` in `.impeccable/config.json` to a path (or the legacy `IMPECCABLE_HOOK_LOG` env var) to write one NDJSON line per hook invocation. Leave it unset for normal use.
-
-Codex requires one platform step that Impeccable cannot safely skip: open `/hooks` after install or update and approve the project hook. There is no Codex marketplace/plugin install flow for this hook.
-
-Full hook docs: [impeccable.style/docs/hooks](https://impeccable.style/docs/hooks).
-
-Manual copy commands are fallback/debug instructions. The normal path is:
-
-```bash
-npx impeccable install
-npx impeccable update
-```
-
-## CLI
-
-Impeccable includes a standalone CLI for detecting anti-patterns without an AI harness:
-
-```bash
-npx impeccable detect src/                   # scan a directory
-npx impeccable detect index.html             # scan an HTML file
-npx impeccable detect https://example.com    # scan a URL (Puppeteer)
-npx impeccable detect --json .               # CI-friendly JSON output
-npx impeccable detect --no-config src/       # raw scan, ignoring project config/context
-npx impeccable ignores list                  # show detector ignores
-npx impeccable ignores add-file "src/legacy/**"
-npx impeccable ignores add-value overused-font Inter --reason "Brand font"
-```
-
-The detector catches 60 deterministic issues across AI slop (side-tab borders, purple gradients, bounce easing, dark glows) and general design quality (line length, cramped padding, small touch targets, skipped headings, and more).
-
-By default, `detect` respects the same `.impeccable/config.json` and `.impeccable/config.local.json` detector config as the design hook: `detector.ignoreRules`, `detector.ignoreFiles`, `detector.ignoreValues`, and `detector.designSystem.enabled`. Hook lifecycle settings such as `hook.enabled` only affect automatic hook execution.
-
-For a waiver that should travel with one file instead of the repo config, add an inline comment in the file: `<!-- impeccable-disable overused-font: exported brand doc -->`. The marker works in any comment syntax, scopes to the whole file (or one line with `impeccable-disable-line` / `impeccable-disable-next-line`), and is bypassed by `--no-inline-ignores` or `--no-config`.
-
-Full detector docs: [impeccable.style/docs/detector](https://impeccable.style/docs/detector).
-
-## Supported Tools
-
-- [Cursor](https://cursor.com)
-- [Claude Code](https://claude.ai/code)
-- [GitHub Copilot](https://github.com/features/copilot)
-- [Gemini CLI](https://github.com/google-gemini/gemini-cli)
-- [Codex CLI](https://github.com/openai/codex)
-- [Grok Build](https://x.ai/cli)
-- [OpenCode](https://opencode.ai)
-- [Pi](https://pi.dev)
-- [Kiro](https://kiro.dev)
-- [Trae](https://trae.ai)
-- [Rovo Dev](https://www.atlassian.com/software/rovo)
-- [Qoder](https://qoder.com)
-- [Mistral Vibe](https://docs.mistral.ai/vibe/code/overview)
-
-## Community & Ecosystem
-
-Join the community and ecosystem conversations:
-
-- GitHub Discussions: file bugs, request features, and help newcomers.
-- [Impeccable on npm](https://www.npmjs.com/package/impeccable): grab the CLI, follow releases, and star the package.
-- Follow @pbakaus on Twitter for release notes, sample lint reports, and video highlights of new rules.
-
-## Contributing
-
-See [DEVELOP.md](docs/DEVELOP.md) for contributor guidelines and build instructions.
-
-## License
-
-Apache 2.0. See [LICENSE](LICENSE).
-
+---
+name: impeccable
+description: Use when the user wants to design, redesign, shape, critique, audit, polish, clarify, distill, harden, optimize, adapt, animate, colorize, extract, or otherwise improve a frontend interface. Covers websites, landing pages, dashboards, product UI, app shells, components, forms, settings, onboarding, and empty states. Handles UX review, visual hierarchy, information architecture, cognitive load, accessibility, performance, responsive behavior, theming, anti-patterns, typography, fonts, spacing, layout, alignment, color, motion, micro-interactions, UX copy, error states, edge cases, i18n, and reusable design systems or tokens. Also use for bland designs that need to become bolder or more delightful, loud designs that should become quieter, live browser iteration on UI elements, or ambitious visual effects that should feel technically extraordinary. Not for backend-only or non-UI tasks.
+metadata:
+  version: 4.5.0
 ---
 
-Created by [Paul Bakaus](https://www.paulbakaus.com)
+This skill gives you the tools and permission to create design that earns to be called out-of-distribution craft: Whereas before, your design work would have been safe, timid and measured, you now approach every design task as an award-winning design director with impeccable understanding for what makes exceptional design work: production-grade code, peak creativity, a clear POV, deep understanding of the needs of the client and users, and exceptional craft.
+
+Core principles:
+- Go all out. No hedging, no shortcuts. The deliverable must be complete (except assets the user must provide).
+- Dream big and bold. Distinct, beautiful, outstanding and highly inspiring work.
+- Verify in bounded passes, not a loop, and the ceiling covers the whole cycle: screenshots, defect scans, micro-edits, and rebuilds alike. Build fully, inspect once with a batched round (desktop and mobile together on the web; the shipped device classes on a native platform), fix everything it shows in one batch, confirm with at most one more round, and stop polishing. Open-ended self-QA burns the user's money doing worse what the finish handoffs do better.
+
+## Setup
+
+1. Run `<skill-base-dir>/scripts/impeccable context` once per session, where `<skill-base-dir>` is the directory that contains this SKILL.md (the skill folder, not a plugin root two levels above it); keep cwd at the user's project. That base directory resolves every `.agents/skills/impeccable/scripts/impeccable <verb>` command in this skill and its references, and `.agents/skills/impeccable/scripts` is the fallback only when the runtime reports no base directory. On a Windows shell without `sh`, call `.agents/skills/impeccable/scripts/impeccable.cmd` instead. The launcher runs a self-contained binary that ships next to it or is downloaded once on first run; no Node or other runtime is required. Pass a named source file or route as `--target <path>`. It loads PRODUCT.md, DESIGN.md, the matching surface brief, and native-platform guidance when applicable; follow its directives and do not rerun it.
+2. Load the request's playbook: its Commands-table reference for an explicit/implied sub-command, or [reference/new-work.md](reference/new-work.md) for a new surface or replacement visual world. Inspect target and incumbent visual truth before editing. When the app cannot run, start with committed visual-regression goldens or screenshot fixtures; verify target and freshness against current tokens, CSS, components, or assets, resolve conflicts, and compare theme/variant captures.
+3. After resolving analysis and direction, read [reference/craft-floor.md](reference/craft-floor.md) immediately before any UI edit, including small refinements. It carries the quality floor, the absolute bans, and the reflexes no detector catches. Do not load it for planning-only work.
+
+**Launcher unavailable:** On refusal or failure, send a separate message **before the next tool call**: “Context loading did not run; I’ll read the existing project context directly.” Then read existing PRODUCT.md and DESIGN.md without inventing missing context, follow applicable steps 2–3, and continue through permitted tools. This applies to planning and editing; launcher failure alone does not block either.
+
+## How to design
+
+- **The brief wins.** Honor pinned aesthetics, eras, materials, fonts, and palettes even when they conflict with a saturated-pattern warning. Redirecting a clear brief toward your taste is failure.
+- **Refinement preserves; redesign replaces.** Refinement keeps the incumbent identity, behavior, copy, and everything outside scope. Ask before replacing factual copy or adding claims. Redesign keeps product truth, content, function, native affordances, and constraints, but treats the old look as evidence and anti-reference; choose a replacement world in new-work and replace DESIGN.md. Never split the difference into polish on the discarded look.
+- **Loaded symbols stay out of the decoration.** A subject's world does not license emblems tied to militarism, supremacy, or hate movements as motifs, badges, or ornament, such as the Rising Sun flag's rays, the Confederate battle flag, or Nazi-era insignia and their stylised variants; reach for that world's neutral forms instead. Content that documents such a symbol as fact stays as it is.
+- **Visual authority is evidence, not a filename.** Missing DESIGN.md alone does not make a project greenfield; new-work decides whether to preserve, expand, or replace the incumbent world.
+
+## Modes
+
+The mode names what the visitor's success looks like on this surface.
+
+- **Persuade:** the visitor decides and acts; design is the product. Landing pages, marketing, campaigns, pricing. Earn attention and action. Ship real imagery when the brief needs it; follow the committed world, not category habit.
+- **Operate:** the visitor completes a task. App UI, dashboards, editors, admin, settings, tools. Scanability, consistency, native expectations, and the real usage scene outrank expression. Brand lives in precise details.
+- **Read:** the visitor understands something. Docs, articles, guides, help, changelogs. Structure for comprehension, then make the reading experience worth staying in.
+- **Experience:** the visitor is inside the work itself. Portfolios, galleries, showcases. Let the artifact lead from the first viewport; the interface recedes.
+
+Choose the mode from the requested surface, not the product, and persist it only in that surface brief. A tool's landing page is still Persuade; a fashion house's documentation is still Read; a docs index is Read, not Persuade. See [new-work.md](reference/new-work.md) for new surfaces and [operate.md](reference/operate.md) for deeper Operate/Read guidance.
+
+## Commands
+
+| Command | Category | Description | Reference |
+|---|---|---|---|
+| `craft [feature]` | Build | Deprecated alias for an ordinary new-work request | [reference/craft.md](reference/craft.md) |
+| `shape [feature]` | Build | Plan UX/UI before writing code | [reference/shape.md](reference/shape.md) |
+| `init` | Build | Capture durable product context in PRODUCT.md | [reference/init.md](reference/init.md) |
+| `document` | Build | Generate DESIGN.md from existing project code | [reference/document.md](reference/document.md) |
+| `extract [target]` | Build | Pull reusable tokens and components into design system | [reference/extract.md](reference/extract.md) |
+| `critique [target]` | Evaluate | UX design review with heuristic scoring | [reference/critique.md](reference/critique.md) |
+| `audit [target]` | Evaluate | Technical quality checks (a11y, perf, responsive) | [reference/audit.md](reference/audit.md) · native: [reference/audit.native.md](reference/audit.native.md) |
+| `polish [target]` | Refine | Final quality pass before shipping | [reference/polish.md](reference/polish.md) |
+| `bolder [target]` | Refine | Amplify safe or bland designs | [reference/bolder.md](reference/bolder.md) |
+| `quieter [target]` | Refine | Tone down aggressive or overstimulating designs | [reference/quieter.md](reference/quieter.md) |
+| `distill [target]` | Refine | Strip to essence, remove complexity | [reference/distill.md](reference/distill.md) |
+| `harden [target]` | Refine | Production-ready: errors, i18n, edge cases | [reference/harden.md](reference/harden.md) |
+| `onboard [target]` | Refine | Design first-run flows, empty states, activation | [reference/onboard.md](reference/onboard.md) |
+| `animate [target]` | Enhance | Add purposeful animations and motion | [reference/animate.md](reference/animate.md) |
+| `colorize [target]` | Enhance | Add strategic color to monochromatic UIs | [reference/colorize.md](reference/colorize.md) |
+| `typeset [target]` | Enhance | Improve typography hierarchy and fonts | [reference/typeset.md](reference/typeset.md) |
+| `layout [target]` | Enhance | Fix spacing, rhythm, and visual hierarchy | [reference/layout.md](reference/layout.md) |
+| `delight [target]` | Enhance | Add personality and memorable touches | [reference/delight.md](reference/delight.md) |
+| `overdrive [target]` | Enhance | Push past conventional limits | [reference/overdrive.md](reference/overdrive.md) |
+| `clarify [target]` | Fix | Improve UX copy, labels, and error messages | [reference/clarify.md](reference/clarify.md) |
+| `adapt [target]` | Fix | Adapt for different devices and screen sizes | [reference/adapt.md](reference/adapt.md) · native: [reference/adapt.native.md](reference/adapt.native.md) |
+| `optimize [target]` | Fix | Diagnose and fix UI performance | [reference/optimize.md](reference/optimize.md) |
+| `live` | Iterate | Visual variant mode: pick elements in the browser, iterate on alternatives | [reference/live.md](reference/live.md) |
+| `generate [n] [action] [element]` | Iterate | Variants, versions, or alternatives of a named element to choose from in the live browser; no manual picking | [reference/generate.md](reference/generate.md) |
+
+Routing:
+
+- **No argument:** read [routing.md](reference/routing.md) and present its context-aware menu; never auto-run a command.
+- **Explicit or clearly implied request to run a command:** load its reference (native variant on native platforms) and follow it. Ask once if two commands fit.
+- **Workflow or command-selection question:** read [Workflow questions](reference/routing.md#workflow-questions).
+- **Otherwise:** treat the request as general design work. Missing PRODUCT.md routes a new surface or replacement world through init, then new-work; a narrow refinement of existing code proceeds on the incumbent implementation as `impeccable context` directs, offering init afterward rather than blocking on it.
+- `teach` aliases `init`. `craft` is a deprecated alias for ordinary new-work and adds nothing. `shape` owns task discovery, then enters new-work only for visual-world and surface-concept decisions.
+
+After init writes PRODUCT.md, resume without rerunning `impeccable context`; init loads the native platform reference itself when the platform it recorded is `ios`, `android`, or `adaptive`.
+
+**Pin / Unpin:** `.agents/skills/impeccable/scripts/impeccable pin <pin|unpin> <command>` creates or removes a standalone `$<command>` shortcut. Report the script's result concisely; relay stderr verbatim on error.
+
+**Hooks:** `$impeccable hooks <on|off|status|ignore-rule|ignore-file|ignore-value|reset>` manages the design detector hook for this project (auto-runs the detector after UI file edits and surfaces findings). Load [reference/hooks.md](reference/hooks.md) when the user invokes it with any argument.
+
+**Doctor:** `$impeccable doctor` reports and repairs drift between this project's Impeccable artifacts (PRODUCT.md, DESIGN.md and its sidecar, config, surface briefs, the hook) and what this version reads. Load [reference/doctor.md](reference/doctor.md) when the user invokes it, or when they ask what is out of date, stale, or needs refreshing. A `CONTEXT_STALE` directive in Setup's output is the cheap subset of the same report; act on it there per its own instructions rather than running doctor unasked.
+
+**Never repair drift as a side effect of a design task.** A `CONTEXT_STALE` finding is reported, not acted on, unless the user asks. The one exception is a finding marked `auto`, which the next write to that file performs anyway.
