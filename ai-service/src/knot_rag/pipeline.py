@@ -11,9 +11,11 @@ import logging
 import time
 import uuid
 
+from knot_rag.config import SupportSettings
 from knot_rag.context.builder import BuiltContext, ContextBuilder
+from knot_rag.evidence.coverage import question_coverage
 from knot_rag.evidence.mapper import EvidenceMapper
-from knot_rag.evidence.support import SupportAssessor, aggregate_status
+from knot_rag.evidence.support import SupportAssessor, SupportDecision, aggregate_status
 from knot_rag.generation.generator import GroundedGenerator
 from knot_rag.retrieval.service import RetrievalResult, RetrievalService
 from knot_rag.schemas.answer import (
@@ -24,6 +26,7 @@ from knot_rag.schemas.answer import (
     GroundedAnswer,
     InsufficientEvidence,
     InsufficientEvidenceReason,
+    VerificationLevel,
 )
 from knot_rag.schemas.common import SupportStatus
 from knot_rag.schemas.retrieval import (
@@ -42,6 +45,25 @@ MSG_NO_EVIDENCE = (
 MSG_MODEL_DECLINED = "Getirilen kaynak bölümleri bu soruyu yanıtlamıyor. Tahmin yürütülmedi."
 MSG_NO_SUPPORTED = "Üretilen ifadelerin hiçbiri kaynaklarla doğrulanamadı; yanıt kanıta dayalı kabul edilmedi."
 MSG_PARTIAL = "Yanıtın yalnızca bir kısmı için yeterli kanıt var."
+MSG_UNCOVERED = "Materyallerde karşılığı bulunamayan kavramlar: {terms}"
+MSG_NOT_CONFIRMED = "Kaynak alıntısı doğrulandı ancak anlamsal destek ayrıca doğrulanmadı."
+
+
+def _overall_verification(levels: list[VerificationLevel]) -> VerificationLevel:
+    if not levels or VerificationLevel.HEURISTIC in levels:
+        return VerificationLevel.HEURISTIC
+    if VerificationLevel.HEURISTIC_FALLBACK in levels:
+        return VerificationLevel.HEURISTIC_FALLBACK
+    return VerificationLevel.SEMANTIC_JUDGE
+
+
+def _apply_confirmation_policy(d: SupportDecision, require_semantic: bool) -> SupportDecision:
+    """Strict mode: a SIKI that no semantic judge confirmed is shown as GEVEŞEK."""
+    if require_semantic and d.status == SupportStatus.SUPPORTED and not d.assessment.semantically_verified:
+        return SupportDecision(SupportStatus.PARTIALLY_SUPPORTED, MSG_NOT_CONFIRMED, d.assessment, d.capped_by_hard_rule)
+    if require_semantic and d.relevance_only_cap and not d.assessment.semantically_verified:
+        return SupportDecision(d.status, d.explanation, d.assessment, d.capped_by_hard_rule, relevance_only_cap=False)
+    return d
 
 
 def _qfingerprint(q: str) -> str:
@@ -57,6 +79,7 @@ class RagService:
         mapper: EvidenceMapper,
         assessor: SupportAssessor,
         log_questions: bool = False,
+        support_settings: SupportSettings | None = None,
     ):
         self.retrieval = retrieval
         self.context_builder = context_builder
@@ -64,6 +87,7 @@ class RagService:
         self.mapper = mapper
         self.assessor = assessor
         self._log_questions = log_questions
+        self._support = support_settings or SupportSettings()
 
     # ── retrieval (also the reusable entry point for WBS-6 / WBS-7) ────────────────
     def _retrieve_and_build(self, req: RetrieveRequest | AnswerRequest) -> tuple[RetrievalResult, BuiltContext]:
@@ -143,11 +167,21 @@ class RagService:
 
         gen = self.generator.generate(result.query.normalized, req.scope.course_id, built.evidence)
         mapped = self.mapper.map(gen.answer, built.evidence)
+        decisions = self.assessor.assess_all(mapped, result.query.normalized)
         claims: list[Claim] = []
         issues = []
-        for m in mapped:
-            decision = self.assessor.assess(m)
+        backing_texts: list[str] = []
+        counted: list[SupportStatus] = []  # claims that bear on completeness (side remarks excluded)
+        for m, decision in zip(mapped, decisions):
+            decision = _apply_confirmation_policy(decision, self._support.require_semantic_confirmation)
             issues.extend(m.issues)
+            if not decision.relevance_only_cap:
+                counted.append(decision.status)
+            if decision.status != SupportStatus.UNSUPPORTED:
+                # Titles count as source context ("Hafta 4 — AVL Ağaçları" covers "AVL").
+                backing_texts.extend(
+                    f"{e.document_title} {e.location.section_title or ''} {e.text}" for e in m.cited_evidence
+                )
             claims.append(
                 Claim(
                     claim_id=m.claim_id,
@@ -158,12 +192,26 @@ class RagService:
                     support_label=decision.status.ui_label,
                     support_explanation=decision.explanation,
                     assessment=decision.assessment,
+                    support_confirmed=decision.status == SupportStatus.SUPPORTED and decision.assessment.semantically_verified,
                 )
             )
 
-        statuses = [c.support_status for c in claims]
-        overall = aggregate_status(statuses)
-        missing = gen.answer.missing
+        # Answer-level state ignores side remarks (claims capped only by relevance). If every
+        # claim is a side remark, the answer is off-target but true: GEVEŞEK, never SIKI, and
+        # never an abstention (lexical relevance alone must not refuse, e.g. mixed-language).
+        if counted or not claims:
+            overall = aggregate_status(counted)
+        else:
+            overall = SupportStatus.PARTIALLY_SUPPORTED
+        missing = list(gen.answer.missing)
+        context_texts = [f"{e.document_title} {e.location.section_title or ''} {e.text}" for e in built.evidence]
+        coverage = question_coverage(result.query.normalized, backing_texts, context_texts)
+        # Not ANSWERED if the cited evidence covers too little of the question. `absent_from_context`
+        # is reported for analysis only: as a hard rule ("any absent term blocks ANSWERED") it
+        # fired on ordinary function words in held-out questions (docs/rag-evaluation.md §4.3).
+        under_covered = bool(claims) and coverage.ratio < self._support.question_coverage_answered
+        if under_covered and coverage.uncovered_terms:
+            missing.append(MSG_UNCOVERED.format(terms=", ".join(coverage.uncovered_terms)))
         insufficient: InsufficientEvidence | None = None
         if not claims:
             outcome = AnswerOutcome.INSUFFICIENT_EVIDENCE
@@ -175,7 +223,7 @@ class RagService:
             insufficient = InsufficientEvidence(
                 reason=InsufficientEvidenceReason.NO_SUPPORTED_CLAIMS, message=MSG_NO_SUPPORTED, missing_information=missing
             )
-        elif overall == SupportStatus.SUPPORTED and gen.answer.status == "answered" and not missing:
+        elif overall == SupportStatus.SUPPORTED and gen.answer.status == "answered" and not missing and not under_covered:
             outcome = AnswerOutcome.ANSWERED
         else:
             outcome = AnswerOutcome.PARTIALLY_ANSWERED
@@ -199,10 +247,14 @@ class RagService:
                 provider=gen.provider, model=gen.model, prompt_version=gen.prompt_version,
                 attempts=gen.attempts, latency_ms=gen.latency_ms,
             ),
+            support_confirmed=bool(claims) and overall == SupportStatus.SUPPORTED and all(c.support_confirmed for c in claims),
+            verification=_overall_verification([c.assessment.verification for c in claims]),
+            question_coverage=coverage,
         )
         self._log(
             "rag.answer", request_id, req, started,
             outcome=outcome.value, support=overall.value, claims=len(claims),
             citation_issues=len(issues), evidence=len(built.evidence),
+            question_coverage=coverage.ratio, verification=answer.verification.value,
         )
         return answer

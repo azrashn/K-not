@@ -40,7 +40,7 @@ JSX. That does not affect WBS-3, which only talks to NestJS.
 | `retrieval/` | `Embedder` and `ChunkIndex` ports; ChromaDB adapter; `RetrievalService` (scope → embed → filtered search → scope re-check → optional score floor) | `ChromaChunkIndex`, `ChromaChunkWriter`, `SearchScope` |
 | `context/` | Deterministic selection: sort, dedup by id/text/containment, per-document cap, token budget, `E1…En` ids, delimited rendering | `ContextBuilder` |
 | `generation/` | Provider-independent `LLMProvider`; OpenAI-compatible HTTP adapter; scripted and extractive offline providers; prompts; structured generation with validation and bounded retries | `GroundedGenerator`, `ModelAnswer` |
-| `evidence/` | **Citation integrity** (`EvidenceMapper`) kept separate from **support assessment** (`SupportAssessor`) | `MappedClaim`, `HeuristicSupportAssessor` |
+| `evidence/` | **Citation integrity** (`EvidenceMapper`) kept separate from **support assessment** (`SupportAssessor`: heuristic rules plus an optional LLM entailment judge) and **question coverage** | `MappedClaim`, `HeuristicSupportAssessor`, `LLMJudgeSupportAssessor`, `question_coverage` |
 | `pipeline.py` | Orchestrates retrieve / answer and decides the outcome | `RagService` |
 | `api/` | FastAPI: internal token auth, request IDs, body-size limit, error envelope, OpenAPI | `create_app` |
 | `bootstrap.py` | Composition root: the only place configuration becomes objects (dependency injection) | `build_components` |
@@ -104,29 +104,77 @@ One Chroma collection per embedding model and chunking scheme (default `knot_chu
 10. **Citation integrity.** Ids that were not shown to the model are removed and reported as
     `UNKNOWN_EVIDENCE_ID`. Quotes are verified by exact (case- and whitespace-folded)
     matching; only verified quotes get highlight offsets.
-11. **Support assessment.** Explicit criteria (§6) yield a per-claim status, which is
-    aggregated with the frontend's `KnotStrength` rule.
-12. **Outcome.** `ANSWERED` only if every claim is SUPPORTED, the model said `answered`, and
-    nothing is listed as missing.
+11. **Support assessment.** Explicit rules S1–S7 (§6.1), plus an optional semantic judge
+    (§6.2), yield a per-claim status and a verification level.
+12. **Outcome.** `ANSWERED` only if every counted claim (side remarks excluded) is SIKI, the
+    model said `answered`, nothing is listed as missing, and question coverage ≥ 0.6 (§6.3).
 
 ## 6. Support states — explicit criteria
 
-Method `citation-lexical-v1` (`evidence/support.py`):
+### 6.1 Claim level — method `citation-lexical-v2` (`evidence/support.py`)
 
-| State (UI) | Criteria |
-| --- | --- |
-| **SUPPORTED** (SIKI) | ≥1 citation resolves **and** the quote is found verbatim in a cited chunk **and** lexical coverage ≥ `SUPPORT_COVERAGE_SUPPORTED` (0.6) **and** every number in the claim appears in the cited evidence **and** the model did not mark it partial **and** no fabricated id is attached |
-| **PARTIALLY_SUPPORTED** (GEVEŞEK) | Valid citation, but at least one SUPPORTED criterion fails (and the claim isn't UNSUPPORTED) |
-| **UNSUPPORTED** (KOPUK) | No valid citation, **or** coverage < `SUPPORT_COVERAGE_PARTIAL` (0.3) with no verified quote |
+| Rule | Check | Effect if it fails |
+| --- | --- | --- |
+| U1 | ≥1 citation resolves to retrieved evidence | **KOPUK** |
+| U2 | Claim terms found anywhere in the cited chunks ≥ `SUPPORT_COVERAGE_PARTIAL` (0.3), or the quote is verified | **KOPUK** |
+| S1 | No fabricated evidence id on the claim | GEVEŞEK (hard) |
+| S2 | The model's quote occurs verbatim in a cited chunk | GEVEŞEK (hard) |
+| S3 | Claim terms found in the **sentence(s) around the verified quote** ≥ `SUPPORT_COVERAGE_SUPPORTED` (0.6) | GEVEŞEK (judge may upgrade) |
+| S4 | Every number in the claim appears in the cited evidence | GEVEŞEK (hard) |
+| S5 | Negation polarity of the claim equals the quoted sentence ("kararlıdır" vs "kararlı değildir") | GEVEŞEK (hard) |
+| S6 | The model did not mark the claim `partial` | GEVEŞEK (hard) |
+| S7 | Question relevance: the claim mentions ≥ `SUPPORT_QUESTION_RELEVANCE_MIN` (0.34) of the question's key terms **and** ≥ `SUPPORT_RELATIVE_RELEVANCE_MIN` (0.6) × the best claim's relevance | GEVEŞEK, `addresses_question=false` (hard) |
 
-Lexical coverage is the share of the claim's content tokens found in the cited evidence, using
-5-character prefix matching as crude Turkish stemming. It is a proxy, not entailment, so
-`semantically_verified` is always `false`. WBS-8 can plug in an NLI or LLM-judge assessor
-through the `SupportAssessor` protocol without changing the API.
+**SIKI** requires U1–U2 and S1–S7 to pass. Every failed rule is listed in
+`support_explanation`, so the label is always explainable.
 
-Answer-level state: all claims SUPPORTED gives SUPPORTED; no claim supported gives
-UNSUPPORTED; anything else gives PARTIALLY_SUPPORTED. An answer whose claims are all
-supported but which lists missing parts is downgraded to PARTIALLY_SUPPORTED.
+Why v2: on eval.v1, **28 of 28** citations that pointed to a non-gold passage came from claims
+that v1 rated SIKI. v1 only checked "a verbatim quote exists and the claim's words occur
+somewhere in the chunk", so true but irrelevant sentences (Dijkstra question → sorting fact)
+and words borrowed from other sentences of a long chunk were rated SIKI. S3, S5 and S7 close
+those paths. Lexical terms use a 5-character, ASCII-folded prefix stem with prefix-compatible
+matching (`ağaç` ~ `ağacı`, `faktoru` ~ `faktörü`), and question function words
+(`nedir`, `nasıl`, `hangi`, `ne zaman`, …) are ignored.
+
+### 6.2 What SIKI does and does not mean
+
+| `verification` | Meaning | `semantically_verified` / `support_confirmed` |
+| --- | --- | --- |
+| `HEURISTIC` (default) | Quoted from the cited source, on-topic by word overlap, no number or negation conflict | `false` / `false` |
+| `SEMANTIC_JUDGE` | Additionally, an entailment judge said ENTAILED | `true` / `true` if SIKI |
+| `HEURISTIC_FALLBACK` | A judge was configured but failed for this claim | `false` / `false` |
+
+A heuristic SIKI is **never** presented as confirmed: `support_confirmed` stays `false`, and the
+UI must label it as an automatic check ("kaynağa bağlı · otomatik kontrol"). Deployments that
+need SIKI to mean "semantically confirmed" set `SUPPORT_REQUIRE_SEMANTIC_CONFIRMATION=true`;
+unconfirmed SIKI is then shown as GEVEŞEK with the explanation "anlamsal destek ayrıca
+doğrulanmadı".
+
+**Semantic judge** (`SUPPORT_JUDGE=llm`, `evidence/judge.py`): one batched LLM call per answer
+asks ENTAILED / PARTIAL / NOT_ENTAILED for each non-KOPUK claim, against only that claim's cited
+passages. Hard rules (S1, S2, S4–S7) still cap the result; the judge may only upgrade S3-only
+GEVEŞEK (paraphrases). Judge failures fall back to the heuristic and are marked as such. Status:
+implemented and tested with scripted providers. **Its agreement with human judgement has not
+been measured.**
+
+### 6.3 Answer level (`pipeline.py`)
+
+- **Side remarks.** Claims capped *only* by S7 keep their GEVEŞEK label but do not count toward
+  the answer's state, so a complete answer with an extra tangential sentence stays `ANSWERED`.
+  Claims with any other problem (including off-topic hallucinations) do count.
+- **Aggregate.** Counted claims all SIKI gives SIKI; none supported gives KOPUK; otherwise
+  GEVEŞEK. If every claim is a side remark, the answer is GEVEŞEK (true but off-target).
+- **Question coverage** (`evidence/coverage.py`): share of the question's key terms found in
+  the evidence (plus document and section titles) cited by non-KOPUK claims. Below
+  `RAG_QUESTION_COVERAGE_ANSWERED` (0.6), the answer cannot be `ANSWERED`; it becomes
+  `PARTIALLY_ANSWERED`, and the uncovered terms are added to
+  `insufficient_evidence.missing_information`. This catches partially answerable questions even
+  when the model doesn't report what's missing.
+- **Lexical signals never cause an abstention on their own.** Mixed Turkish/English questions
+  score low on lexical overlap; abstention comes only from retrieval (no evidence), the model
+  declining, or every claim being KOPUK.
+- `ANSWERED` requires: aggregate SIKI, model status `answered`, an empty `missing` list, and
+  coverage ≥ threshold.
 
 ## 7. Security
 

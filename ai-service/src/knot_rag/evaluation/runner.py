@@ -26,6 +26,19 @@ from knot_rag.schemas import AnswerRequest, AuthorizedScope, IndexedChunk, Retri
 from knot_rag.schemas.answer import CitationIssueType
 
 DEFAULT_THRESHOLDS = [0.0, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.5]
+# eval.v1 has no outcome labels; derive them from the category (same rule eval.v2 used).
+_DEFAULT_OUTCOME = {
+    "partial": ["PARTIALLY_ANSWERED"],
+    "out_of_scope": ["INSUFFICIENT_EVIDENCE"],
+}
+
+
+def expected_outcome(item: dict[str, Any]) -> list[str]:
+    if "expected_outcome" in item:
+        return list(item["expected_outcome"])
+    if item["category"] in _DEFAULT_OUTCOME:
+        return _DEFAULT_OUTCOME[item["category"]]
+    return ["ANSWERED"] if item.get("expected_chunk_ids") else ["INSUFFICIENT_EVIDENCE"]
 
 
 def evaluate(components: Components, dataset: dict[str, Any], *, generate: bool = True) -> list[ItemResult]:
@@ -48,6 +61,8 @@ def evaluate(components: Components, dataset: dict[str, Any], *, generate: bool 
             candidate_scores=[h.score for h in raw.hits],
             context_ids=[e.chunk_id for e in built.evidence],
             out_of_scope_hits=raw.rejected_out_of_scope,
+            expected_outcome=expected_outcome(item),
+            split=item.get("split", "all"),
         )
         if generate:
             try:
@@ -57,10 +72,22 @@ def evaluate(components: Components, dataset: dict[str, Any], *, generate: bool 
                 r.claim_statuses = [c.support_status.value for c in ans.claims]
                 r.cited_chunk_ids = [cit.chunk_id for c in ans.claims for cit in c.citations]
                 r.fabricated_citations = sum(1 for x in ans.citation_issues if x.issue == CitationIssueType.UNKNOWN_EVIDENCE_ID)
+                r.supported_cited_chunk_ids = [
+                    cit.chunk_id for c in ans.claims if c.support_status.value == "SUPPORTED" for cit in c.citations
+                ]
+                r.confirmed_claims = sum(1 for c in ans.claims if c.support_confirmed)
             except RagError as exc:
                 r.outcome = f"ERROR:{exc.code.value}"
         results.append(r)
     return results
+
+
+def _assessor_name(components: Components) -> str:
+    from knot_rag.evidence.judge import LLMJudgeSupportAssessor
+    from knot_rag.evidence.support import METHOD
+
+    judged = isinstance(components.rag.assessor, LLMJudgeSupportAssessor)
+    return f"{METHOD}{' + LLM judge' if judged else ''} (automatic; not human-judged)"
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -96,7 +123,8 @@ def main(argv: list[str] | None = None) -> int:
         chroma_client = chromadb.EphemeralClient()
         corpus = json.loads(Path(args.corpus).read_text(encoding="utf-8"))
         chunks = [IndexedChunk.model_validate(c) for c in corpus["chunks"]]
-        emb = build_embedder(settings.embedding_backend, settings.embedding_model, settings.embedding_query_prefix)
+        emb = build_embedder(settings.embedding_backend, settings.embedding_model, settings.embedding_query_prefix,
+                              settings.embedding_document_prefix, settings.embedding_revision)
         ChromaChunkWriter(chroma_client, settings.chroma_collection, emb).upsert(chunks)
         components = build_components(settings, embedder=emb, chroma_client=chroma_client)
     else:
@@ -109,12 +137,17 @@ def main(argv: list[str] | None = None) -> int:
         "items": len(results),
         "embedding_model": components.embedder.model_id,
         "provider": f"{components.provider.name}:{components.provider.model}" if args.provider != "none" else None,
-        "support_assessor": "citation-lexical-v1 (heuristic; not human-judged)",
         "min_score": settings.retrieval.min_score,
+        "support_assessor": _assessor_name(components),
         "metrics": summarize(results, DEFAULT_THRESHOLDS),
+        "metrics_by_split": {
+            split: summarize([r for r in results if r.split == split])
+            for split in sorted({r.split for r in results}) if split != "all"
+        },
         "per_item": [
             {"id": r.item_id, "category": r.category, "gold_in_candidates": bool(set(r.expected) & set(r.candidate_ids)) if r.expected else None,
-             "top_score": r.candidate_scores[0] if r.candidate_scores else None, "outcome": r.outcome, "support": r.answer_support}
+             "top_score": r.candidate_scores[0] if r.candidate_scores else None, "outcome": r.outcome,
+             "expected_outcome": r.expected_outcome, "support": r.answer_support, "split": r.split}
             for r in results
         ],
     }

@@ -9,7 +9,9 @@ from knot_rag.schemas.answer import (
     GroundedAnswer,
     InsufficientEvidence,
     InsufficientEvidenceReason,
+    QuestionCoverage,
     SupportAssessment,
+    VerificationLevel,
 )
 from knot_rag.schemas.common import ErrorBody, ErrorCode, ErrorResponse, SupportStatus
 from knot_rag.schemas.documents import DocumentMetadata, DocumentType, IndexedChunk, SourceLocation
@@ -31,4 +33,5 @@ __all__ = [
     "InsufficientEvidence", "InsufficientEvidenceReason", "RetrievalDiagnostics",
     "RetrievalOutcome", "RetrievalParams", "RetrievedEvidence", "RetrieveRequest",
     "RetrieveResponse", "SourceLocation", "SupportAssessment", "SupportStatus",
+    "QuestionCoverage", "VerificationLevel",
 ]

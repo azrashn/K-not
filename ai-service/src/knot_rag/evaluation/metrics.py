@@ -23,6 +23,11 @@ class ItemResult:
     claim_statuses: list[str] = field(default_factory=list)
     cited_chunk_ids: list[str] = field(default_factory=list)
     fabricated_citations: int = 0
+    # Added for eval.v2 (all optional so older callers keep working):
+    expected_outcome: list[str] = field(default_factory=list)
+    split: str = "all"
+    supported_cited_chunk_ids: list[str] = field(default_factory=list)  # citations of SIKI claims only
+    confirmed_claims: int = 0
 
     @property
     def in_scope(self) -> bool:
@@ -99,6 +104,72 @@ def abstention_rate(items: list[ItemResult]) -> Metric:
     return _m(ok, len(pool), "out-of-scope questions answered with INSUFFICIENT_EVIDENCE / out-of-scope questions")
 
 
+def _gold_rank(i: ItemResult) -> int | None:
+    for r, c in enumerate(i.candidate_ids, start=1):
+        if c in i.expected:
+            return r
+    return None
+
+
+def recall_at(items: list[ItemResult], k: int) -> Metric:
+    pool = [i for i in items if i.in_scope]
+    ok = sum(1 for i in pool if (r := _gold_rank(i)) is not None and r <= k)
+    return _m(ok, len(pool), f"in-scope questions with a gold passage at rank <= {k} / in-scope questions")
+
+
+def mrr(items: list[ItemResult]) -> Metric:
+    pool = [i for i in items if i.in_scope]
+    total = sum(1.0 / r for i in pool if (r := _gold_rank(i)) is not None)
+    m = Metric(total / len(pool) if pool else None, 0, len(pool),
+               "mean over in-scope questions of 1/rank of the first gold passage (0 if not retrieved)")
+    m.numerator = round(total, 4)  # type: ignore[assignment]
+    return m
+
+
+def siki_citation_precision(items: list[ItemResult]) -> Metric:
+    pool = [i for i in _answered(items) if i.in_scope]
+    total = sum(len(i.supported_cited_chunk_ids) for i in pool)
+    ok = sum(1 for i in pool for c in i.supported_cited_chunk_ids if c in set(i.expected) | set(i.acceptable))
+    return _m(ok, total, "citations of SUPPORTED (SIKI) claims pointing to a gold-relevant passage / citations of SIKI claims")
+
+
+def siki_on_out_of_scope(items: list[ItemResult]) -> Metric:
+    pool = [i for i in _answered(items) if not i.in_scope]
+    statuses = [s for i in pool for s in i.claim_statuses]
+    bad = sum(1 for s in statuses if s == "SUPPORTED")
+    return _m(bad, len(statuses), "claims rated SIKI on questions with no gold passage / all claims on those questions")
+
+
+def outcome_accuracy(items: list[ItemResult]) -> Metric:
+    pool = [i for i in _answered(items) if i.expected_outcome]
+    ok = sum(1 for i in pool if i.outcome in i.expected_outcome)
+    return _m(ok, len(pool), "answers whose outcome is among the labelled acceptable outcomes / labelled answers")
+
+
+def over_claim_rate(items: list[ItemResult]) -> Metric:
+    pool = [i for i in _answered(items) if i.expected_outcome and "ANSWERED" not in i.expected_outcome]
+    bad = sum(1 for i in pool if i.outcome == "ANSWERED")
+    return _m(bad, len(pool), "questions that should NOT be fully answered but got outcome ANSWERED / such questions")
+
+
+def answered_rate_on_answerable(items: list[ItemResult]) -> Metric:
+    pool = [i for i in _answered(items) if i.expected_outcome == ["ANSWERED"]]
+    ok = sum(1 for i in pool if i.outcome == "ANSWERED")
+    return _m(ok, len(pool), "fully answerable questions with outcome ANSWERED / fully answerable questions")
+
+
+def partial_detection(items: list[ItemResult]) -> Metric:
+    pool = [i for i in _answered(items) if i.expected_outcome == ["PARTIALLY_ANSWERED"]]
+    ok = sum(1 for i in pool if i.outcome == "PARTIALLY_ANSWERED")
+    return _m(ok, len(pool), "partially answerable questions with outcome PARTIALLY_ANSWERED / partially answerable questions")
+
+
+def confirmed_support(items: list[ItemResult]) -> Metric:
+    siki = sum(1 for i in _answered(items) for s in i.claim_statuses if s == "SUPPORTED")
+    conf = sum(i.confirmed_claims for i in _answered(items))
+    return _m(conf, siki, "SIKI claims confirmed by a semantic judge / SIKI claims")
+
+
 def threshold_sweep(items: list[ItemResult], thresholds: list[float]) -> list[dict[str, Any]]:
     """For each min_score: retrieval success (gold passage survives the floor) on in-scope
     items, and retrieval-level rejection (nothing survives) on out-of-scope items."""
@@ -135,6 +206,16 @@ def summarize(items: list[ItemResult], thresholds: list[float] | None = None) ->
         "citation_integrity": citation_integrity(items),
         "citation_correctness": citation_correctness(items),
         "out_of_scope_abstention": abstention_rate(items),
+        "recall_at_1": recall_at(items, 1),
+        "recall_at_3": recall_at(items, 3),
+        "mrr": mrr(items),
+        "siki_citation_precision": siki_citation_precision(items),
+        "siki_on_out_of_scope": siki_on_out_of_scope(items),
+        "confirmed_support": confirmed_support(items),
+        "outcome_accuracy": outcome_accuracy(items),
+        "over_claim_rate": over_claim_rate(items),
+        "answered_rate_on_answerable": answered_rate_on_answerable(items),
+        "partial_detection": partial_detection(items),
     }
     out: dict[str, Any] = {k: v.as_dict() for k, v in metrics.items()}
     for name, (op, target) in TARGETS.items():

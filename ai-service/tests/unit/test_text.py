@@ -35,3 +35,19 @@ def test_find_folded_returns_original_offsets():
 def test_estimate_tokens_is_monotonic():
     assert estimate_tokens("a" * 30, 3.0) == 10
     assert estimate_tokens("", 3.0) == 1
+
+
+def test_stems_match_ascii_typed_questions():
+    from knot_rag.text import stem, stem_set
+
+    assert stem("faktoru") == stem("faktörü") and stem("agacinda") == stem("ağacında")
+    assert stem("hesaplanir") in stem_set("hesaplanır")
+
+
+def test_key_terms_merge_inflected_forms_and_match_by_prefix():
+    from knot_rag.evidence.support import question_relevance
+    from knot_rag.text import question_key_terms
+
+    q = "AVL ağacı ile kırmızı-siyah ağaç arasındaki fark nedir?"
+    assert [t for t, _ in question_key_terms(q)] == ["AVL", "ağacı", "kırmızı", "siyah", "fark"]
+    assert question_relevance("AVL ağacı daha sıkı dengelidir.", q) == 0.4

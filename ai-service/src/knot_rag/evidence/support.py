@@ -1,20 +1,33 @@
 """Evidence-support assessment with explicit, inspectable criteria.
 
-`HeuristicSupportAssessor` (method `citation-lexical-v1`) decides per claim:
+`HeuristicSupportAssessor` (method `citation-lexical-v2`) decides per claim. Rules are applied
+in order; every rule that fires is written into `support_explanation`.
 
-  UNSUPPORTED          no citation resolves to retrieved evidence, OR
-                       lexical coverage < coverage_partial and the quote was not verified.
-  SUPPORTED            all of: ≥1 valid citation; the model's quote occurs verbatim in a cited
-                       chunk; lexical coverage ≥ coverage_supported; every number in the claim
-                       appears in the cited evidence; the model did not mark it partial;
-                       no fabricated evidence id was attached to the claim.
-  PARTIALLY_SUPPORTED  anything in between.
+  UNSUPPORTED (KOPUK)
+    U1  no citation resolves to retrieved evidence, or
+    U2  lexical coverage (claim terms found anywhere in the cited chunks) < coverage_partial
+        and the quote was not verified.
 
-Lexical coverage = share of the claim's content tokens that also occur (5-char prefix match,
-a crude Turkish stemming) in the cited evidence. This is a *proxy*: it can be fooled by
-negation or reordering. Hence `semantically_verified=False` on every result until an NLI or
-LLM-judge assessor is plugged in through the `SupportAssessor` protocol (WBS-8 hook).
-Thresholds are configuration, not calibrated constants; calibrate on the evaluation set.
+  SUPPORTED (SIKI) requires ALL of
+    S1  ≥1 valid citation and no fabricated evidence id on the claim;
+    S2  the model's quote occurs verbatim in a cited chunk;
+    S3  quote coverage ≥ coverage_supported — measured against the *sentence(s) around the
+        verified quote*, not the whole chunk, so a claim cannot borrow words from unrelated
+        sentences of a long chunk;
+    S4  every number in the claim appears in the cited evidence;
+    S5  negation polarity of the claim matches the quoted sentence ("kararlı" vs "kararlı değil");
+    S6  the model did not mark the claim partial;
+    S7  question relevance: the claim mentions ≥ question_relevance_min of the question's key
+        terms AND ≥ relative_relevance_min × the best claim's relevance in the same answer.
+        (v1 rated any verbatim quote SIKI, including true-but-irrelevant sentences.)
+
+  PARTIALLY_SUPPORTED (GEVEŞEK)  everything else.
+
+All of this is lexical. The result is `verification=HEURISTIC`, `semantically_verified=False`,
+and `support_confirmed=False` — a heuristic SIKI means "quoted from the cited source and
+on-topic by word overlap", never "semantically confirmed". `LLMJudgeSupportAssessor`
+(`judge.py`) adds a real entailment verdict on top of the hard rules.
+Thresholds are configuration calibrated on eval.v1 (docs/rag-evaluation.md), not constants.
 """
 
 from __future__ import annotations
@@ -24,12 +37,26 @@ from typing import Protocol
 
 from knot_rag.config import SupportSettings
 from knot_rag.evidence.mapper import MappedClaim
-from knot_rag.schemas.answer import SupportAssessment
+from knot_rag.schemas.answer import SupportAssessment, VerificationLevel
 from knot_rag.schemas.common import SupportStatus
-from knot_rag.text import content_tokens, numbers
+from knot_rag.text import (
+    content_tokens,
+    has_negation,
+    numbers,
+    question_key_terms,
+    sentence_around,
+    stem,
+    stem_in,
+    stem_set,
+)
 
-METHOD = "citation-lexical-v1"
-_PREFIX = 5
+METHOD = "citation-lexical-v2"
+
+_RANK = {SupportStatus.UNSUPPORTED: 0, SupportStatus.PARTIALLY_SUPPORTED: 1, SupportStatus.SUPPORTED: 2}
+
+
+def weakest(*statuses: SupportStatus) -> SupportStatus:
+    return min(statuses, key=_RANK.__getitem__)
 
 
 @dataclass(frozen=True)
@@ -37,40 +64,73 @@ class SupportDecision:
     status: SupportStatus
     explanation: str | None
     assessment: SupportAssessment
+    # True when a rule other than lexical overlap (S3) limited the status. A semantic judge may
+    # upgrade overlap-only GEVEŞEK (paraphrases) but never a hard-rule cap.
+    capped_by_hard_rule: bool = False
+    # True when S7 (relevance) is the ONLY rule that kept this claim from SIKI. Such side
+    # remarks keep their GEVEŞEK label but do not count against answer completeness.
+    relevance_only_cap: bool = False
 
 
 class SupportAssessor(Protocol):
-    def assess(self, claim: MappedClaim) -> SupportDecision: ...
+    """WBS-8 extension point. Receives all claims of one answer plus the question, so
+    assessors can use answer-level context (relative relevance, one batched judge call)."""
 
-
-def _stem(t: str) -> str:
-    return t[:_PREFIX]
+    def assess_all(self, claims: list[MappedClaim], question: str) -> list[SupportDecision]: ...
 
 
 def lexical_coverage(claim_text: str, evidence_texts: list[str]) -> float:
     claim = set(content_tokens(claim_text))
     if not claim:
         return 0.0
-    ev_tokens = set()
+    ev_tokens: set[str] = set()
     for t in evidence_texts:
         ev_tokens.update(content_tokens(t))
-    ev_stems = {_stem(t) for t in ev_tokens}
-    hit = sum(1 for t in claim if t in ev_tokens or _stem(t) in ev_stems)
+    ev_stems = {stem(t) for t in ev_tokens}
+    hit = sum(1 for t in claim if t in ev_tokens or stem(t) in ev_stems)
     return round(hit / len(claim), 4)
+
+
+def question_relevance(claim_text: str, question: str) -> float:
+    keys = [stem(t) for _, t in question_key_terms(question)]
+    if not keys:
+        return 1.0  # nothing to measure against; do not penalise
+    claim = stem_set(claim_text)
+    return round(sum(1 for k in keys if stem_in(k, claim)) / len(keys), 4)
+
+
+def quoted_sentences(claim: MappedClaim) -> list[str]:
+    """Sentence(s) of the cited chunks that contain the verified quote."""
+    by_id = {e.evidence_id: e for e in claim.cited_evidence}
+    out = []
+    for c in claim.citations:
+        if c.quote_verified and c.highlight is not None:
+            ev = by_id[c.evidence_id]
+            out.append(sentence_around(ev.text, c.highlight.chunk_char_start, c.highlight.chunk_char_end))
+    return out
 
 
 class HeuristicSupportAssessor:
     def __init__(self, settings: SupportSettings):
         self._s = settings
 
-    def assess(self, claim: MappedClaim) -> SupportDecision:
+    def assess_all(self, claims: list[MappedClaim], question: str) -> list[SupportDecision]:
+        rels = [question_relevance(c.text, question) for c in claims]
+        best = max(rels, default=0.0)
+        return [self._assess(c, r, best) for c, r in zip(claims, rels)]
+
+    def _assess(self, claim: MappedClaim, relevance: float, best_relevance: float) -> SupportDecision:
+        s = self._s
         texts = [e.text for e in claim.cited_evidence]
         valid = bool(claim.cited_evidence)
         coverage = lexical_coverage(claim.text, texts) if valid else 0.0
-        claim_numbers = numbers(claim.text)
+        sentences = quoted_sentences(claim)
+        quote_ok = bool(sentences)
+        quote_cov = lexical_coverage(claim.text, sentences) if quote_ok else 0.0
         ev_numbers = set().union(*(numbers(t) for t in texts)) if texts else set()
-        numbers_ok = claim_numbers <= ev_numbers
-        quote_ok = claim.quote_verified
+        numbers_ok = numbers(claim.text) <= ev_numbers
+        negation_ok = (not quote_ok) or all(has_negation(claim.text) == has_negation(x) for x in sentences)
+        relevant = relevance >= s.question_relevance_min and relevance >= s.relative_relevance_min * best_relevance
 
         assessment = SupportAssessment(
             method=METHOD,
@@ -80,43 +140,49 @@ class HeuristicSupportAssessor:
             numbers_consistent=numbers_ok,
             model_marked_partial=claim.model_marked_partial,
             semantically_verified=False,
+            verification=VerificationLevel.HEURISTIC,
+            quote_coverage=round(quote_cov, 4) if quote_ok else None,
+            question_relevance=relevance,
+            negation_consistent=negation_ok,
+            addresses_question=relevant,
         )
 
-        if not valid:
+        if not valid:  # U1
             reason = (
                 "İddia, getirilen kaynaklarda olmayan bir kanıta atıf yaptı."
                 if claim.had_unknown_ids else "İddia herhangi bir kaynağa bağlanmadı."
             )
-            return SupportDecision(SupportStatus.UNSUPPORTED, reason, assessment)
-
-        if coverage < self._s.coverage_partial and not quote_ok:
+            return SupportDecision(SupportStatus.UNSUPPORTED, reason, assessment, True)
+        if coverage < s.coverage_partial and not quote_ok:  # U2
             return SupportDecision(
-                SupportStatus.UNSUPPORTED,
-                "Atıf yapılan kaynak bu iddianın içeriğini yeterince içermiyor.",
-                assessment,
+                SupportStatus.UNSUPPORTED, "Atıf yapılan kaynak bu iddianın içeriğini yeterince içermiyor.", assessment, True
             )
 
-        if (
-            quote_ok and numbers_ok and not claim.model_marked_partial and not claim.had_unknown_ids
-            and coverage >= self._s.coverage_supported
-        ):
-            return SupportDecision(SupportStatus.SUPPORTED, None, assessment)
-
         reasons = []
-        if not quote_ok:
-            reasons.append("alıntı kaynakta birebir bulunamadı" if claim.quote_given else "kaynaktan alıntı verilmedi")
-        if not numbers_ok:
-            reasons.append("iddiadaki sayısal değerler kaynakta geçmiyor")
-        if claim.model_marked_partial:
-            reasons.append("kaynak iddianın yalnızca bir kısmını destekliyor")
-        if claim.had_unknown_ids:
+        hard = (
+            claim.had_unknown_ids or not quote_ok or not numbers_ok or not negation_ok
+            or claim.model_marked_partial or not relevant
+        )
+        if claim.had_unknown_ids:  # S1
             reasons.append("bazı atıflar getirilen kaynaklarda yok")
-        if coverage < self._s.coverage_supported:
-            reasons.append("iddianın bir kısmı kaynakta geçmiyor")
+        if not quote_ok:  # S2
+            reasons.append("alıntı kaynakta birebir bulunamadı" if claim.quote_given else "kaynaktan alıntı verilmedi")
+        elif quote_cov < s.coverage_supported:  # S3
+            reasons.append("alıntılanan cümle iddianın tamamını içermiyor")
+        if not numbers_ok:  # S4
+            reasons.append("iddiadaki sayısal değerler kaynakta geçmiyor")
+        if not negation_ok:  # S5
+            reasons.append("iddia ile kaynak cümlesinin olumsuzluk anlamı farklı")
+        if claim.model_marked_partial:  # S6
+            reasons.append("kaynak iddianın yalnızca bir kısmını destekliyor")
+        if not relevant:  # S7
+            reasons.append("iddia kaynakta geçiyor ancak soruyu doğrudan yanıtlamıyor")
+
+        if not reasons:
+            return SupportDecision(SupportStatus.SUPPORTED, None, assessment)
         return SupportDecision(
-            SupportStatus.PARTIALLY_SUPPORTED,
-            "Kısmen destekleniyor: " + "; ".join(reasons) + ".",
-            assessment,
+            SupportStatus.PARTIALLY_SUPPORTED, "Kısmen destekleniyor: " + "; ".join(reasons) + ".", assessment, hard,
+            relevance_only_cap=not relevant and len(reasons) == 1,
         )
 
 

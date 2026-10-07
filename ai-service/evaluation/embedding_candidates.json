@@ -1,0 +1,19 @@
+{
+ "description": "Candidate embedding models for K-not (Turkish + mixed Turkish/English academic text). 'revision' is left as 'main' until a model is first downloaded; the comparison report records the resolved commit hash — copy it here to pin the run. Do not edit hashes by hand.",
+ "candidates": [
+  {"id": "hashing-baseline", "backend": "hashing", "model": "knot-hashing-v1", "dimension": 512,
+   "notes": "Lexical, dependency-free control. Not a production candidate."},
+  {"id": "minilm-l12-multi", "backend": "sentence_transformers", "model": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2", "revision": "main",
+   "notes": "Current default. 384-d, small/fast, 50+ languages incl. Turkish."},
+  {"id": "mpnet-base-multi", "backend": "sentence_transformers", "model": "sentence-transformers/paraphrase-multilingual-mpnet-base-v2", "revision": "main",
+   "notes": "768-d, larger multilingual paraphrase model."},
+  {"id": "e5-small-multi", "backend": "sentence_transformers", "model": "intfloat/multilingual-e5-small", "revision": "main",
+   "query_prefix": "query: ", "document_prefix": "passage: ", "notes": "384-d; requires prefixes on both sides."},
+  {"id": "e5-base-multi", "backend": "sentence_transformers", "model": "intfloat/multilingual-e5-base", "revision": "main",
+   "query_prefix": "query: ", "document_prefix": "passage: ", "notes": "768-d; requires prefixes on both sides."},
+  {"id": "bge-m3", "backend": "sentence_transformers", "model": "BAAI/bge-m3", "revision": "main",
+   "notes": "1024-d, long context; heaviest candidate (CPU latency to be measured)."},
+  {"id": "turkish-bert-nli-sts", "backend": "sentence_transformers", "model": "emrecan/bert-base-turkish-cased-mean-nli-stsb-tr", "revision": "main",
+   "notes": "Turkish-only control; expected weaker on mixed-language questions."}
+ ]
+}

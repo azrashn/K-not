@@ -42,9 +42,22 @@ class Citation(StrictModel):
     highlight: HighlightSpan | None = Field(default=None, description="Only set when quote_verified.")
 
 
+class VerificationLevel(str, Enum):
+    """What kind of check stands behind a support state.
+
+    HEURISTIC          lexical rules only (quote match, coverage, numbers, negation, relevance)
+    SEMANTIC_JUDGE     an entailment judge (LLM/NLI) confirmed the verdict on top of the rules
+    HEURISTIC_FALLBACK a judge was configured but failed for this claim; rules only
+    """
+
+    HEURISTIC = "HEURISTIC"
+    SEMANTIC_JUDGE = "SEMANTIC_JUDGE"
+    HEURISTIC_FALLBACK = "HEURISTIC_FALLBACK"
+
+
 class SupportAssessment(StrictModel):
-    """How `support_status` was decided. `semantically_verified` stays False until an
-    entailment/LLM-judge assessor (WBS-8) is plugged in."""
+    """How `support_status` was decided. `semantically_verified` is True only when a
+    semantic judge produced the verdict (`verification == SEMANTIC_JUDGE`)."""
 
     method: str
     citations_valid: bool
@@ -53,6 +66,20 @@ class SupportAssessment(StrictModel):
     numbers_consistent: bool
     model_marked_partial: bool
     semantically_verified: bool = False
+    # Added in rag.v1.1 (additive):
+    verification: VerificationLevel = VerificationLevel.HEURISTIC
+    quote_coverage: float | None = Field(
+        default=None, ge=0.0, le=1.0, description="Share of claim terms found in the sentence(s) around the verified quote."
+    )
+    question_relevance: float | None = Field(
+        default=None, ge=0.0, le=1.0, description="Share of the question's key terms that the claim mentions."
+    )
+    negation_consistent: bool = True
+    addresses_question: bool | None = Field(
+        default=None, description="Rule S7 (lexical). False = the claim is a side remark; it is labelled GEVEŞEK "
+        "but does not make the answer incomplete."
+    )
+    judge_verdict: str | None = Field(default=None, description="ENTAILED / PARTIAL / NOT_ENTAILED when a judge ran.")
 
 
 class Claim(StrictModel):
@@ -64,6 +91,10 @@ class Claim(StrictModel):
     support_label: str = Field(description="UI term: SIKI / GEVEŞEK / KOPUK.")
     support_explanation: str | None = None
     assessment: SupportAssessment
+    support_confirmed: bool = Field(
+        default=False,
+        description="True only if SUPPORTED *and* semantically verified. Heuristic SIKI is never 'confirmed'.",
+    )
 
 
 class AnswerOutcome(str, Enum):
@@ -96,6 +127,20 @@ class CitationIssue(StrictModel):
     issue: CitationIssueType
 
 
+class QuestionCoverage(StrictModel):
+    """Which key terms of the question appear in the evidence cited by non-KOPUK claims.
+    Lexical signal used to keep partially answered questions from being reported as ANSWERED."""
+
+    method: str = "key-term-stem-v1"
+    key_terms: list[str]
+    uncovered_terms: list[str] = Field(description="Key terms absent from the evidence cited by non-KOPUK claims.")
+    ratio: float = Field(ge=0.0, le=1.0)
+    absent_from_context: list[str] = Field(
+        default_factory=list,
+        description="Key terms absent from ALL evidence given to the model. Informational; not used for the outcome.",
+    )
+
+
 class GenerationInfo(StrictModel):
     provider: str
     model: str
@@ -120,3 +165,11 @@ class GroundedAnswer(StrictModel):
     citation_issues: list[CitationIssue] = Field(default_factory=list)
     retrieval: RetrievalDiagnostics
     generation: GenerationInfo | None = Field(default=None, description="Null when generation was skipped (no evidence).")
+    # Added in rag.v1.1 (additive):
+    support_confirmed: bool = Field(
+        default=False, description="True only if every claim is SUPPORTED and semantically verified."
+    )
+    verification: VerificationLevel = Field(
+        default=VerificationLevel.HEURISTIC, description="Weakest verification level across claims."
+    )
+    question_coverage: QuestionCoverage | None = None

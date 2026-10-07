@@ -160,16 +160,23 @@ model cited a fabricated id (`E9`). The fabricated citation was removed and repo
       ],
       "support_status": "PARTIALLY_SUPPORTED",
       "support_label": "GEVEŞEK",
-      "support_explanation": "Kısmen destekleniyor: iddianın bir kısmı kaynakta geçmiyor.",
+      "support_explanation": "Kısmen destekleniyor: alıntılanan cümle iddianın tamamını içermiyor.",
       "assessment": {
-        "method": "citation-lexical-v1",
+        "method": "citation-lexical-v2",
         "citations_valid": true,
         "quote_verified": true,
         "lexical_coverage": 0.5,
         "numbers_consistent": true,
         "model_marked_partial": false,
-        "semantically_verified": false
-      }
+        "semantically_verified": false,
+        "verification": "HEURISTIC",
+        "quote_coverage": 0.5,
+        "question_relevance": 0.4,
+        "negation_consistent": true,
+        "addresses_question": true,
+        "judge_verdict": null
+      },
+      "support_confirmed": false
     },
     {
       "claim_id": "c2",
@@ -203,16 +210,23 @@ model cited a fabricated id (`E9`). The fabricated citation was removed and repo
       ],
       "support_status": "PARTIALLY_SUPPORTED",
       "support_label": "GEVEŞEK",
-      "support_explanation": "Kısmen destekleniyor: kaynak iddianın yalnızca bir kısmını destekliyor; iddianın bir kısmı kaynakta geçmiyor.",
+      "support_explanation": "Kısmen destekleniyor: alıntılanan cümle iddianın tamamını içermiyor; kaynak iddianın yalnızca bir kısmını destekliyor.",
       "assessment": {
-        "method": "citation-lexical-v1",
+        "method": "citation-lexical-v2",
         "citations_valid": true,
         "quote_verified": true,
         "lexical_coverage": 0.5714,
         "numbers_consistent": true,
         "model_marked_partial": true,
-        "semantically_verified": false
-      }
+        "semantically_verified": false,
+        "verification": "HEURISTIC",
+        "quote_coverage": 0.2857,
+        "question_relevance": 0.4,
+        "negation_consistent": true,
+        "addresses_question": true,
+        "judge_verdict": null
+      },
+      "support_confirmed": false
     },
     {
       "claim_id": "c3",
@@ -223,14 +237,21 @@ model cited a fabricated id (`E9`). The fabricated citation was removed and repo
       "support_label": "KOPUK",
       "support_explanation": "İddia, getirilen kaynaklarda olmayan bir kanıta atıf yaptı.",
       "assessment": {
-        "method": "citation-lexical-v1",
+        "method": "citation-lexical-v2",
         "citations_valid": false,
         "quote_verified": false,
         "lexical_coverage": 0.0,
         "numbers_consistent": false,
         "model_marked_partial": false,
-        "semantically_verified": false
-      }
+        "semantically_verified": false,
+        "verification": "HEURISTIC",
+        "quote_coverage": null,
+        "question_relevance": 0.4,
+        "negation_consistent": true,
+        "addresses_question": true,
+        "judge_verdict": null
+      },
+      "support_confirmed": false
     }
   ],
   "evidence": [
@@ -327,13 +348,32 @@ model cited a fabricated id (`E9`). The fabricated citation was removed and repo
     "prompt_version": "grounded-answer.v1",
     "attempts": 1,
     "latency_ms": 1840
+  },
+  "support_confirmed": false,
+  "verification": "HEURISTIC",
+  "question_coverage": {
+    "method": "key-term-stem-v1",
+    "key_terms": [
+      "AVL",
+      "ağacı",
+      "kırmızı",
+      "siyah",
+      "fark"
+    ],
+    "uncovered_terms": [
+      "fark"
+    ],
+    "ratio": 0.8,
+    "absent_from_context": []
   }
 }
 ```
 
-> Note on `c1`: the heuristic rated it GEVEŞEK even though the quote is verbatim, because the
-> chunk implies "AVL" instead of stating it and the claim adds "bu yüzden / genellikle". The
-> heuristic is deliberately conservative; see `rag-evaluation.md`.
+> Note on `c1`: the quote is verbatim, but the quoted sentence contains only part of the claim
+> (rule S3: "bu yüzden … genellikle" is not in it), so the heuristic rates it GEVEŞEK. A semantic
+> judge (`SUPPORT_JUDGE=llm`) may upgrade such overlap-only cases; see `rag-architecture.md` §6.
+> `support_confirmed` is `false` everywhere because no judge ran: **a heuristic SIKI is never
+> "confirmed"**.
 
 ### Field guide
 
@@ -345,11 +385,22 @@ model cited a fabricated id (`E9`). The fabricated citation was removed and repo
 | `citations[].chunk_id` | Stable WBS-2 id. **Persist this**, not `evidence_id` (which is response-local). |
 | `citations[].location` | Page range / offsets as indexed; `null` means unknown and is never guessed |
 | `citations[].quote_verified`, `highlight` | Highlight offsets exist only for verbatim-verified quotes. `chunk_char_*` index into `evidence[].text`; `document_char_*` index into the extracted document text when WBS-2 supplied chunk offsets and the chunk was not truncated. |
-| `claims[].assessment` | Inputs to the support decision; `semantically_verified` is `false` until an entailment judge exists |
+| `claims[].assessment` | Inputs to the support decision (rules S1–S7, see architecture §6). `verification`: `HEURISTIC` · `SEMANTIC_JUDGE` · `HEURISTIC_FALLBACK`; `semantically_verified` is `true` only for `SEMANTIC_JUDGE` |
+| `claims[].assessment.addresses_question` | `false` = side remark (rule S7). Shown as GEVEŞEK but does not make the answer incomplete; the UI may de-emphasise it |
+| `claims[].support_confirmed`, `support_confirmed` | `true` only for SIKI that a semantic judge verified. Show heuristic SIKI as "kaynağa bağlı (otomatik kontrol)", never as "doğrulandı" |
+| `verification` | Weakest verification level across claims |
+| `question_coverage` | Key terms of the question, those not found in the backing evidence (`uncovered_terms`), `ratio`, and `absent_from_context` (informational). `ratio < 0.6` prevents `ANSWERED` |
 | `citation_issues[]` | `UNKNOWN_EVIDENCE_ID` (fabricated reference) or `QUOTE_NOT_FOUND` (quote absent from cited chunk) |
 | `evidence[].score` | Cosine similarity ranking signal; **not a probability** |
 | `insufficient_evidence` | Set whenever `outcome ≠ ANSWERED`: `reason` (`NO_RETRIEVED_EVIDENCE` · `MODEL_DECLINED` · `NO_SUPPORTED_CLAIMS` · `PARTIAL_COVERAGE`), a Turkish `message`, and `missing_information` |
 | `generation` | Provider, model, prompt version, attempts, latency; `null` if the LLM was not called |
+
+### Changelog
+
+| Version | Change | Compatibility |
+| --- | --- | --- |
+| `rag.v1` (initial) | Endpoints and schemas as above | – |
+| `rag.v1` + 1.1 fields | Added `claims[].support_confirmed`, `support_confirmed`, `verification`, `question_coverage`; `assessment.{verification, quote_coverage, question_relevance, negation_consistent, addresses_question, judge_verdict}`. Support method `citation-lexical-v1` → `-v2` (stricter SIKI rules; see architecture §6). | Additive: all new fields have defaults; `schema_version` stays `rag.v1`. **Behaviour change:** fewer claims and answers are SIKI / `ANSWERED` than before for the same input. |
 
 ### No-evidence response (success, HTTP 200)
 
@@ -381,7 +432,10 @@ model cited a fabricated id (`E9`). The fabricated citation was removed and repo
     "context_tokens_estimate": 0,
     "embedding_model": "knot-hashing-v1-d512"
   },
-  "generation": null
+  "generation": null,
+  "support_confirmed": false,
+  "verification": "HEURISTIC",
+  "question_coverage": null
 }
 ```
 

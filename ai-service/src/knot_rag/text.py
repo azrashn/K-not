@@ -102,3 +102,88 @@ def find_folded(haystack: str, needle: str) -> tuple[int, int] | None:
     start = index_map[pos]
     end = index_map[pos + len(n) - 1] + 1
     return start, end
+
+
+# Interrogatives and generic academic verbs that say *how* something is asked, not *what*
+# is asked about. Used only for question↔claim/evidence relevance, never for retrieval.
+QUESTION_STOPWORDS = frozenset(
+    fold(w)
+    for w in """
+    nedir nelerdir neler nasıl nasıldır kaç kaçtır hangi hangisi hangileri midir mıdır mudur müdür
+    olabilir vardır yapılır uygulanır açıkla açıklayınız anlat anlatınız karşılaştır karşılaştırınız
+    karşılaştırması peki çalışır çalışmaktadır hesaplanır yöntem yöntemi yöntemleri yönteminde
+    işlem işlemi işlemleri arasındaki gerekir gerektirir olur oluşur sağlanır kullanılır tutulur
+    explain what how which does is are
+    """.split()
+)
+_NE_ZAMAN = re.compile(r"\bne\s+zaman\b", re.IGNORECASE)
+STEM_CHARS = 5
+
+NEGATION_WORDS = frozenset(fold(w) for w in "değil değildir yok yoktur hiçbir asla not no never cannot".split())
+_NEG_SUFFIX = ("maz", "mez", "mazlar", "mezler", "mamaktadır", "memektedir", "mıyor", "miyor", "muyor", "müyor")
+
+
+_ASCII = str.maketrans("çğıöşüâîû", "cgiosuaiu")
+
+
+def stem(token: str) -> str:
+    """Crude prefix stem for Turkish agglutination (`rotasyonlar` ~ `rotasyon`), ASCII-folded
+    so questions typed without a Turkish keyboard (`faktoru`) still match `faktörü`."""
+    return token.translate(_ASCII)[:STEM_CHARS]
+
+
+def stems_match(a: str, b: str) -> bool:
+    """Stems are compatible if equal, or one is a prefix (≥4 chars) of the other:
+    `agac` (ağaç) ~ `agaci` (ağacı), `rotas` ~ `rotas`."""
+    if a == b:
+        return True
+    short, long_ = (a, b) if len(a) <= len(b) else (b, a)
+    return len(short) >= 4 and long_.startswith(short)
+
+
+def stem_in(s: str, pool: set[str]) -> bool:
+    return s in pool or any(stems_match(s, p) for p in pool)
+
+
+def question_key_terms(question: str) -> list[tuple[str, str]]:
+    """(surface form, folded token) pairs for the content terms of a question, deduplicated
+    by stem, in question order."""
+    text = _NE_ZAMAN.sub(" ", normalize_text(question))
+    out: list[tuple[str, str]] = []
+    seen: set[str] = set()
+    for m in _WORD.finditer(text):
+        raw = m.group(0)
+        tok = fold(raw)
+        if tok in STOPWORDS or tok in QUESTION_STOPWORDS:
+            continue
+        if len(tok) < 3 and not (raw.isupper() and len(raw) >= 2) and not tok.isdigit():
+            continue
+        s = stem(tok)
+        if not stem_in(s, seen):
+            seen.add(s)
+            out.append((raw, tok))
+    return out
+
+
+def stem_set(text: str) -> set[str]:
+    return {stem(t) for t in content_tokens(text)}
+
+
+def has_negation(text: str) -> bool:
+    for m in _WORD.finditer(normalize_text(text)):
+        t = fold(m.group(0))
+        if t in NEGATION_WORDS or (len(t) > 5 and t.endswith(_NEG_SUFFIX)):
+            return True
+    return False
+
+
+def sentence_around(text: str, start: int, end: int) -> str:
+    """The sentence(s) of `text` that contain [start, end). Boundaries: . ! ? ; newline,
+    followed by whitespace (so `O(log n).` or `h(k) = k mod m.` still split correctly)."""
+    left = start
+    while left > 0 and not (text[left - 1] in ".!?;\n" and (left == len(text) or text[left].isspace())):
+        left -= 1
+    right = end
+    while right < len(text) and not (text[right - 1] in ".!?;\n" and text[right].isspace()):
+        right += 1
+    return text[left:right].strip()

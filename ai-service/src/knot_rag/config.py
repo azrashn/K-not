@@ -34,6 +34,14 @@ class RetrievalSettings:
 class SupportSettings:
     coverage_supported: float = 0.6
     coverage_partial: float = 0.3
+    # Claim↔question relevance gate for SUPPORTED (calibrated on eval.v1, see rag-evaluation.md).
+    question_relevance_min: float = 0.34
+    relative_relevance_min: float = 0.6
+    # Answer is ANSWERED only if cited evidence covers this share of the question's key terms.
+    question_coverage_answered: float = 0.6
+    # When true, SUPPORTED requires a semantic judge verdict; heuristic-only becomes PARTIALLY_SUPPORTED.
+    require_semantic_confirmation: bool = False
+    judge: str = "none"  # none | llm
 
 
 @dataclass(frozen=True)
@@ -61,6 +69,8 @@ class Settings:
     embedding_backend: str = "sentence_transformers"  # sentence_transformers | hashing
     embedding_model: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
     embedding_query_prefix: str = ""
+    embedding_document_prefix: str = ""  # used by the reference writer / seed tool (WBS-2 side)
+    embedding_revision: str = ""  # pin a model commit for reproducibility; empty = latest
     log_questions: bool = False
     retrieval: RetrievalSettings = field(default_factory=RetrievalSettings)
     support: SupportSettings = field(default_factory=SupportSettings)
@@ -82,6 +92,8 @@ class Settings:
                 embedding_backend=g("EMBEDDING_BACKEND", "sentence_transformers"),
                 embedding_model=g("EMBEDDING_MODEL", cls.embedding_model),
                 embedding_query_prefix=g("EMBEDDING_QUERY_PREFIX", ""),
+                embedding_document_prefix=g("EMBEDDING_DOCUMENT_PREFIX", ""),
+                embedding_revision=g("EMBEDDING_REVISION", ""),
                 log_questions=_bool(g("RAG_LOG_QUESTIONS"), False),
                 retrieval=RetrievalSettings(
                     top_k=int(g("RAG_TOP_K", "8")),
@@ -94,6 +106,11 @@ class Settings:
                 support=SupportSettings(
                     coverage_supported=float(g("SUPPORT_COVERAGE_SUPPORTED", "0.6")),
                     coverage_partial=float(g("SUPPORT_COVERAGE_PARTIAL", "0.3")),
+                    question_relevance_min=float(g("SUPPORT_QUESTION_RELEVANCE_MIN", "0.34")),
+                    relative_relevance_min=float(g("SUPPORT_RELATIVE_RELEVANCE_MIN", "0.6")),
+                    question_coverage_answered=float(g("RAG_QUESTION_COVERAGE_ANSWERED", "0.6")),
+                    require_semantic_confirmation=_bool(g("SUPPORT_REQUIRE_SEMANTIC_CONFIRMATION"), False),
+                    judge=g("SUPPORT_JUDGE", "none"),
                 ),
                 llm=LLMSettings(
                     provider=g("LLM_PROVIDER", "mock"),
@@ -122,5 +139,11 @@ class Settings:
             raise ConfigurationError("Require 1 <= RAG_MAX_EVIDENCE <= RAG_TOP_K <= 50.")
         if not (0 <= self.support.coverage_partial <= self.support.coverage_supported <= 1):
             raise ConfigurationError("Require 0 <= SUPPORT_COVERAGE_PARTIAL <= SUPPORT_COVERAGE_SUPPORTED <= 1.")
+        sp = self.support
+        for name in ("question_relevance_min", "relative_relevance_min", "question_coverage_answered"):
+            if not 0 <= getattr(sp, name) <= 1:
+                raise ConfigurationError(f"support.{name} must be within [0, 1].")
+        if sp.judge not in {"none", "llm"}:
+            raise ConfigurationError("SUPPORT_JUDGE must be none or llm.")
         if self.llm.max_attempts < 1:
             raise ConfigurationError("LLM_MAX_ATTEMPTS must be >= 1.")

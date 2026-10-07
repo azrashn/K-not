@@ -28,7 +28,7 @@ def main(argv: list[str]) -> int:
     s = Settings.from_env(env)
     data = json.loads(Path(argv[0]).read_text(encoding="utf-8"))
     chunks = [IndexedChunk.model_validate(c) for c in data["chunks"]]
-    embedder = build_embedder(s.embedding_backend, s.embedding_model, s.embedding_query_prefix)
+    embedder = build_embedder(s.embedding_backend, s.embedding_model, s.embedding_query_prefix, s.embedding_document_prefix, s.embedding_revision)
     client = build_chroma_client(s.chroma_mode, s.chroma_host, s.chroma_port, s.chroma_path)
     n = ChromaChunkWriter(client, s.chroma_collection, embedder).upsert(chunks)
     print(f"Upserted {n} chunks into '{s.chroma_collection}' using {embedder.model_id}.")

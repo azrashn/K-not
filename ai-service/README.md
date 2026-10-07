@@ -70,7 +70,7 @@ curl -s localhost:8100/api/v1/rag/answer \
 ## Tests
 
 ```bash
-pytest                       # everything (≈5 s, no network, no model download)
+pytest                       # everything (≈10 s, no network, no model download)
 pytest tests/unit            # mocked dependencies only
 pytest -m integration        # real in-memory ChromaDB + FastAPI TestClient
 pytest -m evaluation         # labelled evaluation set end-to-end
@@ -81,6 +81,9 @@ Evaluation report (see `docs/rag-evaluation.md`):
 ```bash
 python -m knot_rag.evaluation.runner --corpus tests/fixtures/corpus.json \
   --dataset tests/fixtures/eval_dataset.json --embedding hashing --provider extractive
+# Embedding model comparison (needs Hugging Face access):
+python -m knot_rag.evaluation.compare_embeddings --candidates evaluation/embedding_candidates.json \
+  --corpus tests/fixtures/corpus_v2.json --dataset tests/fixtures/eval_dataset_v2.json
 # Against a real index + real LLM configured in the environment:
 python -m knot_rag.evaluation.runner --dataset tests/fixtures/eval_dataset.json --provider env
 ```
@@ -103,11 +106,13 @@ tests/          unit/ integration/ evaluation/ fixtures/
 
 ## Known limitations (summary)
 
-- Support states come from a **heuristic** (verbatim quote + lexical coverage + number check),
-  not semantic entailment. Every claim carries `semantically_verified: false`.
+- Support states come from explicit **lexical rules** (`citation-lexical-v2`: verbatim quote,
+  quoted-sentence coverage, numbers, negation, question relevance). A heuristic SIKI has
+  `support_confirmed: false`. An optional LLM entailment judge (`SUPPORT_JUDGE=llm`) is
+  implemented but not yet evaluated against human labels.
 - Measured metrics so far use the offline hashing embedder and extractive baseline; the real
-  multilingual model and a real LLM have **not** been evaluated yet (no model download / API
-  access in the build environment).
+  multilingual models and a real LLM have **not** been evaluated (huggingface.co is blocked in
+  the build environment; `compare_embeddings` reports them as BLOCKED).
 - `RAG_MIN_SCORE` is unset by default and must be calibrated per embedding model.
 - Highlight offsets exist only when the quoted text is found verbatim; PDF coordinates are not
   produced (WBS-2 would need to supply them).

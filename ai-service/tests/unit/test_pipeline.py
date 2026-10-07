@@ -35,7 +35,7 @@ def test_fully_supported_answer(make_components):
         eid = r.user.split('<evidence id="')[1].split('"')[0]
         return j(claims=[{"text": "Dört temel rotasyon vardır: LL, RR, LR ve RL.", "evidence_ids": [eid], "quote": "Dört temel rotasyon vardır: LL, RR, LR ve RL"}])
 
-    ans, _ = ask(make_components, [respond])
+    ans, _ = ask(make_components, [respond], question="Kaç temel rotasyon vardır ve bunlar nelerdir?")
     assert ans.outcome == AnswerOutcome.ANSWERED
     assert ans.support_status == SupportStatus.SUPPORTED and ans.support_label == "SIKI"
     cited = ans.claims[0].citations[0]
@@ -142,3 +142,114 @@ def test_simultaneous_requests_are_independent(make_components):
     assert [r.request_id for r in results] == [f"r{i}" for i in range(len(questions))]
     assert [r.question for r in results] == questions
     assert len({r.answer_id for r in results}) == len(results)
+
+
+# ── v1.1 behaviour: relevance, question coverage, verification flags ──────────────────
+
+def _first_eid(r):
+    return r.user.split('<evidence id="')[1].split('"')[0]
+
+
+def test_heuristic_siki_is_reported_but_not_confirmed(make_components):
+    def respond(r):
+        return j(claims=[{"text": "Dört temel rotasyon vardır: LL, RR, LR ve RL.", "evidence_ids": [_first_eid(r)], "quote": "Dört temel rotasyon vardır: LL, RR, LR ve RL"}])
+
+    ans, _ = ask(make_components, [respond], question="Kaç temel rotasyon vardır ve bunlar nelerdir?")
+    assert ans.support_label == "SIKI"
+    assert ans.support_confirmed is False and ans.claims[0].support_confirmed is False
+    assert ans.verification.value == "HEURISTIC"
+
+
+def test_strict_mode_shows_unconfirmed_siki_as_geveşek(make_components, settings):
+    from dataclasses import replace
+
+    strict = replace(settings, support=replace(settings.support, require_semantic_confirmation=True))
+
+    def respond(r):
+        return j(claims=[{"text": "Dört temel rotasyon vardır: LL, RR, LR ve RL.", "evidence_ids": [_first_eid(r)], "quote": "Dört temel rotasyon vardır: LL, RR, LR ve RL"}])
+
+    rag = make_components(provider=ScriptedProvider([respond]), settings_override=strict).rag
+    ans = rag.answer(AnswerRequest(question="Kaç temel rotasyon vardır ve bunlar nelerdir?", scope=scope()), "r")
+    assert ans.claims[0].support_status == SupportStatus.PARTIALLY_SUPPORTED
+    assert "anlamsal" in ans.claims[0].support_explanation
+    assert ans.outcome != AnswerOutcome.ANSWERED
+
+
+def test_off_topic_answer_is_not_reported_as_answered(make_components):
+    # eval.v1 o02: a true sentence about sorting complexity "answers" a Dijkstra question.
+    def respond(r):
+        e = next(x for x in r.user.split('<evidence id="')[1:] if "Hızlı sıralama" in x).split('"')[0]
+        return j(claims=[{"text": "Hızlı sıralamanın en kötü durum karmaşıklığı O(n²)’dir.", "evidence_ids": [e],
+                          "quote": "en kötü durum karmaşıklığı O(n²)’dir"}])
+
+    ans, _ = ask(make_components, [respond], question="Dijkstra algoritmasının zaman karmaşıklığı nedir?")
+    assert ans.outcome == AnswerOutcome.PARTIALLY_ANSWERED
+    assert "Dijkstra" in ans.question_coverage.uncovered_terms
+    assert any("Dijkstra" in m for m in ans.insufficient_evidence.missing_information)
+    assert ans.support_label != "SIKI"
+
+
+def test_partial_question_without_model_missing_list_is_detected(make_components):
+    # The model claims everything is answered but the evidence never mentions the height bound.
+    def respond(r):
+        e = next(x for x in r.user.split('<evidence id="')[1:] if "denge daha gevşek" in x).split('"')[0]
+        return j(claims=[{"text": "Kırmızı-siyah ağaçta denge daha gevşektir.", "evidence_ids": [e], "quote": "Kırmızı-siyah ağaçta denge daha gevşek"}])
+
+    ans, _ = ask(make_components, [respond], question="Kırmızı-siyah ağaçlarda yükseklik üst sınırı nedir ve denge nasıldır?")
+    assert ans.outcome == AnswerOutcome.PARTIALLY_ANSWERED
+    assert {"yükseklik", "üst", "sınırı"} <= set(ans.question_coverage.uncovered_terms)
+
+
+def test_known_limitation_implicit_topic_gives_false_partial(make_components):
+    # The notes chunk answers the question but never names "AVL" (implicit topic), so the
+    # lexical coverage check reports it as partial. Documented in rag-evaluation.md §6.
+    def respond(r):
+        e = next(x for x in r.user.split('<evidence id="')[1:] if "Dört temel rotasyon" in x).split('"')[0]
+        return j(claims=[{"text": "Dört temel rotasyon vardır: LL, RR, LR ve RL.", "evidence_ids": [e], "quote": "Dört temel rotasyon vardır: LL, RR, LR ve RL"}])
+
+    ans, _ = ask(make_components, [respond], question="AVL ağacında kaç temel rotasyon vardır?")
+    assert ans.claims[0].support_status == SupportStatus.SUPPORTED
+    assert ans.outcome == AnswerOutcome.PARTIALLY_ANSWERED and "AVL" in ans.question_coverage.uncovered_terms
+
+
+def test_side_remarks_do_not_make_a_complete_answer_partial(make_components):
+    def respond(r):
+        blocks = r.user.split('<evidence id="')[1:]
+        lead = next(x for x in blocks if "Dört temel rotasyon" in x).split('"')[0]
+        side = next(x for x in blocks if "Rotasyon O(1) sürer" in x).split('"')[0]
+        return j(claims=[
+            {"text": "Dört temel rotasyon vardır: LL, RR, LR ve RL.", "evidence_ids": [lead], "quote": "Dört temel rotasyon vardır: LL, RR, LR ve RL"},
+            {"text": "Rotasyon O(1) sürer.", "evidence_ids": [side], "quote": "Rotasyon O(1) sürer"},
+        ])
+
+    ans, _ = ask(make_components, [respond], question="Kaç temel rotasyon vardır ve bunlar nelerdir?", params=RetrievalParams(top_k=20, max_evidence=10))
+    lead, side = ans.claims
+    assert lead.support_status == SupportStatus.SUPPORTED
+    assert side.support_status == SupportStatus.PARTIALLY_SUPPORTED and side.assessment.addresses_question is False
+    assert ans.outcome == AnswerOutcome.ANSWERED and ans.support_label == "SIKI"
+
+
+def test_tangential_hallucination_still_surfaces(make_components):
+    def respond(r):
+        lead = next(x for x in r.user.split('<evidence id="')[1:] if "Dört temel rotasyon" in x).split('"')[0]
+        return j(claims=[
+            {"text": "Dört temel rotasyon vardır: LL, RR, LR ve RL.", "evidence_ids": [lead], "quote": "Dört temel rotasyon vardır: LL, RR, LR ve RL"},
+            {"text": "Splay ağaçları 1985'te bulundu.", "evidence_ids": ["E77"], "quote": "1985"},
+        ])
+
+    ans, _ = ask(make_components, [respond], question="Kaç temel rotasyon vardır ve bunlar nelerdir?")
+    assert ans.claims[1].support_status == SupportStatus.UNSUPPORTED
+    assert ans.outcome == AnswerOutcome.PARTIALLY_ANSWERED and ans.support_label == "GEVEŞEK"
+
+
+
+def test_terms_absent_from_context_are_reported_but_do_not_decide(make_components):
+    def respond(r):
+        e = next(x for x in r.user.split('<evidence id="')[1:] if "Hızlı sıralama" in x).split('"')[0]
+        return j(claims=[{"text": "Hızlı sıralamanın en kötü durum karmaşıklığı O(n²)’dir.", "evidence_ids": [e],
+                          "quote": "en kötü durum karmaşıklığı O(n²)’dir"}])
+
+    ans, _ = ask(make_components, [respond], question="Dijkstra ile hızlı sıralamanın en kötü durum karmaşıklığı nedir?")
+    assert "Dijkstra" in ans.question_coverage.absent_from_context
+    # Known limitation: with 5/6 key terms covered, the lexical check alone cannot block ANSWERED.
+    assert ans.question_coverage.ratio >= 0.6

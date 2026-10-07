@@ -1,0 +1,251 @@
+{
+  "dataset": "eval.v2",
+  "corpus_chunks": 42,
+  "retrieval_settings": {
+    "top_k": 8,
+    "max_evidence": 6,
+    "min_score": null,
+    "max_context_tokens": 3000,
+    "max_chunks_per_document": 4,
+    "chars_per_token": 3.0
+  },
+  "environment": {
+    "python": "3.13.16",
+    "platform": "Linux-6.18.44-fc-v77-x86_64-with-glibc2.39",
+    "packages": {
+      "chromadb": "1.5.9",
+      "sentence-transformers": "6.1.0",
+      "torch": "2.14.1",
+      "transformers": "5.19.0",
+      "pydantic": "2.13.5"
+    }
+  },
+  "results": [
+    {
+      "id": "hashing-baseline",
+      "backend": "hashing",
+      "model": "knot-hashing-v1",
+      "revision": null,
+      "query_prefix": null,
+      "document_prefix": null,
+      "notes": "Lexical, dependency-free control. Not a production candidate.",
+      "status": "OK",
+      "model_id": "knot-hashing-v1-d512",
+      "dimension": 512,
+      "resolved_revision": null,
+      "quality": {
+        "retrieval_success": {
+          "value": 0.9464,
+          "numerator": 53,
+          "denominator": 56,
+          "definition": "in-scope questions with >=1 gold passage in the top-k candidates / in-scope questions"
+        },
+        "recall_at_1": {
+          "value": 0.6786,
+          "numerator": 38,
+          "denominator": 56,
+          "definition": "in-scope questions with a gold passage at rank <= 1 / in-scope questions"
+        },
+        "recall_at_3": {
+          "value": 0.8214,
+          "numerator": 46,
+          "denominator": 56,
+          "definition": "in-scope questions with a gold passage at rank <= 3 / in-scope questions"
+        },
+        "mrr": {
+          "value": 0.7585,
+          "numerator": 42.4774,
+          "denominator": 56,
+          "definition": "mean over in-scope questions of 1/rank of the first gold passage (0 if not retrieved)"
+        },
+        "multi_passage_recall": {
+          "value": 0.8571,
+          "numerator": 6,
+          "denominator": 7,
+          "definition": "multi-passage questions with ALL gold passages in context / multi-passage questions"
+        },
+        "scope_leakage": {
+          "value": 0.0,
+          "numerator": 0,
+          "denominator": 528,
+          "definition": "retrieved records outside the authorized scope / all retrieved records (must be 0)"
+        },
+        "by_category": {
+          "adversarial": {
+            "retrieval_success": 1.0,
+            "n_in_scope": 4
+          },
+          "ascii_typo": {
+            "retrieval_success": 0.5,
+            "n_in_scope": 2
+          },
+          "direct": {
+            "retrieval_success": 0.9643,
+            "n_in_scope": 28
+          },
+          "exam_style": {
+            "retrieval_success": 1.0,
+            "n_in_scope": 2
+          },
+          "mixed_language": {
+            "retrieval_success": 0.6667,
+            "n_in_scope": 3
+          },
+          "multi_passage": {
+            "retrieval_success": 1.0,
+            "n_in_scope": 6
+          },
+          "negation": {
+            "retrieval_success": 1.0,
+            "n_in_scope": 2
+          },
+          "out_of_scope": {
+            "retrieval_success": null,
+            "n_in_scope": 0
+          },
+          "paraphrase": {
+            "retrieval_success": 1.0,
+            "n_in_scope": 3
+          },
+          "partial": {
+            "retrieval_success": 1.0,
+            "n_in_scope": 6
+          }
+        },
+        "by_split": {
+          "calibration": {
+            "value": 0.913,
+            "numerator": 21,
+            "denominator": 23,
+            "definition": "in-scope questions with >=1 gold passage in the top-k candidates / in-scope questions"
+          },
+          "held_out": {
+            "value": 0.9697,
+            "numerator": 32,
+            "denominator": 33,
+            "definition": "in-scope questions with >=1 gold passage in the top-k candidates / in-scope questions"
+          }
+        },
+        "threshold_sweep": [
+          {
+            "min_score": 0.0,
+            "retrieval_success": 0.9464,
+            "out_of_scope_rejected": 0.0
+          },
+          {
+            "min_score": 0.1,
+            "retrieval_success": 0.9464,
+            "out_of_scope_rejected": 0.1
+          },
+          {
+            "min_score": 0.15,
+            "retrieval_success": 0.9286,
+            "out_of_scope_rejected": 0.2
+          },
+          {
+            "min_score": 0.2,
+            "retrieval_success": 0.875,
+            "out_of_scope_rejected": 0.7
+          },
+          {
+            "min_score": 0.25,
+            "retrieval_success": 0.7143,
+            "out_of_scope_rejected": 0.8
+          },
+          {
+            "min_score": 0.3,
+            "retrieval_success": 0.625,
+            "out_of_scope_rejected": 1.0
+          },
+          {
+            "min_score": 0.35,
+            "retrieval_success": 0.5179,
+            "out_of_scope_rejected": 1.0
+          },
+          {
+            "min_score": 0.4,
+            "retrieval_success": 0.5,
+            "out_of_scope_rejected": 1.0
+          },
+          {
+            "min_score": 0.5,
+            "retrieval_success": 0.2857,
+            "out_of_scope_rejected": 1.0
+          }
+        ]
+      },
+      "performance": {
+        "index_seconds": 0.052,
+        "query_ms_p50": 0.17,
+        "query_ms_p95": 0.24,
+        "note": "hardware dependent; not comparable across machines"
+      }
+    },
+    {
+      "id": "minilm-l12-multi",
+      "backend": "sentence_transformers",
+      "model": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+      "revision": "main",
+      "query_prefix": null,
+      "document_prefix": null,
+      "notes": "Current default. 384-d, small/fast, 50+ languages incl. Turkish.",
+      "status": "BLOCKED",
+      "reason": "ProxyError: 403 Forbidden"
+    },
+    {
+      "id": "mpnet-base-multi",
+      "backend": "sentence_transformers",
+      "model": "sentence-transformers/paraphrase-multilingual-mpnet-base-v2",
+      "revision": "main",
+      "query_prefix": null,
+      "document_prefix": null,
+      "notes": "768-d, larger multilingual paraphrase model.",
+      "status": "BLOCKED",
+      "reason": "ProxyError: 403 Forbidden"
+    },
+    {
+      "id": "e5-small-multi",
+      "backend": "sentence_transformers",
+      "model": "intfloat/multilingual-e5-small",
+      "revision": "main",
+      "query_prefix": "query: ",
+      "document_prefix": "passage: ",
+      "notes": "384-d; requires prefixes on both sides.",
+      "status": "BLOCKED",
+      "reason": "ProxyError: 403 Forbidden"
+    },
+    {
+      "id": "e5-base-multi",
+      "backend": "sentence_transformers",
+      "model": "intfloat/multilingual-e5-base",
+      "revision": "main",
+      "query_prefix": "query: ",
+      "document_prefix": "passage: ",
+      "notes": "768-d; requires prefixes on both sides.",
+      "status": "BLOCKED",
+      "reason": "ProxyError: 403 Forbidden"
+    },
+    {
+      "id": "bge-m3",
+      "backend": "sentence_transformers",
+      "model": "BAAI/bge-m3",
+      "revision": "main",
+      "query_prefix": null,
+      "document_prefix": null,
+      "notes": "1024-d, long context; heaviest candidate (CPU latency to be measured).",
+      "status": "BLOCKED",
+      "reason": "ProxyError: 403 Forbidden"
+    },
+    {
+      "id": "turkish-bert-nli-sts",
+      "backend": "sentence_transformers",
+      "model": "emrecan/bert-base-turkish-cased-mean-nli-stsb-tr",
+      "revision": "main",
+      "query_prefix": null,
+      "document_prefix": null,
+      "notes": "Turkish-only control; expected weaker on mixed-language questions.",
+      "status": "BLOCKED",
+      "reason": "ProxyError: 403 Forbidden"
+    }
+  ]
+}

@@ -163,12 +163,18 @@ const toUiClaims = (a) => a.claims.map((c) => ({
     label: x.label,                       // "Slayt · s.18"
     strength: c.support_status === 'SUPPORTED' ? 'full' : 'partial',
     note: c.support_status === 'PARTIALLY_SUPPORTED' ? c.support_explanation : undefined,
+    confirmed: c.support_confirmed,       // false for heuristic SIKI → caption "otomatik kontrol"
+    sideRemark: c.assessment.addresses_question === false, // de-emphasise; not counted as a gap
     quote: x.quote_verified ? x.quote : null,
     highlight: x.highlight,               // chunk/document offsets for marking the passage
   })),
 }));
 // When outcome === 'INSUFFICIENT_EVIDENCE' and claims is empty, render the existing
 // makeGap() style message using a.insufficient_evidence.message.
+// Use the ANSWER-level a.support_label for the Düğüm Gücü badge rather than recomputing it
+// from claims: the backend excludes side remarks (addresses_question === false) from it.
+// Never show "doğrulandı" unless a.support_confirmed is true; heuristic SIKI means
+// "quoted from the cited source", not "semantically verified".
 ```
 
 The source viewer needs the passage text: `a.evidence.find(e => e.evidence_id === x.evidence_id).text`.
@@ -231,10 +237,18 @@ Each `GroundedAnswer` contains everything needed to measure grounding:
 - **Metric definitions and runner:** `ai-service/src/knot_rag/evaluation/` and
   [`rag-evaluation.md`](rag-evaluation.md). Extend `tests/fixtures/eval_dataset.json`; keep
   denominators explicit.
-- **Plugging in a semantic judge:** implement the `SupportAssessor` protocol
-  (`assess(MappedClaim) -> SupportDecision`) with NLI or an LLM judge, set
-  `semantically_verified=True` and a new `method` name, and inject it in `bootstrap.py`. The API
-  shape doesn't change.
+- **Semantic judge:** an LLM entailment judge already exists (`SUPPORT_JUDGE=llm`,
+  `evidence/judge.py`). Measuring its agreement with human labels is WBS-8's most valuable next
+  step. To plug in a different judge (for example a local NLI model), implement the
+  `SupportAssessor` protocol `assess_all(claims, question) -> list[SupportDecision]`, keep the
+  hard-rule caps (see `LLMJudgeSupportAssessor`), set `verification=SEMANTIC_JUDGE`, and inject
+  it in `bootstrap.py`.
+- **New measurement fields:** `claims[].assessment.{quote_coverage, question_relevance,
+  negation_consistent, addresses_question, verification, judge_verdict}`,
+  `claims[].support_confirmed`, and `question_coverage` on the answer. The evaluation runner
+  reports `siki_citation_precision`, `siki_on_out_of_scope`, `over_claim_rate`,
+  `partial_detection`, `answered_rate_on_answerable` and `confirmed_support`, with definitions
+  in `rag-evaluation.md`.
 - **Human labels:** the dashboard should let reviewers label `claim_id`s as
   supported/partial/unsupported. Compare those labels with `support_status` to calibrate
   `SUPPORT_COVERAGE_*`.
@@ -253,9 +267,12 @@ Each `GroundedAnswer` contains everything needed to measure grounding:
 
 ## Open questions for the team
 
-1. **Embedding model choice (WBS-2 + WBS-3):** MiniLM-L12 multilingual (small, fast) vs
-   multilingual-e5-base or -large (better Turkish retrieval, heavier). Decide after running
-   the evaluation set with both.
+1. **Embedding model choice (WBS-2 + WBS-3):** run
+   `python -m knot_rag.evaluation.compare_embeddings --candidates evaluation/embedding_candidates.json --corpus tests/fixtures/corpus_v2.json --dataset tests/fixtures/eval_dataset_v2.json`
+   on a machine with Hugging Face access. It compares MiniLM-L12, mpnet-base, e5-small/base,
+   bge-m3 and a Turkish BERT, per question category (paraphrase, mixed language, ASCII typos).
+   Pin the winner's `resolved_revision` and set the same model and prefixes on both sides (E5:
+   `EMBEDDING_QUERY_PREFIX="query: "`, `EMBEDDING_DOCUMENT_PREFIX="passage: "`).
 2. **LLM provider:** local (Ollama, free, needs a GPU or patience) vs a hosted API (cost,
    data-protection review for student documents).
 3. **Document visibility model** in Prisma (course-shared vs personal uploads). WBS-3 only

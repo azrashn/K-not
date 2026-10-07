@@ -82,10 +82,11 @@ class SentenceTransformerEmbedder:
     once; thread-safe for concurrent requests. E5-style models need `query_prefix="query: "`
     and WBS-2 must then index with `"passage: "`."""
 
-    def __init__(self, model_name: str, query_prefix: str = "", document_prefix: str = ""):
+    def __init__(self, model_name: str, query_prefix: str = "", document_prefix: str = "", revision: str | None = None):
         self._name = model_name
         self._qp = query_prefix
         self._dp = document_prefix
+        self._revision = revision or None
         self._model = None
         self._lock = threading.Lock()
 
@@ -99,7 +100,7 @@ class SentenceTransformerEmbedder:
                         raise ConfigurationError(
                             "EMBEDDING_BACKEND=sentence_transformers requires `pip install knot-rag[embeddings]`."
                         ) from exc
-                    self._model = SentenceTransformer(self._name)
+                    self._model = SentenceTransformer(self._name, revision=self._revision)
         return self._model
 
     @property
@@ -117,9 +118,12 @@ class SentenceTransformerEmbedder:
         return self._load().encode([self._dp + t for t in texts], normalize_embeddings=True).tolist()
 
 
-def build_embedder(backend: str, model: str, query_prefix: str = "") -> Embedder:
+def build_embedder(
+    backend: str, model: str, query_prefix: str = "", document_prefix: str = "", revision: str | None = None,
+    dimension: int = 512,
+) -> Embedder:
     if backend == "hashing":
-        return HashingEmbedder()
+        return HashingEmbedder(dimension=dimension)
     if backend == "sentence_transformers":
-        return SentenceTransformerEmbedder(model, query_prefix=query_prefix)
+        return SentenceTransformerEmbedder(model, query_prefix=query_prefix, document_prefix=document_prefix, revision=revision)
     raise ConfigurationError(f"Unknown EMBEDDING_BACKEND: {backend!r}")

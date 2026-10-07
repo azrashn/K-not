@@ -49,14 +49,21 @@ class ModelAnswer(BaseModel):
 _FENCE = re.compile(r"^```(?:json)?\s*|\s*```$", re.IGNORECASE)
 
 
-def parse_model_answer(text: str) -> ModelAnswer:
-    """Strict parse: tolerate code fences and surrounding prose, nothing else."""
+def parse_json_object(text: str) -> dict:
+    """Extract one JSON object from model output; tolerate code fences and surrounding prose."""
     raw = _FENCE.sub("", text.strip())
     start, end = raw.find("{"), raw.rfind("}")
     if start < 0 or end <= start:
         raise ValueError("no JSON object in model output")
     data = json.loads(raw[start:end + 1])
-    answer = ModelAnswer.model_validate(data)
+    if not isinstance(data, dict):
+        raise ValueError("model output is not a JSON object")
+    return data
+
+
+def parse_model_answer(text: str) -> ModelAnswer:
+    """Strict parse into the answer schema."""
+    answer = ModelAnswer.model_validate(parse_json_object(text))
     answer.missing = [m.strip()[:500] for m in answer.missing if isinstance(m, str) and m.strip()]
     return answer
 
