@@ -1,102 +1,118 @@
 @import "tailwindcss";
 
-/* ─── Custom Properties ─────────────────────────────────────── */
-:root {
-  --font-display: 'Fraunces', 'Georgia', serif;
-  --font-body:    'Inter', 'Helvetica Neue', sans-serif;
-  --font-mono:    'JetBrains Mono', 'Courier New', monospace;
+/* K-not · Calm Academic Intelligence
+   Tek vurgu: kobalt (knot blue). Renk, kanıt durumları ve belge işaretleyicisi dışında kullanılmaz. */
+@theme {
+  --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', monospace;
+  --font-serif: 'Fraunces', Georgia, serif;
 
-  /* Canvas */
-  --bg-paper:   #FAF8F4;
-  --bg-white:   #FFFFFF;
-  --bg-subtle:  #F5F3EF;
+  --color-paper: #f8f6f1;
+  --color-surface: #fdfcfa;
+  --color-desk: #ebe8e0;
+  --color-sheet: #ffffff;
+  --color-line: #e3dfd4;
+  --color-line-strong: #cbc6b8;
 
-  /* Nav Rail */
-  --nav-bg:       #0E1726;
-  --nav-icon:     rgba(255,255,255,0.45);
-  --nav-icon-act: #FFFFFF;
-  --nav-act-bg:   rgba(255,255,255,0.1);
-  --nav-logo:     #6EE7B7;
+  --color-ink: #16181e;
+  --color-ink-2: #383d49;
+  --color-ink-3: #5f6575;
 
-  /* Ink */
-  --ink-900: #111827;
-  --ink-700: #374151;
-  --ink-500: #6B7280;
-  --ink-400: #9CA3AF;
-  --ink-300: #D1D5DB;
+  --color-accent: #2440a6;
+  --color-accent-deep: #1a3085;
+  --color-accent-tint: #eef1fb;
+  --color-accent-line: #c3cdf0;
 
-  /* Teal accent (citation) */
-  --teal-50:  #F0FDFA;
-  --teal-100: #CCFBF1;
-  --teal-200: #99F6E4;
-  --teal-600: #0D9488;
-  --teal-700: #0F766E;
+  --color-mark: #fbe49a;
+  --color-mark-weak: #fbefc4;
+  --color-mark-line: #dfb437;
 
-  /* Borders */
-  --border-light:  #E5E7EB;
-  --border-medium: #D1D5DB;
+  --color-siki: #176b43;
+  --color-siki-tint: #e6f3ec;
+  --color-siki-line: #a9d3bd;
+  --color-gevesek: #8f5400;
+  --color-gevesek-tint: #fbf0d9;
+  --color-gevesek-line: #e8c887;
+  --color-kopuk: #a1362b;
+  --color-kopuk-tint: #fbebe8;
+  --color-kopuk-line: #e9b6af;
 
-  /* Shadows */
-  --shadow-xs: 0 1px 2px rgba(0,0,0,0.05);
-  --shadow-sm: 0 1px 3px rgba(0,0,0,0.07), 0 1px 2px rgba(0,0,0,0.04);
-  --shadow-md: 0 4px 6px rgba(0,0,0,0.06), 0 2px 4px rgba(0,0,0,0.04);
-
-  /* Knot states */
-  --knot-siki-text:    #065F46;
-  --knot-siki-bg:      #ECFDF5;
-  --knot-siki-border:  #6EE7B7;
-  --knot-siki-dot:     #10B981;
-  --knot-gevesek-text: #92400E;
-  --knot-gevesek-bg:   #FFFBEB;
-  --knot-gevesek-border:#FCD34D;
-  --knot-gevesek-dot:  #F59E0B;
-  --knot-kopuk-text:   #7F1D1D;
-  --knot-kopuk-bg:     #FEF2F2;
-  --knot-kopuk-border: #FECACA;
-  --knot-kopuk-dot:    #EF4444;
-
-  /* Motion */
-  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
 }
 
-/* ─── Reset ─────────────────────────────────────────────────── */
+@layer base {
 *, *::before, *::after { box-sizing: border-box; }
-html { scroll-behavior: smooth; }
+
+html, body, #root { height: 100%; }
 
 body {
   margin: 0;
-  font-family: var(--font-body);
-  background-color: var(--bg-paper);
-  color: var(--ink-700);
+  overflow: hidden;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--color-ink-2);
+  background: var(--color-paper);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  line-height: 1.6;
-  font-size: 14px;
+  text-rendering: optimizeLegibility;
+  font-feature-settings: 'cv11', 'ss01';
 }
 
-/* ─── Typography ─────────────────────────────────────────────── */
-.font-display { font-family: var(--font-display); }
-.font-body    { font-family: var(--font-body); }
-.font-mono    { font-family: var(--font-mono); }
+h1, h2, h3 { letter-spacing: -0.03em; text-wrap: balance; color: var(--color-ink); }
+p { text-wrap: pretty; }
+.num { font-variant-numeric: tabular-nums; }
 
-/* ─── Selection ─────────────────────────────────────────────── */
-::selection {
-  background-color: var(--teal-100);
-  color: var(--teal-700);
+/* Tarayıcı yüzeyleri de tasarımın parçası */
+::selection { background: var(--color-accent-line); color: var(--color-ink); }
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+button { font: inherit; color: inherit; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+button:disabled { cursor: not-allowed; }
+input { caret-color: var(--color-accent); }
+
+.scroll-quiet { scrollbar-width: thin; scrollbar-color: var(--color-line-strong) transparent; }
+.scroll-quiet::-webkit-scrollbar { width: 8px; height: 8px; }
+.scroll-quiet::-webkit-scrollbar-thumb { background: var(--color-line-strong); border-radius: 8px; border: 2px solid transparent; background-clip: content-box; }
+.scroll-quiet::-webkit-scrollbar-track { background: transparent; }
 }
 
-/* ─── Scrollbar ──────────────────────────────────────────────── */
-::-webkit-scrollbar { width: 4px; height: 4px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb {
-  background: var(--border-medium);
-  border-radius: 9999px;
-}
+/* Dokunmatik cihazlarda hover'a güvenme */
+.press { transition: transform 140ms var(--ease-out), background-color 150ms ease, border-color 150ms ease, color 150ms ease, opacity 150ms ease; }
+.press:active:not(:disabled) { transform: scale(0.97); }
 
-/* ─── Reduced Motion ─────────────────────────────────────────── */
+/* Belge üzerinde kanıt vurgusu: soldan sağa işaretleyici süpürmesi */
+mark.evidence {
+  color: inherit;
+  background: linear-gradient(var(--color-mark), var(--color-mark)) no-repeat left center / 100% 100%;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+  padding: 0.1em 0.18em;
+  margin: 0 -0.18em;
+  border-radius: 3px;
+  animation: evidence-sweep 460ms var(--ease-out) both;
+}
+mark.evidence[data-strength='partial'] {
+  background: linear-gradient(var(--color-mark-weak), var(--color-mark-weak)) no-repeat left center / 100% 100%;
+  text-decoration: underline dashed var(--color-mark-line) 1.5px;
+  text-underline-offset: 3px;
+}
+@keyframes evidence-sweep {
+  from { background-size: 0% 100%; }
+  to { background-size: 100% 100%; }
+}
+@keyframes node-breathe {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+.breathe { animation: node-breathe 900ms ease-in-out infinite; }
+
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
-    animation-duration: 0.01ms !important;
-    transition-duration: 0.01ms !important;
-  }
+  mark.evidence { animation: none; }
+  .breathe { animation: none; }
 }
