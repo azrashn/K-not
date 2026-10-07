@@ -46,3 +46,7 @@ Faz 1: ders materyali indeksleme, kaynağa dayalı soru-cevap, otomatik soru ür
 - **Hiyerarşi:** kutu ve çizgi yerine boşluk, tipografi ve tek bir aktif yüzey.
 - **Hareket:** 150–400 ms, güçlü ease-out; `prefers-reduced-motion` açıkken iplik çizilmez, hareket kalkar.
 - İplik/düğüm metaforu kalıcı süs değildir: iddia→kaynak bağlantısı yalnızca etkinleştirme anında çizilir.
+
+## Yapay zekâ servisi (WBS-3 · RAG)
+
+Kaynağa dayalı yanıt motoru `ai-service/` altında ayrı bir Python (FastAPI) servisidir; yalnızca NestJS arka ucu tarafından çağrılır. Kurulum ve testler için [`ai-service/README.md`](ai-service/README.md), sözleşmeler için `docs/rag-architecture.md`, `docs/rag-api-contract.md`, `docs/rag-integration.md` ve `docs/rag-evaluation.md` dosyalarına bakın.

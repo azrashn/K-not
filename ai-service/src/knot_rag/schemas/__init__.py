@@ -1,0 +1,34 @@
+from knot_rag.schemas.answer import (
+    AnswerOutcome,
+    AnswerRequest,
+    Citation,
+    CitationIssue,
+    CitationIssueType,
+    Claim,
+    GenerationInfo,
+    GroundedAnswer,
+    InsufficientEvidence,
+    InsufficientEvidenceReason,
+    SupportAssessment,
+)
+from knot_rag.schemas.common import ErrorBody, ErrorCode, ErrorResponse, SupportStatus
+from knot_rag.schemas.documents import DocumentMetadata, DocumentType, IndexedChunk, SourceLocation
+from knot_rag.schemas.retrieval import (
+    AuthorizedScope,
+    HighlightSpan,
+    RetrievalDiagnostics,
+    RetrievalOutcome,
+    RetrievalParams,
+    RetrievedEvidence,
+    RetrieveRequest,
+    RetrieveResponse,
+)
+
+__all__ = [
+    "AnswerOutcome", "AnswerRequest", "AuthorizedScope", "Citation", "CitationIssue",
+    "CitationIssueType", "Claim", "DocumentMetadata", "DocumentType", "ErrorBody", "ErrorCode",
+    "ErrorResponse", "GenerationInfo", "GroundedAnswer", "HighlightSpan", "IndexedChunk",
+    "InsufficientEvidence", "InsufficientEvidenceReason", "RetrievalDiagnostics",
+    "RetrievalOutcome", "RetrievalParams", "RetrievedEvidence", "RetrieveRequest",
+    "RetrieveResponse", "SourceLocation", "SupportAssessment", "SupportStatus",
+]

@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "knot-rag"
+version = "0.1.0"
+description = "K-not WBS-3 RAG core pipeline: scoped retrieval, grounded answers, validated citations."
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115",
+    "pydantic>=2.7",
+    "chromadb>=1.0",
+    "httpx>=0.27",
+    "uvicorn>=0.30",
+]
+
+[project.optional-dependencies]
+# Production embedding backend (multilingual). Heavy (torch); install only where embeddings run.
+embeddings = ["sentence-transformers>=3.0"]
+dev = ["pytest>=8"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+knot_rag = ["py.typed"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src", "."]
+markers = [
+    "integration: uses a real (in-memory) ChromaDB instance",
+    "evaluation: runs the corpus-based evaluation harness",
+]
