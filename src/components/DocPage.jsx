@@ -25,7 +25,7 @@ function Block({ block, evidence, pulse, serif }) {
     return D ? <D /> : null
   }
   if (block.type === 'table') {
-    return (
+    const tbl = (
       <table className={`w-full border-collapse mt-[2.4cqw] mb-[1.6cqw] transition-opacity duration-200 ${dim}`} style={{ fontSize: serif ? '2.9cqw' : '2.5cqw' }}>
         <thead>
           <tr>{block.head.map((h) => <th key={h} className="text-left font-semibold text-ink border-b border-ink/70 py-[0.8cqw] pr-[2cqw]">{h}</th>)}</tr>
@@ -37,6 +37,7 @@ function Block({ block, evidence, pulse, serif }) {
         </tbody>
       </table>
     )
+    return hit ? <div className="evidence rounded-[3px] px-[1.2cqw]" data-evidence-mark data-strength={evidence.strength} key={pulse}>{tbl}</div> : tbl
   }
   if (block.type === 'li') {
     return (

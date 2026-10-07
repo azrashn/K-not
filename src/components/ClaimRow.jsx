@@ -16,7 +16,7 @@ export default function ClaimRow({ turnId, claim, active, onActivate }) {
       }`}
     >
       <span className="pt-[3px]">
-        <ClaimMark n={gap ? '–' : claim.n} active={active} tone={gap ? 'kopuk' : 'accent'} />
+        <ClaimMark n={gap && !claim.unsupported ? '–' : claim.n} active={active} tone={gap ? 'kopuk' : 'accent'} />
       </span>
       <div className="min-w-0">
         <p className="m-0 text-[17px] leading-[1.62] text-ink text-pretty" style={{ letterSpacing: '-0.012em' }}>
@@ -28,7 +28,12 @@ export default function ClaimRow({ turnId, claim, active, onActivate }) {
           ))}
         </p>
         {gap && (
-          <p className="m-0 mt-1.5 max-w-[34rem] text-[14.5px] leading-relaxed text-ink-2">{claim.detail}</p>
+          <>
+            <p className="m-0 mt-1.5 max-w-[34rem] text-[14.5px] leading-relaxed text-ink-2">{claim.detail}</p>
+            {claim.unsupported && (
+              <span className="mt-2 inline-flex h-[22px] items-center rounded-[5px] bg-kopuk-tint px-1.5 font-mono text-[11px] font-medium text-kopuk">Kanıt yok</span>
+            )}
+          </>
         )}
       </div>
     </div>

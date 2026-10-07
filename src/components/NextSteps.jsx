@@ -1,56 +1,30 @@
 import { useState } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
-import { Exam, Lightbulb, ListMagnifyingGlass, Check, X, ArrowsClockwise, CalendarCheck, TreeStructure, CaretRight } from '@phosphor-icons/react'
-import { LOOP_STAGES } from '../data/mock'
+import { Compass, Exam, Lightbulb, ListMagnifyingGlass, TreeStructure, CaretRight } from '@phosphor-icons/react'
 import { EASE_OUT } from '../lib/motion'
 import { useApp } from '../app/store'
+import { QUIZ_MODES } from '../data/academic'
+import { DOCS } from '../data/mock'
 import CitationPill from './Citation'
+import { analyze } from './KnotStrength'
 
 const ACTIONS = {
-  test: { label: 'Bunu test et', desc: 'Bu cevaptan bir soru üret, yanıtını kaynağıyla kontrol et.', Icon: Exam, tag: 'Alıştırma' },
-  simple: { label: 'Basitçe açıkla', desc: 'Aynı kaynaklarla daha sade bir anlatım.', Icon: Lightbulb, tag: 'Basit anlatım' },
-  gaps: { label: 'Eksik noktaları göster', desc: 'Kaynaklarında olup bu yanıtta yer almayanlar.', Icon: ListMagnifyingGlass, tag: 'Eksik nokta' },
-  nearby: { label: 'Yakın bir konuyu sor', desc: 'Materyallerinde karşılığı olan en yakın konuya geç.', Icon: TreeStructure, tag: '' },
-}
-
-function LoopStepper({ stage }) {
-  const idx = LOOP_STAGES.findIndex((s) => s.id === stage)
-  return (
-    <ol aria-label="Öğrenme döngüsü" className="m-0 flex list-none items-center gap-1 p-0 text-[12px]">
-      {LOOP_STAGES.map((s, i) => {
-        const done = i < idx
-        const now = i === idx
-        return (
-          <li key={s.id} className="flex items-center gap-1" aria-current={now ? 'step' : undefined}>
-            {i > 0 && <span aria-hidden className={`h-px w-2.5 transition-colors duration-300 sm:w-4 ${done || now ? 'bg-accent' : 'bg-line-strong'}`} />}
-            <span className={`inline-flex items-center gap-1.5 whitespace-nowrap font-medium transition-colors duration-200 ${now ? 'text-ink' : done ? 'text-accent' : 'text-ink-3'}`}>
-              <span aria-hidden className={`size-[7px] rounded-full transition-colors duration-200 ${now ? 'bg-accent' : done ? 'bg-accent/50' : 'bg-line-strong'}`} />
-              <span className={now ? '' : 'max-sm:hidden'}>{s.label}</span>
-            </span>
-          </li>
-        )
-      })}
-    </ol>
-  )
+  hint: { label: 'İpucu ver', desc: 'Cevabı hemen vermeden, adım adım kendin bulmanı sağlayan ipuçları.', Icon: Compass },
+  simple: { label: 'Basitçe açıkla', desc: 'Aynı kaynaklarla daha sade bir anlatım.', Icon: Lightbulb },
+  test: { label: 'Bunu test et', desc: 'Bu yanıtın kaynaklarından soru üret; cevabını kanıtla değerlendir.', Icon: Exam },
+  gaps: { label: 'Eksik noktaları göster', desc: 'Kaynaklarında olup bu yanıtta yer almayanlar.', Icon: ListMagnifyingGlass },
+  nearby: { label: 'Yakın bir konuyu sor', desc: 'Materyallerinde karşılığı olan en yakın konuya geç.', Icon: TreeStructure },
 }
 
 export default function NextSteps({ turnId, scenario, onActivate, activeId }) {
   const reduce = useReducedMotion()
-  const { dispatch } = useApp()
   const [mode, setMode] = useState(null)
-  const [pick, setPick] = useState(null)
-  const [checked, setChecked] = useState(false)
-  const [added, setAdded] = useState(false)
 
-  const stage = mode !== 'test' ? 'ask' : added ? 'review' : checked ? 'feedback' : pick ? 'answer' : 'practice'
-  const recommended = scenario.knot.state === 'SIKI' ? 'test' : scenario.knot.state === 'GEVESEK' ? 'gaps' : 'nearby'
-
+  const recommended = { SIKI: 'test', GEVESEK: 'gaps', KOPUK: 'nearby' }[analyze(scenario.claims).state]
   const choose = (id) => {
     if (id === 'nearby') return scenario.onNearby?.()
     setMode((m) => (m === id ? null : id))
-    setPick(null); setChecked(false); setAdded(false)
   }
-
   const pseudo = (item, tag) => ({ id: item.id, text: item.text, cites: item.cites || [item.cite], tag })
 
   return (
@@ -91,28 +65,14 @@ export default function NextSteps({ turnId, scenario, onActivate, activeId }) {
                     exit={{ opacity: 0, transition: { duration: 0.1 } }}
                     className="mb-3 mt-1 rounded-2xl bg-surface shadow-[0_1px_2px_rgba(22,24,30,0.04),0_0_0_1px_rgba(22,24,30,0.035)]"
                   >
+                    {id === 'hint' && <Hints scenario={scenario} turnId={turnId} onActivate={onActivate} activeId={activeId} pseudo={pseudo} reduce={reduce} />}
                     {id === 'simple' && (
                       <Rows title="Basit anlatım" note="Aynı kaynaklara dayanır; yeni bilgi eklenmedi." items={scenario.simple} turnId={turnId} tag="Basit anlatım" onActivate={onActivate} activeId={activeId} pseudo={pseudo} />
                     )}
                     {id === 'gaps' && (
                       <Rows title="Kaynaklarında olup yanıtta yer almayanlar" items={scenario.gaps} turnId={turnId} tag="Eksik nokta" onActivate={onActivate} activeId={activeId} pseudo={pseudo} />
                     )}
-                    {id === 'test' && (
-                      <Practice
-                        p={scenario.practice} pick={pick} setPick={setPick} checked={checked} stage={stage}
-                        onCheck={() => {
-                          setChecked(true)
-                          if (scenario.practice.topic) dispatch({ type: 'ANSWER', topicId: scenario.practice.topic, correct: pick === scenario.practice.correct })
-                        }}
-                        added={added}
-                        onAdd={() => {
-                          setAdded(true)
-                          if (scenario.practice.topic) dispatch({ type: 'REVIEW_ADD', topicId: scenario.practice.topic, from: 'workspace' })
-                        }}
-                        turnId={turnId} onActivate={onActivate} activeId={activeId} pseudo={pseudo}
-                        onReset={() => { setPick(null); setChecked(false); setAdded(false) }}
-                      />
-                    )}
+                    {id === 'test' && <TestModes scenario={scenario} />}
                   </motion.div>
                 )}
               </AnimatePresence>
@@ -121,6 +81,58 @@ export default function NextSteps({ turnId, scenario, onActivate, activeId }) {
         })}
       </ul>
     </section>
+  )
+}
+
+// İpucu ver: Sokratik akış. Cevap verilmez; her adımda biraz daha yönlendirilir, son adım kaynağa götürür.
+function Hints({ scenario, turnId, onActivate, activeId, pseudo, reduce }) {
+  const hints = scenario.hints || []
+  const [step, setStep] = useState(1)
+  const done = step >= hints.length
+  const first = scenario.claims[0]
+
+  return (
+    <div className="p-5">
+      <h4 className="m-0 text-[14px] font-semibold text-ink">Cevaba kendin ulaş</h4>
+      <p className="m-0 mt-0.5 text-[12.5px] text-ink-3">Cevabı hemen vermiyorum. Önce düşün; hazır olunca bir sonraki ipucuna geç.</p>
+
+      <ol className="m-0 mt-4 list-none p-0">
+        {hints.slice(0, step).map((h, i) => {
+          const claim = pseudo({ id: `${turnId}-hint-${i}`, text: h.text, cite: h.cite }, 'İpucu')
+          return (
+            <motion.li
+              key={i}
+              initial={{ opacity: 0, y: reduce ? 0 : 6 }}
+              animate={{ opacity: 1, y: 0, transition: { duration: 0.24, ease: EASE_OUT } }}
+              className="grid grid-cols-[1.5rem_minmax(0,1fr)] gap-x-3 py-2.5"
+            >
+              <span aria-hidden className="mt-0.5 grid size-6 place-items-center rounded-full bg-accent-tint font-mono text-[11px] font-semibold text-accent">{i + 1}</span>
+              <p className="m-0 text-[15.5px] leading-[1.6] text-ink">
+                {h.text}
+                {h.cite && (
+                  <span className="ml-2 whitespace-nowrap">
+                    <CitationPill turnId={turnId} claim={claim} cite={h.cite} active={activeId === claim.id} onActivate={() => onActivate(claim, h.cite)} />
+                  </span>
+                )}
+              </p>
+            </motion.li>
+          )
+        })}
+      </ol>
+
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        {!done ? (
+          <button type="button" onClick={() => setStep((n) => n + 1)} className="press h-9 rounded-lg bg-accent px-4 text-[13.5px] font-semibold text-white hover:bg-accent-deep">
+            Bir sonraki ipucu <span className="ml-1 font-mono text-[12px] text-white/70">{step}/{hints.length}</span>
+          </button>
+        ) : (
+          <button type="button" onClick={() => onActivate(first, first.cites?.[0])} className="press h-9 rounded-lg bg-accent px-4 text-[13.5px] font-semibold text-white hover:bg-accent-deep">
+            Cevabın kanıtını göster
+          </button>
+        )}
+        {step > 1 && <button type="button" onClick={() => setStep(1)} className="press h-9 rounded-lg px-3 text-[13.5px] font-medium text-ink-2 hover:bg-ink/[0.05]">Baştan</button>}
+      </div>
+    </div>
   )
 }
 
@@ -155,102 +167,34 @@ function Rows({ title, note, items, turnId, tag, onActivate, activeId, pseudo })
   )
 }
 
-function Practice({ p, pick, setPick, checked, stage, onCheck, added, onAdd, turnId, onActivate, activeId, pseudo, onReset }) {
-  const right = pick === p.correct
-  const picked = p.options.find((o) => o.id === pick)
-  const claim = pseudo({ id: `${turnId}-practice`, text: p.explanation, cite: p.cite }, 'Alıştırma')
-
+// Bunu test et: yanıtın konusundan pratiğe geçer. Soru tipi seçilir, Quiz bağlamıyla açılır.
+function TestModes({ scenario }) {
+  const { navigate, topics } = useApp()
+  const topic = topics.find((t) => t.id === scenario.quiz?.topic)
+  const files = new Set(scenario.claims.flatMap((c) => c.cites.map((x) => DOCS[x.doc]?.filename))).size
   return (
     <div className="p-5">
-      <LoopStepper stage={stage} />
-      <h4 className="m-0 mt-4 text-[16px] font-semibold leading-snug text-ink" style={{ letterSpacing: '-0.015em' }}>{p.prompt}</h4>
-      <div role="radiogroup" aria-label="Seçenekler" className="mt-3 grid gap-2 sm:grid-cols-2">
-        {p.options.map((o) => {
-          const sel = pick === o.id
-          const isRight = checked && o.id === p.correct
-          const isWrong = checked && sel && o.id !== p.correct
-          return (
+      <h4 className="m-0 text-[14px] font-semibold text-ink">Nasıl test edelim?</h4>
+      <p className="m-0 mt-0.5 text-[12.5px] text-ink-3">
+        Veri Yapıları · {topic?.name} · {files} materyal kullanılıyor. Sorular bu kaynaklardan üretilir.
+      </p>
+      <ul className="m-0 mt-3 list-none p-0">
+        {QUIZ_MODES.map((m) => (
+          <li key={m.id}>
             <button
-              key={o.id}
               type="button"
-              role="radio"
-              aria-checked={sel}
-              disabled={checked}
-              onClick={() => setPick(o.id)}
-              className={`press flex h-11 items-center justify-between rounded-[10px] px-3.5 text-left font-mono text-[14px] font-medium disabled:cursor-default ${
-                isRight ? 'bg-siki-tint text-siki'
-                  : isWrong ? 'bg-kopuk-tint text-kopuk'
-                    : sel ? 'bg-accent-tint text-accent'
-                      : checked ? 'bg-ink/[0.03] text-ink-3'
-                        : 'bg-ink/[0.045] text-ink hover:bg-ink/[0.08]'
-              }`}
+              onClick={() => navigate('/quiz', { topic: scenario.quiz.topic, mode: m.id, auto: true, from: 'workspace' })}
+              className="press group -mx-2 flex w-[calc(100%+1rem)] items-center gap-3 rounded-xl px-2 py-2.5 text-left hover:bg-ink/[0.04]"
             >
-              {o.id}
-              {isRight && <Check size={16} weight="bold" aria-hidden />}
-              {isWrong && <X size={16} weight="bold" aria-hidden />}
-            </button>
-          )
-        })}
-      </div>
-
-      {!checked && (
-        <div className="mt-3.5 flex items-center gap-3">
-          <button
-            type="button"
-            disabled={!pick}
-            onClick={onCheck}
-            className="press h-9 rounded-lg bg-accent px-4 text-[13.5px] font-semibold text-white hover:bg-accent-deep disabled:bg-ink/10 disabled:text-ink-3"
-          >
-            Cevabı kontrol et
-          </button>
-          {!pick && <span className="text-[12.5px] text-ink-3">Bir seçenek işaretle.</span>}
-        </div>
-      )}
-
-      <AnimatePresence initial={false}>
-        {checked && (
-          <motion.div
-            initial={{ opacity: 0, y: 6 }}
-            animate={{ opacity: 1, y: 0, transition: { duration: 0.22, ease: EASE_OUT } }}
-            className="mt-5 border-t border-hair pt-4"
-            aria-live="polite"
-          >
-            <p className={`m-0 text-[15px] font-semibold ${right ? 'text-siki' : 'text-kopuk'}`}>
-              {right ? 'Doğru.' : 'Tam değil.'}{' '}
-              <span className="font-normal text-ink">{right ? '' : picked?.hint}</span>
-            </p>
-            <p className="m-0 mt-1.5 text-[15.5px] leading-[1.62] text-ink">
-              {p.explanation}
-              <span className="ml-2 whitespace-nowrap">
-                <CitationPill turnId={turnId} claim={claim} cite={p.cite} active={activeId === claim.id} onActivate={() => onActivate(claim, p.cite)} />
+              <span className="min-w-0 flex-1">
+                <span className="block text-[15px] font-medium text-ink">{m.label}</span>
+                <span className="block text-[12.5px] text-ink-3">{m.hint}</span>
               </span>
-            </p>
-            <div className="mt-4">
-              {!added ? (
-                <button type="button" onClick={onAdd} className="press inline-flex h-9 items-center gap-2 rounded-lg bg-ink/[0.05] px-3 text-[13.5px] font-medium text-ink hover:bg-ink/[0.09]">
-                  <ArrowsClockwise size={16} aria-hidden /> Tekrar listesine ekle
-                </button>
-              ) : (
-                <motion.div
-                  initial={{ opacity: 0, y: 4 }}
-                  animate={{ opacity: 1, y: 0, transition: { duration: 0.2, ease: EASE_OUT } }}
-                  className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-[10px] bg-siki-tint px-3.5 py-2.5"
-                >
-                  <span className="inline-flex items-center gap-2 text-[13.5px] font-medium text-siki">
-                    <CalendarCheck size={17} aria-hidden /> Tekrar kartı oluşturuldu
-                  </span>
-                  <span className="text-[13px] text-ink-2">
-                    <span className="font-mono text-[12.5px]">{p.review}</span> · 2 gün sonra hatırlatılacak
-                  </span>
-                  <button type="button" onClick={onReset} className="press ml-auto text-[13px] font-medium text-accent underline underline-offset-4 hover:text-accent-deep">
-                    Yeniden dene
-                  </button>
-                </motion.div>
-              )}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+              <CaretRight size={14} aria-hidden className="shrink-0 text-ink-3 transition-transform duration-200 group-hover:translate-x-0.5" />
+            </button>
+          </li>
+        ))}
+      </ul>
     </div>
   )
 }

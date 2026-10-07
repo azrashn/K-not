@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import { EASE_OUT } from '../lib/motion'
 
@@ -49,14 +50,14 @@ export function KnotGlyph({ state, levels, verified, reduce }) {
           )}
           {kind === 'broken' && (
             <>
-              <motion.path d={`M${a} 13H${mid - 6}M${mid - 6} 13l5-4.2M${mid - 6} 13h6M${mid - 6} 13l5 4.2`} stroke={col} strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" initial={{ pathLength: reduce ? 1 : 0 }} animate={{ pathLength: 1 }} transition={d(0.05)} />
+              <motion.path d={`M${a} 13H${mid - 7}l2.6-4.4 2.6 8.8 2.6-4.4`} stroke={col} strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" initial={{ pathLength: reduce ? 1 : 0 }} animate={{ pathLength: 1 }} transition={d(0.05)} />
               <motion.path d={`M${mid + 5} 13H${mid + 9}`} stroke={col} strokeWidth="1.7" strokeLinecap="round" strokeDasharray="1 4" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={d(0.25)} />
             </>
           )}
         </g>
       ))}
       {verified && tail && (
-        <motion.path d={`M${xs[0] + 6} 13h20M${xs[0] + 26} 13l5-4.2M${xs[0] + 26} 13h6M${xs[0] + 26} 13l5 4.2`} stroke={col} strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" initial={{ pathLength: reduce ? 1 : 0 }} animate={{ pathLength: 1 }} transition={d(0.05)} />
+        <motion.path d={`M${xs[0] + 6} 13h17l2.6-4.4 2.6 8.8 2.6-4.4`} stroke={col} strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" initial={{ pathLength: reduce ? 1 : 0 }} animate={{ pathLength: 1 }} transition={d(0.05)} />
       )}
       {xs.map((x, i) => {
         const l = verified ? levels[i] : 0
@@ -71,35 +72,111 @@ export function KnotGlyph({ state, levels, verified, reduce }) {
   )
 }
 
-// Düğüm Gücü: sade bir imza. Yüzde yok; durum, tek cümle ve ip.
-export default function KnotStrength({ knot, claims, verified }) {
+// Kanıt desteğinin özeti: durum, sayılar ve gerekçeler iddialardan türetilir. Güven yüzdesi yoktur.
+export function analyze(claims) {
+  const total = claims.length
+  const lv = claims.map(levelOf)
+  const full = lv.filter((x) => x === 1).length
+  const partial = lv.filter((x) => x === 0.5).length
+  const none = lv.filter((x) => x === 0).length
+  const supported = full + partial
+  const sources = new Set(claims.flatMap((c) => c.cites.map((x) => `${x.doc}:${x.page}`))).size
+  const state = supported === 0 ? 'KOPUK' : none === 0 && partial === 0 ? 'SIKI' : 'GEVESEK'
+  const first = `${supported}/${total} iddia destekleniyor`
+  let second
+  if (state === 'SIKI') second = `${sources} kaynak kullanıldı`
+  else if (state === 'KOPUK') second = 'Yeterli kanıt bulunamadı. Tahmin yürütülmedi.'
+  else second = [partial && `${partial} iddia yalnızca kısmen`, none && `${none} iddia için yeterli kanıt yok`].filter(Boolean).join(' · ')
+  return { state, first, second, levels: lv, sources, total, supported }
+}
+
+const RULES = [
+  ['SIKI', 'Tüm iddialar derslerindeki bir kaynağa bağlı.'],
+  ['GEVEŞEK', 'Yanıtın yalnızca bir kısmı için yeterli kanıt var.'],
+  ['KOPUK', 'Materyallerinde destekleyen kanıt bulunamadı.'],
+]
+
+// Düğüm Gücü: sade bir imza. Durum, tek cümlelik gerekçe ve istenirse iddia bazında neden.
+export default function KnotStrength({ claims, verified, onActivate }) {
   const reduce = useReducedMotion()
-  const s = STATES[knot.state]
-  const levels = claims.map(levelOf)
-  const key = verified ? knot.state : 'PENDING'
+  const [open, setOpen] = useState(false)
+  const k = analyze(claims)
+  const s = STATES[k.state]
+  const key = verified ? k.state : 'PENDING'
 
   return (
-    <div className="mt-5 flex items-center gap-4" role="status" aria-live="polite" data-knot={verified ? knot.state : 'pending'}>
-      <KnotGlyph key={key} state={knot.state} levels={levels} verified={verified} reduce={reduce} />
-      <div className="min-w-0">
-        <p className="m-0 flex items-baseline gap-2.5">
-          <span className="text-[12.5px] font-medium text-ink-3">Düğüm Gücü</span>
-          <AnimatePresence mode="wait" initial={false}>
-            <motion.span
-              key={key}
-              initial={{ opacity: 0, filter: reduce ? 'blur(0px)' : 'blur(3px)' }}
-              animate={{ opacity: 1, filter: 'blur(0px)', transition: { duration: 0.2, ease: EASE_OUT } }}
-              exit={{ opacity: 0, filter: reduce ? 'blur(0px)' : 'blur(3px)', transition: { duration: 0.1 } }}
-              className={`font-mono text-[12.5px] font-semibold tracking-[0.04em] ${verified ? s.text : 'text-ink-3'}`}
-            >
-              {verified ? s.label : 'KONTROL EDİLİYOR'}
-            </motion.span>
-          </AnimatePresence>
-        </p>
-        <p className={`m-0 mt-0.5 text-[14px] ${verified ? 'text-ink-2' : 'text-ink-3'}`}>
-          {verified ? knot.line : 'Her iddia kaynağıyla eşleştiriliyor…'}
-        </p>
+    <div className="mt-5" data-knot={verified ? k.state : 'pending'}>
+      <div className="flex items-center gap-4" role="status" aria-live="polite">
+        <KnotGlyph key={key} state={k.state} levels={k.levels} verified={verified} reduce={reduce} />
+        <div className="min-w-0">
+          <p className="m-0 flex items-baseline gap-2.5">
+            <span className="text-[12.5px] font-medium text-ink-3">Düğüm Gücü</span>
+            <AnimatePresence mode="wait" initial={false}>
+              <motion.span
+                key={key}
+                initial={{ opacity: 0, filter: reduce ? 'blur(0px)' : 'blur(3px)' }}
+                animate={{ opacity: 1, filter: 'blur(0px)', transition: { duration: 0.2, ease: EASE_OUT } }}
+                exit={{ opacity: 0, filter: reduce ? 'blur(0px)' : 'blur(3px)', transition: { duration: 0.1 } }}
+                className={`font-mono text-[12.5px] font-semibold tracking-[0.04em] ${verified ? s.text : 'text-ink-3'}`}
+              >
+                {verified ? s.label : 'KONTROL EDİLİYOR'}
+              </motion.span>
+            </AnimatePresence>
+          </p>
+          {verified ? (
+            <>
+              <p className="m-0 mt-0.5 text-[14px] text-ink">{k.first}</p>
+              <p className="m-0 text-[13.5px] text-ink-2">{k.second}</p>
+            </>
+          ) : (
+            <p className="m-0 mt-0.5 text-[14px] text-ink-3">Her iddia kaynağıyla eşleştiriliyor…</p>
+          )}
+        </div>
+        {verified && (
+          <button
+            type="button" aria-expanded={open} onClick={() => setOpen((o) => !o)}
+            className="press ml-auto self-start rounded-md px-2 py-1 text-[12.5px] font-medium text-ink-3 hover:bg-ink/[0.05] hover:text-ink"
+          >
+            {open ? 'Gizle' : 'Nedenini gör'}
+          </button>
+        )}
       </div>
+
+      <AnimatePresence initial={false}>
+        {open && verified && (
+          <motion.div
+            initial={{ opacity: 0, y: reduce ? 0 : -4 }}
+            animate={{ opacity: 1, y: 0, transition: { duration: 0.22, ease: EASE_OUT } }}
+            exit={{ opacity: 0, transition: { duration: 0.1 } }}
+            className="mt-3"
+          >
+            <ul className="m-0 list-none p-0">
+              {claims.map((c, i) => {
+                const l = k.levels[i]
+                const mark = l === 1 ? ['✓', 'text-siki'] : l === 0.5 ? ['◐', 'text-gevesek'] : ['—', 'text-kopuk']
+                const note = l === 1 ? c.cites[0].label : l === 0.5 ? `${c.cites[0].label} · kısmi` : 'kanıt yok'
+                return (
+                  <li key={c.id}>
+                    <button type="button" onClick={() => onActivate?.(c, c.cites?.[0])} className="press -mx-2 grid w-[calc(100%+1rem)] grid-cols-[1.25rem_minmax(0,1fr)_auto] items-baseline gap-x-2 rounded-lg px-2 py-1.5 text-left hover:bg-ink/[0.04]">
+                      <span aria-hidden className={`font-mono text-[13px] font-semibold ${mark[1]}`}>{mark[0]}</span>
+                      <span className="truncate text-[13.5px] text-ink-2">{c.text}</span>
+                      <span className={`font-mono text-[11.5px] ${l === 0 ? 'text-kopuk' : 'text-ink-3'}`}>{note}</span>
+                    </button>
+                  </li>
+                )
+              })}
+            </ul>
+            <dl className="m-0 mt-3 grid gap-x-3 gap-y-1 text-[12.5px] text-ink-3 [grid-template-columns:auto_1fr]">
+              {RULES.map(([name, text]) => (
+                <div key={name} className="contents">
+                  <dt className={`font-mono font-semibold ${STATES[name === 'GEVEŞEK' ? 'GEVESEK' : name].text}`}>{name}</dt>
+                  <dd className="m-0">{text}</dd>
+                </div>
+              ))}
+            </dl>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   )
 }

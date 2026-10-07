@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef, useState } from 'react'
-import { INITIAL_MATERIALS, STATE_ORDER, TOPICS } from '../data/academic'
+import { INITIAL_MATERIALS, INITIAL_REVIEW, STATE_ORDER, SUPPORT_SEED, TOPICS } from '../data/academic'
 
 // ─── Hash router ────────────────────────────────────────────────────────────
 export function parseHash(hash) {
@@ -20,7 +20,10 @@ export const pathFor = (section) => SECTION_PATH[section]
 // ─── State ──────────────────────────────────────────────────────────────────
 const init = () => ({
   topics: TOPICS.map((t) => ({ ...t })),
-  review: [{ topicId: 'lr-rl', from: 'quiz' }],
+  review: INITIAL_REVIEW.map((r) => ({ ...r })),
+  stats: { ...SUPPORT_SEED.stats },
+  unsupported: SUPPORT_SEED.unsupported.map((u) => ({ ...u })),
+  recentAnswered: 12,
   materials: JSON.parse(JSON.stringify(INITIAL_MATERIALS)),
   viewing: null,
 })
@@ -33,7 +36,13 @@ function reducer(state, a) {
         const score = a.correct ? Math.min(1, (t.score || 0.3) + 0.1) : Math.max(0.06, (t.score || 0.3) - 0.12)
         return { ...t, score, answered: t.answered + 1, correct: t.correct + (a.correct ? 1 : 0) }
       })
-      return { ...state, topics }
+      return { ...state, topics, recentAnswered: state.recentAnswered + 1 }
+    }
+    // Her yanıt, kanıt durumuna göre Kaynak Güveni sayaçlarına işlenir.
+    case 'ASKED': {
+      const key = a.state === 'SIKI' ? 'full' : a.state === 'GEVESEK' ? 'partial' : 'none'
+      const unsupported = a.state === 'KOPUK' ? [{ question: a.question, when: 'Az önce' }, ...state.unsupported] : state.unsupported
+      return { ...state, stats: { ...state.stats, [key]: state.stats[key] + 1 }, unsupported }
     }
     case 'REVIEW_ADD':
       if (state.review.some((r) => r.topicId === a.topicId)) return state
@@ -52,7 +61,9 @@ function reducer(state, a) {
           // Örnek (demo) materyaller yalnızca kendi ders sayfası açıkken ilerler.
           if (x.demo && state.viewing !== cid) return x
           const next = STATE_ORDER[STATE_ORDER.indexOf(x.status) + 1]
-          return next === 'ready' ? { ...x, status: 'ready', auto: false } : { ...x, status: next }
+          if (next === 'ready') return { ...x, status: 'ready', auto: false }
+          // Sayfa sayısı, dosya okunduktan sonra bilinir.
+          return { ...x, status: next, pages: x.pages ?? x.guess }
         })
       }
       return { ...state, materials }

@@ -150,3 +150,65 @@ export function KnowledgeThread({ topics, selectedId, onSelect }) {
     </div>
   )
 }
+
+// Ünite ipi: bir ünitenin konuları tek bir ip üzerinde düğüm düğüm. Sıkı bölüm gergin, zayıf bölüm sarkık.
+export function UnitThread({ unit, topics, selectedId, onSelect }) {
+  const reduce = useReducedMotion()
+  const list = unit.topics.map((id) => topics.find((t) => t.id === id)).filter(Boolean)
+  const GAP = 62
+  const PAD = 18
+  const W = (list.length - 1) * GAP + PAD * 2
+  const cx = (i) => PAD + i * GAP
+  const Y = 18
+  const tr = { duration: reduce ? 0 : 0.5, ease: EASE_OUT }
+  const selIdx = list.findIndex((t) => t.id === selectedId)
+
+  return (
+    <div className="relative shrink-0" style={{ width: W, height: 40 }}>
+      <svg width={W} height="40" viewBox={`0 0 ${W} 40`} className="pointer-events-none absolute inset-0 overflow-visible" aria-hidden>
+        {list.slice(0, -1).map((t, i) => {
+          const nx = list[i + 1]
+          const a = topicState(t.score)
+          const b = topicState(nx.score)
+          const x1 = cx(i) + 9
+          const x2 = cx(i + 1) - 9
+          const mid = (x1 + x2) / 2
+          const open = a === 'open' || b === 'open'
+          const tight = a === 'tight' && b === 'tight'
+          const slack = open || tight ? 0 : Math.min(15, 5 + (0.72 - Math.min(t.score, nx.score)) * 26)
+          const d = `M${x1} ${Y} Q${mid} ${Y + slack} ${x2} ${Y}`
+          return (
+            <g key={t.id}>
+              <motion.path
+                d={d} fill="none" strokeLinecap="round" initial={false} transition={tr}
+                animate={{ d, stroke: open ? COLOR.open : tight ? COLOR.tight : COLOR.loose, strokeWidth: tight ? 2.4 : 1.7 }}
+                strokeDasharray={open ? '1 5' : undefined}
+              />
+              {tight && <circle cx={mid} cy={Y} r="3.2" fill="var(--color-paper)" stroke={COLOR.tight} strokeWidth="1.8" />}
+            </g>
+          )
+        })}
+        {selIdx >= 0 && <motion.circle cy={Y} r="12.5" fill="none" stroke="var(--color-accent)" strokeWidth="1.5" initial={false} animate={{ cx: cx(selIdx) }} transition={tr} />}
+        {list.map((t, i) => {
+          const st = topicState(t.score)
+          return (
+            <g key={t.id}>
+              <circle cx={cx(i)} cy={Y} r="7" fill={st === 'tight' ? COLOR.tight : st === 'loose' ? 'var(--color-gevesek-tint)' : 'var(--color-paper)'}
+                stroke={COLOR[st]} strokeWidth="2" strokeDasharray={st === 'open' ? '3 2.4' : undefined}
+                style={{ transition: 'fill 400ms var(--ease-out), stroke 400ms var(--ease-out)' }} />
+              {st === 'loose' && <path d={`M${cx(i)} ${Y - 7}a7 7 0 0 0 0 14z`} fill={COLOR.loose} />}
+            </g>
+          )
+        })}
+      </svg>
+      {list.map((t, i) => (
+        <button
+          key={t.id} type="button" onClick={() => onSelect(t.id)} aria-pressed={t.id === selectedId}
+          aria-label={`${t.name}: ${STATE_TEXT[topicState(t.score)]}`} title={`${t.name} · ${STATE_TEXT[topicState(t.score)]}`}
+          className="press absolute top-0 size-9 rounded-full hover:bg-ink/[0.05]"
+          style={{ left: cx(i) - 18, top: Y - 18 }}
+        />
+      ))}
+    </div>
+  )
+}

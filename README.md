@@ -18,14 +18,26 @@ npm run build
 
 | Rota | Sayfa |
 | --- | --- |
-| `#/` | Ana Sayfa: kaldığın yerden devam, önerilen tekrar, materyallerine sor |
+| `#/` | Ana Sayfa: “Şimdi ne çalışmalıyım?” — tek devam eylemi, tekrar önerisi, son çalışma |
 | `#/dersler` | Dersler: hazırlık durumu ve ders bazlı bilgi ipi |
-| `#/dersler/:id` | Ders: materyal yönetimi (Yüklendi → Okunuyor → Hazırlanıyor → Hazır / Sorun var) |
-| `#/dersler/veri-yapilari/calisma` | AI Çalışma Alanı: iddia satırları, kaynak etiketi, Düğüm Gücü, kaynak görüntüleyici |
-| `#/quiz` | Quiz: kapsam seç, cevapla, geri bildirim + kaynak sayfası, tekrar |
-| `#/analitik` | Analitik: Bilgi İpi, zayıf konular, kaynak kapsamı |
+| `#/dersler/:id` | Ders: materyaller (Tümü / Slaytlar / Notlar / Geçmiş Sınavlar), durumlar: Yüklendi → Okunuyor → Hazırlanıyor → Hazır / Sorun var |
+| `#/dersler/veri-yapilari/calisma` | AI Çalışma Alanı: iddia satırları, kaynak etiketi, Düğüm Gücü (nedeniyle), kaynak görüntüleyici, İpucu ver / Basitçe açıkla / Bunu test et |
+| `#/quiz` | Pratik: Ders → Konu → Materyaller; çoktan seçmeli, doğru/yanlış, açık uçlu; kanıta bağlı cevap değerlendirmesi |
+| `#/analitik` | Analitik: **Öğrenmem** (Bilgi İpi) ve **Kaynak güveni** (desteklenen / kısmi / desteksiz yanıtlar) |
 
-Veri tamamen mock'tur (`src/data`). Quiz sonuçları Bilgi İpi'ni ve tekrar listesini canlı günceller.
+Veri tamamen mock'tur (`src/data`). Quiz sonuçları Bilgi İpi'ni ve tekrar listesini, çalışma alanındaki yanıtlar Kaynak güveni sayaçlarını canlı günceller.
+
+## Öğrenme döngüsü
+
+```
+Sor → Kanıtı gör → Pratik yap → Cevapla → Geri bildirim → Eksiği gör → Kaynağa dön → Tekrar dene
+```
+
+Döngü ayrı bir diyagram olarak değil, eylemlerle kurulur: yanıttaki **Bunu test et** pratiğe geçirir; değerlendirmedeki kanıt etiketi tam kaynak cümlesini açar (**Kaynağa dön**); **Benzer soru çöz** aynı konuda devam ettirir; **Konuyu tekrar açıkla** çalışma alanına döndürür.
+
+## Kapsam
+
+Faz 1: ders materyali indeksleme, kaynağa dayalı soru-cevap, otomatik soru üretimi, cevap değerlendirme ve kanıt ölçümü. Video/transkript, öğretmen paneli, sosyal özellikler ve oyunlaştırma kapsam dışıdır.
 
 ## Tasarım dili
 

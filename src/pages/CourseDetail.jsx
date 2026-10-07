@@ -10,10 +10,10 @@ import { EASE_OUT } from '../lib/motion'
 
 const FILTERS = [
   { id: 'all', label: 'Tümü' },
-  { id: 'slayt', label: 'Slayt' },
-  { id: 'pdf', label: 'PDF' },
-  { id: 'not', label: 'Not' },
-  { id: 'sinav', label: 'Çıkmış soru' },
+  { id: 'slayt', label: 'Slaytlar' },
+  { id: 'not', label: 'Notlar' },
+  { id: 'sinav', label: 'Geçmiş Sınavlar' },
+  { id: 'pdf', label: 'Diğer PDF' },
 ]
 
 const guessType = (name) => {
@@ -60,7 +60,7 @@ export default function CourseDetail({ courseId }) {
     const type = guessType(name)
     dispatch({
       type: 'MAT_ADD', courseId,
-      material: { id: `${name}-${Date.now()}`, name, type, pages: pagesGuess || 12 + Math.floor(Math.random() * 28), added: 'Bugün', status: 'uploaded', auto: true },
+      material: { id: `${name}-${Date.now()}`, name, type, pages: pagesGuess ?? null, guess: pagesGuess || 12 + Math.floor(Math.random() * 28), added: 'Bugün', status: 'uploaded', auto: true },
     })
     setFilter('all')
   }
@@ -80,10 +80,11 @@ export default function CourseDetail({ courseId }) {
           <span className="font-medium">{r.text}</span>
           <span className="text-ink-3"><span className="num">{r.ready}</span> / <span className="num">{r.total}</span> materyal hazır</span>
         </p>
+        <p className="m-0 mt-2 max-w-[36rem] text-[14.5px] leading-relaxed text-ink-3">Çalışma alanı, alıştırma ve cevap değerlendirmesi yalnızca bu materyallere dayanır. Hazır olmayan materyal yanıtlarda kullanılmaz.</p>
 
         <div className="mt-6 flex flex-wrap items-center gap-3">
           <Btn arrow className="group" disabled={!isVY} onClick={() => navigate(`/dersler/${course.id}/calisma`)}>Çalışma alanını aç</Btn>
-          <Btn variant="soft" disabled={!isVY} onClick={() => navigate('/quiz')}>Quiz başlat</Btn>
+          <Btn variant="soft" disabled={!isVY} onClick={() => navigate('/quiz')}>Alıştırma başlat</Btn>
           <Btn variant="quiet" onClick={() => setUploader((u) => !u)} aria-expanded={uploader}><UploadSimple size={16} /> Materyal ekle</Btn>
         </div>
         {!isVY && <p className="m-0 mt-3 text-[13px] text-ink-3">Çalışma alanı ve quiz bu prototipte yalnızca Veri Yapıları için açık.</p>}
@@ -107,7 +108,7 @@ export default function CourseDetail({ courseId }) {
               <p className="m-0 mt-1 text-[13.5px] text-ink-3">Yüklenen her dosya okunur ve hazır olduğunda yanıtlarda kaynak olarak kullanılır.</p>
               <div className="mt-4 flex flex-wrap justify-center gap-2">
                 <Btn variant="soft" size="sm" onClick={() => fileRef.current?.click()}>Dosya seç</Btn>
-                <Btn variant="quiet" size="sm" onClick={() => add(isVY ? 'Hafta9_Agaclar_Tekrar.pdf' : 'Hafta7_Ek_Slaytlar.pdf', 22)}>Örnek dosya ekle</Btn>
+                <Btn variant="quiet" size="sm" onClick={() => add(isVY ? 'Hafta9_Agaclar_Tekrar.pdf' : 'Hafta7_Ek_Slaytlar.pdf')}>Örnek dosya ekle</Btn>
               </div>
               <input ref={fileRef} type="file" multiple accept=".pdf,.ppt,.pptx,.doc,.docx" className="sr-only" aria-label="Dosya seç" onChange={(e) => { onFiles(e.target.files); e.target.value = '' }} />
             </div>
@@ -142,11 +143,11 @@ export default function CourseDetail({ courseId }) {
                     <FilePdf size={20} className="shrink-0 text-ink-3" aria-hidden />
                     <span className="min-w-0">
                       <span className="block truncate font-mono text-[13px] font-medium text-ink" title={m.name}>{m.name}</span>
-                      <span className="block text-[12.5px] text-ink-3 md:hidden">{TYPE_LABEL[m.type]} · {m.pages} s. · {m.added}</span>
+                      <span className="block text-[12.5px] text-ink-3 md:hidden">{TYPE_LABEL[m.type]} · {m.pages ? `${m.pages} s.` : 'sayfa sayısı okunuyor'} · {m.added}</span>
                     </span>
                   </span>
                   <span className="hidden text-[13px] text-ink-2 md:block">{TYPE_LABEL[m.type]}</span>
-                  <span className="hidden font-mono text-[12px] text-ink-3 num md:block">{m.pages} s.</span>
+                  <span className="hidden font-mono text-[12px] text-ink-3 num md:block">{m.pages ? `${m.pages} s.` : '—'}</span>
                   <span className="col-span-2 row-start-2 min-w-0 md:col-span-1 md:row-start-auto">
                     <StatusTrack status={m.status} />
                     {m.status !== 'ready' && (

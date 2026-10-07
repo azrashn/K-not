@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { motion, useReducedMotion } from 'framer-motion'
 import { EASE_OUT } from '../lib/motion'
 import ClaimRow from './ClaimRow'
-import KnotStrength from './KnotStrength'
+import KnotStrength, { analyze } from './KnotStrength'
+import { useApp } from '../app/store'
 import NextSteps from './NextSteps'
 
 function Searching({ count }) {
@@ -19,7 +20,9 @@ function Searching({ count }) {
 export default function Turn({ turn, activeId, onActivate, onAsk, activeCount }) {
   const reduce = useReducedMotion()
   const { scenario, status, id } = turn
+  const { dispatch } = useApp()
   const [verified, setVerified] = useState(!turn.fresh)
+  const counted = useRef(false)
 
   useEffect(() => {
     if (status !== 'ready' || verified) return
@@ -28,7 +31,16 @@ export default function Turn({ turn, activeId, onActivate, onAsk, activeCount })
   }, [status, verified, reduce])
 
   const scn = { ...scenario, onNearby: () => onAsk('AVL ağaçlarında denge nasıl sağlanır?') }
-  const claims = scenario.claims.map((c, i) => ({ ...c, n: i + 1, tag: c.gap ? 'Yanıt' : `İddia ${i + 1}` }))
+  const claims = scenario.claims.map((c, i) => ({ ...c, n: i + 1, tag: c.unsupported ? `İddia ${i + 1}` : c.gap ? 'Yanıt' : `İddia ${i + 1}` }))
+  const knotState = analyze(claims).state
+
+  // Kaynak Güveni: taze yanıtın kanıt durumu Analitik'e işlenir.
+  useEffect(() => {
+    if (turn.fresh && verified && !counted.current) {
+      counted.current = true
+      dispatch({ type: 'ASKED', state: knotState, question: scenario.question })
+    }
+  }, [turn.fresh, verified, knotState, dispatch, scenario.question])
   const sources = new Set(claims.flatMap((c) => c.cites.map((x) => x.doc))).size
   const meta = status === 'searching'
     ? null
@@ -61,7 +73,7 @@ export default function Turn({ turn, activeId, onActivate, onAsk, activeCount })
               />
             ))}
           </div>
-          <KnotStrength knot={scenario.knot} claims={claims} verified={verified} />
+          <KnotStrength claims={claims} verified={verified} onActivate={(claim, cite) => onActivate(id, claim, cite)} />
           {verified && (
             <motion.div initial={turn.fresh ? { opacity: 0 } : false} animate={{ opacity: 1, transition: { duration: 0.24, ease: EASE_OUT } }}>
               <NextSteps

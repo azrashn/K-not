@@ -93,7 +93,7 @@ export default function SourceViewer({ view, setView, active, evidence, pulse, n
       <ContextStrip active={active} evidence={evidence} reduce={reduce} onClose={onClose} />
 
       {noEvidence ? (
-        <NoEvidence nearest={nearest} scan={scan} reduce={reduce} onOpen={() => nearest && setView({ doc: nearest.doc, page: nearest.page })} onAddMaterial={onAddMaterial} />
+        <NoEvidence unsupported={!!active?.claim?.unsupported} nearest={nearest} scan={scan} reduce={reduce} onOpen={() => nearest && setView({ doc: nearest.doc, page: nearest.page })} onAddMaterial={onAddMaterial} />
       ) : (
         <>
           <div className="shrink-0 bg-paper px-5 pb-2.5 pt-3">
@@ -171,7 +171,7 @@ export default function SourceViewer({ view, setView, active, evidence, pulse, n
 }
 
 // Kanıt yok: güven özelliği, hata değil. Panelin tamamı bu duruma ayrılır.
-function NoEvidence({ nearest, scan, reduce, onOpen, onAddMaterial }) {
+function NoEvidence({ unsupported, nearest, scan, reduce, onOpen, onAddMaterial }) {
   return (
     <div className="flex min-h-0 flex-1 flex-col justify-center overflow-y-auto bg-paper px-7 py-8">
       <motion.div
@@ -186,9 +186,11 @@ function NoEvidence({ nearest, scan, reduce, onOpen, onAddMaterial }) {
           <path d="M82 22h3M92 22h3" stroke="var(--color-line-strong)" strokeWidth="1.8" strokeLinecap="round" />
           <circle cx="140" cy="22" r="5" fill="var(--color-paper)" stroke="var(--color-line-strong)" strokeWidth="1.6" strokeDasharray="3 2.6" />
         </svg>
-        <h2 className="display m-0 text-[30px] text-ink">Bu soru için kaynak bulunamadı.</h2>
+        <h2 className="display m-0 text-[30px] text-ink">{unsupported ? 'Bu iddia için kaynak bulunamadı.' : 'Bu soru için kaynak bulunamadı.'}</h2>
         <p className="m-0 mt-3 text-[15px] leading-relaxed text-ink-2">
-          Yüklediğin {scan.count} materyalde arama yaptım; soruyu yanıtlayan bir bölüm yok. Bu yüzden cevap uydurmadım. Kaynağı olmayan bilgi, K-not’ta yanıt sayılmaz.
+          {unsupported
+            ? `Yüklediğin ${scan.count} materyalde bu iddiayı destekleyen bir bölüm yok. Bilgi doğru olabilir; ama kaynağı olmadığı için K-not onu kanıtlanmış saymaz.`
+            : `Yüklediğin ${scan.count} materyalde arama yaptım; soruyu yanıtlayan bir bölüm yok. Bu yüzden cevap uydurmadım. Kaynağı olmayan bilgi, K-not’ta yanıt sayılmaz.`}
         </p>
         <p className="m-0 mt-4 font-mono text-[11.5px] leading-relaxed text-ink-3">Taranan: {scan.groups}</p>
 

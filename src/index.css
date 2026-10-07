@@ -89,7 +89,7 @@ input { caret-color: var(--color-accent); }
 .press:active:not(:disabled) { transform: scale(0.97); }
 
 /* Belge üzerinde kanıt vurgusu: soldan sağa işaretleyici süpürmesi */
-mark.evidence {
+mark.evidence, .evidence {
   color: inherit;
   background: linear-gradient(var(--color-mark), var(--color-mark)) no-repeat left center / 100% 100%;
   box-decoration-break: clone;
@@ -99,7 +99,7 @@ mark.evidence {
   border-radius: 3px;
   animation: evidence-sweep 460ms var(--ease-out) both;
 }
-mark.evidence[data-strength='partial'] {
+mark.evidence[data-strength='partial'], .evidence[data-strength='partial'] {
   background: linear-gradient(var(--color-mark-weak), var(--color-mark-weak)) no-repeat left center / 100% 100%;
   text-decoration: underline dashed var(--color-mark-line) 1.5px;
   text-underline-offset: 3px;
@@ -115,6 +115,6 @@ mark.evidence[data-strength='partial'] {
 .breathe { animation: node-breathe 900ms ease-in-out infinite; }
 
 @media (prefers-reduced-motion: reduce) {
-  mark.evidence { animation: none; }
+  mark.evidence, .evidence { animation: none; }
   .breathe { animation: none; }
 }

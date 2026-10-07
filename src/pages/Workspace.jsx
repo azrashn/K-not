@@ -67,7 +67,7 @@ export default function Workspace({ courseId }) {
     setTimeout(toTurn, 60)
     setTimeout(() => {
       setTurns((ts) => ts.map((t) => (t.id === turn.id ? { ...t, status: 'ready' } : t)))
-      const first = { ...scenario.claims[0], n: 1, tag: 'İddia 1' }
+      const first = { ...scenario.claims[0], n: 1, tag: scenario.claims[0].gap && !scenario.claims[0].unsupported ? 'Yanıt' : 'İddia 1' }
       activate(turn.id, first, first.cites?.[0], { quiet: true })
     }, reduce ? 300 : 1000)
   }, [activate, reduce])

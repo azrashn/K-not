@@ -10,7 +10,7 @@ export const DOCS = {
   slides: {
     id: 'slides',
     kind: 'slide',
-    short: 'Slaytlar',
+    short: 'Hafta 4',
     filename: 'Hafta4_AVL_Agaclari.pdf',
     label: 'Ders Slaytları · Hafta 4',
     total: 32,
@@ -119,6 +119,41 @@ export const DOCS = {
       },
     },
   },
+  hash: {
+    id: 'hash',
+    kind: 'slide',
+    short: 'Hafta 6',
+    filename: 'Hafta6_Hash_Tablolari.pdf',
+    label: 'Ders Slaytları · Hafta 6',
+    total: 34,
+    range: [11, 13],
+    pages: {
+      11: {
+        title: 'Hash Fonksiyonu',
+        blocks: [
+          { id: 'h11-a', type: 'p', text: 'Hash fonksiyonu, bir anahtarı tablo indeksine dönüştürür: h(k) = k mod m.' },
+          { id: 'h11-b', type: 'li', text: 'İyi bir hash fonksiyonu anahtarları tabloya düzgün dağıtır.' },
+          { id: 'h11-c', type: 'li', text: 'Ortalama arama, ekleme ve silme maliyeti O(1)’dir.' },
+        ],
+      },
+      12: {
+        title: 'Çakışma ve Zincirleme',
+        blocks: [
+          { id: 'h12-a', type: 'p', text: 'İki farklı anahtar aynı indekse düştüğünde çakışma oluşur.' },
+          { id: 'h12-chain', type: 'li', text: 'Zincirleme (chaining): aynı indekse düşen anahtarlar bir bağlı listede tutulur.' },
+          { id: 'h12-load', type: 'li', text: 'Doluluk oranı arttıkça zincirler uzar ve arama yavaşlar.' },
+        ],
+      },
+      13: {
+        title: 'Açık Adresleme',
+        blocks: [
+          { id: 'h13-a', type: 'p', text: 'Açık adreslemede tüm anahtarlar tablonun kendisinde saklanır; çakışmada boş bir göze bakılır.' },
+          { id: 'h13-probe', type: 'li', text: 'Doğrusal yoklama: bir sonraki boş göz aranır; kümelenme oluşabilir.' },
+          { id: 'h13-del', type: 'li', text: 'Silinen gözler işaretlenmezse arama zinciri kopar.' },
+        ],
+      },
+    },
+  },
 }
 
 export const LOOP_STAGES = [
@@ -147,8 +182,14 @@ const AVL = {
       cites: [cite('notes', 3, 'n3-four', 'Notlar · s.3')],
     },
   ],
-  knot: { state: 'SIKI', supported: 2, total: 2, line: '2/2 iddia kaynakla destekleniyor' },
-  actions: ['test', 'simple', 'gaps'],
+  actions: ['hint', 'simple', 'test', 'gaps'],
+  topic: 'avl-denge',
+  quiz: { topic: 'avl-denge' },
+  hints: [
+    { text: 'Önce şunu düşün: bir düğümün iki tarafı arasındaki yükseklik farkı hangi noktadan sonra sorun olur?' },
+    { text: 'Fark bu sınırı aşınca ağacın şeklini değiştirmen gerekir. Düğümlerin yerini değiştirerek farkı telafi eden işleme ne denir?' },
+    { text: 'Slaytta bu, “denge koşulu” başlığının altında anlatılıyor.', cite: { doc: 'slides', page: 18, seg: 's18-rotate', label: 'Slayt · s.18' } },
+  ],
   simple: [
     { id: 'sm1', text: 'Ağaç her düğümde iki tarafın yüksekliğini birbirine yakın tutar; fark en fazla 1 olabilir.', cites: [cite('slides', 18, 's18-balance', 'Slayt · s.18')] },
     { id: 'sm2', text: 'Fark 2’ye çıkarsa düğümler döndürülür ve fark yeniden küçülür.', cites: [cite('slides', 18, 's18-rotate', 'Slayt · s.18')] },
@@ -157,20 +198,6 @@ const AVL = {
     { id: 'gp1', text: 'Denge faktörü, sol ve sağ alt ağaç yüksekliği farkıdır; her ekleme ve silmeden sonra güncellenir.', cites: [cite('slides', 19, 's19-bf', 'Slayt · s.19')] },
     { id: 'gp2', text: 'Eklemede en fazla bir rotasyon yeter; silmede O(log n) rotasyon gerekebilir.', cites: [cite('notes', 3, 'n3-count', 'Notlar · s.3')] },
   ],
-  practice: {
-    prompt: 'Bir düğümün sol çocuğunun sağ alt ağacına ekleme yapıldı ve düğüm dengesiz kaldı. Hangi rotasyon gerekir?',
-    options: [
-      { id: 'LL', hint: 'LL, ekleme sol çocuğun sol alt ağacında olduğunda oluşur; burada ekleme sağ alt ağaçta.' },
-      { id: 'RR', hint: 'RR, ekleme sağ çocuğun sağ alt ağacında olduğunda oluşur.' },
-      { id: 'LR', hint: null },
-      { id: 'RL', hint: 'RL, ekleme sağ çocuğun sol alt ağacında olduğunda oluşur; burada sol taraf söz konusu.' },
-    ],
-    correct: 'LR',
-    explanation: 'Sol çocuğun sağ alt ağacındaki ekleme LR durumudur. Önce sol çocukta sola, sonra düğümde sağa döndürülür.',
-    cite: cite('notes', 3, 'n3-lr', 'Notlar · s.3'),
-    review: 'LR / RL çift rotasyon',
-    topic: 'lr-rl',
-  },
 }
 
 const RB = {
@@ -192,9 +219,22 @@ const RB = {
         ),
       ],
     },
+    {
+      id: 'c3',
+      gap: true,
+      unsupported: true,
+      text: 'Kırmızı-siyah ağaçlarda yükseklik en fazla 2·log(n+1) olabilir.',
+      detail: 'Materyallerinde bu ifadeyi destekleyen bir bölüm bulamadım. Bilgi doğru olabilir; ama kaynağı olmadığı için doğrulayamıyorum.',
+      cites: [],
+    },
   ],
-  knot: { state: 'GEVESEK', supported: 1, total: 2, partial: 1, line: '1 iddia tam, 1 iddia kısmen destekleniyor' },
-  actions: ['test', 'simple', 'gaps'],
+  actions: ['hint', 'simple', 'test', 'gaps'],
+  topic: 'avl-kirmizi-siyah',
+  quiz: { topic: 'avl-kirmizi-siyah' },
+  hints: [
+    { text: 'İkisi de aramayı O(log n)’de tutar. Fark, dengeyi ne kadar sıkı korumalarında. Sıkı denge neyi hızlandırır, neyi yavaşlatır?' },
+    { text: 'Güncellemede hangi ağacın daha az düzeltme yaptığını düşün. Notlarındaki karşılaştırma tablosuna bak.', cite: { doc: 'notes', page: 4, seg: 'n4-rb', label: 'Notlar · s.4' } },
+  ],
   simple: [
     { id: 'sm1', text: 'AVL daha sıkı dengelidir, bu yüzden aramada genelde öndedir.', cites: [cite('notes', 1, 'n1-tight', 'Notlar · s.1')] },
     { id: 'sm2', text: 'Kırmızı-siyah ağaç dengeyi daha gevşek tutar; güncellemeler biraz daha hızlıdır.', cites: [cite('notes', 4, 'n4-rb', 'Notlar · s.4')] },
@@ -203,22 +243,46 @@ const RB = {
     { id: 'gp1', text: 'AVL’de güncelleme, daha sıkı denge nedeniyle biraz daha yavaştır.', cites: [cite('notes', 1, 'n1-tight', 'Notlar · s.1')] },
     { id: 'gp2', text: 'Kırmızı-siyah ağaçta rotasyon sayısına dair üst sınır.', missing: true },
   ],
-  practice: {
-    prompt: 'Notlarına göre hangi ağaç daha sıkı dengelidir ve aramada genellikle daha hızlıdır?',
-    options: [
-      { id: 'BST', hint: 'Dengesiz BST’de en kötü durum O(n)’dir; sıkı dengeli değildir.' },
-      { id: 'AVL', hint: null },
-      { id: 'Kırmızı-siyah', hint: 'Kırmızı-siyah ağaç daha gevşek dengelidir; güncellemede avantajlıdır.' },
-    ],
-    correct: 'AVL',
-    explanation: 'AVL, kırmızı-siyah ağaca göre daha sıkı dengelidir; bu da aramayı hızlandırır, güncellemeyi biraz yavaşlatır.',
-    cite: cite('notes', 1, 'n1-tight', 'Notlar · s.1'),
-    review: 'AVL ve kırmızı-siyah ağaç farkı',
-    topic: 'avl-kirmizi-siyah',
-  },
 }
 
-export const SCENARIOS = { avl: AVL, rb: RB }
+const HASH = {
+  id: 'hash',
+  question: 'Hash tablosunda çakışma nasıl çözülür?',
+  claims: [
+    {
+      id: 'c1',
+      text: 'Çakışma, iki farklı anahtar aynı indekse düştüğünde oluşur.',
+      cites: [cite('hash', 12, 'h12-a', 'Hafta 6 · s.12')],
+    },
+    {
+      id: 'c2',
+      text: 'Zincirlemede aynı indekse düşen anahtarlar bir bağlı listede tutulur.',
+      cites: [cite('hash', 12, 'h12-chain', 'Hafta 6 · s.12')],
+    },
+    {
+      id: 'c3',
+      text: 'Açık adreslemede çakışma olursa bir sonraki boş göze bakılır.',
+      cites: [cite('hash', 13, 'h13-a', 'Hafta 6 · s.13')],
+    },
+  ],
+  actions: ['hint', 'simple', 'test', 'gaps'],
+  topic: 'hash-cakisma',
+  quiz: { topic: 'hash-cakisma' },
+  hints: [
+    { text: 'Önce şunu sor: iki farklı anahtar aynı indeksi üretirse tabloda ne olur?' },
+    { text: 'İki yol var: anahtarı aynı gözde tutmak ya da tabloda başka bir göz aramak. Hangisi hangi yöntem?', cite: { doc: 'hash', page: 12, seg: 'h12-chain', label: 'Hafta 6 · s.12' } },
+  ],
+  simple: [
+    { id: 'sm1', text: 'Aynı göze düşen anahtarlar zincirlemede bir listeye dizilir.', cites: [cite('hash', 12, 'h12-chain', 'Hafta 6 · s.12')] },
+    { id: 'sm2', text: 'Açık adreslemede anahtar, boş bir göz bulunana kadar tabloda ilerler.', cites: [cite('hash', 13, 'h13-probe', 'Hafta 6 · s.13')] },
+  ],
+  gaps: [
+    { id: 'gp1', text: 'Doluluk oranı arttıkça zincirler uzar ve arama yavaşlar.', cites: [cite('hash', 12, 'h12-load', 'Hafta 6 · s.12')] },
+    { id: 'gp2', text: 'Silinen gözler işaretlenmezse arama zinciri kopar.', cites: [cite('hash', 13, 'h13-del', 'Hafta 6 · s.13')] },
+  ],
+}
+
+export const SCENARIOS = { avl: AVL, rb: RB, hash: HASH }
 
 export const SUGGESTIONS = [
   'AVL ile kırmızı-siyah ağaç arasındaki fark nedir?',
@@ -241,14 +305,15 @@ function makeGap(question, count = 14) {
         cites: [],
       },
     ],
-    knot: { state: 'KOPUK', supported: 0, total: 1, line: 'Materyallerinde yeterli kanıt yok. Tahmin yürütülmedi.' },
-    actions: ['nearby'],
+      actions: ['nearby'],
+    topic: null,
     nearest: { doc: 'slides', page: 16, label: 'Slayt · s.16' },
   }
 }
 
 export function answerFor(question, count = 14) {
   const q = norm(question)
+  if (/(hash|cakisma|çakışma|zincirleme)/.test(q)) return HASH
   if (/(kirmizi|red.?black|rb\b)/.test(q) || (q.includes('fark') && q.includes('avl'))) return RB
   if (/(avl|denge|rotasyon)/.test(q) && !/splay|amortize/.test(q)) return AVL
   return makeGap(question, count)
