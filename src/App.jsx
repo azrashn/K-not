@@ -1,5 +1,7 @@
 import { useState, useCallback, useRef } from 'react'
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion'
+import logoK from './assets/K.png'
+import logoKnot from './assets/Knot.png'
 import {
   House,
   BookOpen,
@@ -7,6 +9,7 @@ import {
   Lightning,
   CaretLeft,
   CaretRight,
+  CaretDoubleRight,
   PaperPlaneTilt,
   SealCheck,
   Warning,
@@ -22,6 +25,7 @@ import {
   ArrowRight,
   CheckCircle,
   Circle,
+  SignOut,
 } from '@phosphor-icons/react'
 
 // ─── Spring Configs (Emil Kowalski style) ────────────────────────────────────
@@ -203,71 +207,238 @@ const monoStyle = (extra = {}) => ({
   ...extra,
 })
 
+// ─── Profile data ─────────────────────────────────────────────────────────────
+const PROFILE = {
+  name:   'Azra Şahin',
+  role:   '3. Sınıf · Bilgisayar Müh.',
+  avatar: 'https://i.pravatar.cc/96?img=47',
+}
+
 // ─── NavRail ─────────────────────────────────────────────────────────────────
-function NavRail({ activeNav, onNav }) {
+function NavRail({ activeNav, onNav, isExpanded, onToggle }) {
   const reduce = useReducedMotion()
+
+  const NAV_W_OPEN   = 240
+  const NAV_W_CLOSED = 72
+
   return (
-    <nav
+    <motion.nav
       aria-label="Ana navigasyon"
+      animate={{ width: isExpanded ? NAV_W_OPEN : NAV_W_CLOSED }}
+      transition={spring.smooth}
       style={{
-        width: 72, flexShrink: 0,
+        flexShrink: 0, overflow: 'hidden',
         background: T.navBg,
-        display: 'flex', flexDirection: 'column', alignItems: 'center',
-        padding: '20px 0', gap: 4,
+        display: 'flex', flexDirection: 'column',
+        padding: '0', gap: 0,
         minHeight: '100dvh', position: 'sticky', top: 0,
+        zIndex: 20,
       }}
     >
-      {/* Logo */}
-      <motion.button
-        onClick={() => onNav('home')}
-        aria-label="Ana Sayfa"
-        whileHover={reduce ? {} : { scale: 1.1 }}
-        whileTap={reduce ? {} : { scale: 0.92 }}
-        style={{ background: 'none', border: 'none', cursor: 'pointer', marginBottom: 20, padding: 0 }}
-      >
-        <svg width="30" height="30" viewBox="0 0 30 30" fill="none" aria-hidden="true">
-          <circle cx="15" cy="15" r="13.5" stroke="#6EE7B7" strokeWidth="1.5" />
-          <path d="M10 9L15.5 15L10 21M15 15H21" stroke="#6EE7B7" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-      </motion.button>
-
-      {NAV_ITEMS.map((item) => {
-        const Icon = item.icon
-        const isActive = activeNav === item.id
-        return (
-          <motion.button
-            key={item.id}
-            id={`nav-${item.id}`}
-            onClick={() => onNav(item.id)}
-            title={item.label}
-            aria-label={item.label}
-            aria-current={isActive ? 'page' : undefined}
-            whileHover={reduce ? {} : { scale: 1.08 }}
-            whileTap={reduce ? {} : { scale: 0.92 }}
-            style={{
-              position: 'relative', width: 44, height: 44,
-              borderRadius: 12, border: 'none', cursor: 'pointer',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              background: 'transparent',
-              color: isActive ? '#FFFFFF' : 'rgba(255,255,255,0.38)',
-              transition: 'color 0.2s',
-            }}
-          >
-            {isActive && (
-              <motion.div
-                layoutId="nav-pill"
+      {/* ── Top: Logo + toggle ────────────────────────── */}
+      <div style={{
+        display: 'flex', alignItems: 'center',
+        justifyContent: isExpanded ? 'space-between' : 'center',
+        padding: isExpanded ? '18px 16px 14px' : '18px 0 14px',
+        borderBottom: '1px solid rgba(255,255,255,0.06)',
+      }}>
+        {/* Logo — click toggles panel */}
+        <motion.button
+          id="nav-logo"
+          onClick={onToggle}
+          aria-label={isExpanded ? 'Paneli kapat' : 'Paneli aç'}
+          whileHover={reduce ? {} : { scale: 1.04 }}
+          whileTap={reduce ? {} : { scale: 0.96 }}
+          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center' }}
+        >
+          <AnimatePresence mode="wait">
+            {isExpanded ? (
+              <motion.img
+                key="logo-full"
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.9 }}
                 transition={spring.snappy}
-                style={{
-                  position: 'absolute', inset: 0, borderRadius: 12,
-                  background: 'rgba(255,255,255,0.12)',
-                }}
+                src={logoKnot}
+                alt="K-not Logo"
+                style={{ height: 40, width: 'auto', objectFit: 'contain' }}
+              />
+            ) : (
+              <motion.img
+                key="logo-icon"
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.9 }}
+                transition={spring.snappy}
+                src={logoK}
+                alt="K Logo"
+                style={{ height: 56, width: 56, objectFit: 'contain' }}
               />
             )}
-            <Icon size={20} weight={isActive ? 'fill' : 'regular'} style={{ position: 'relative', zIndex: 1 }} />
-          </motion.button>
-        )
-      })}
-    </nav>
+          </AnimatePresence>
+        </motion.button>
+
+        {/* Collapse arrow — only visible when expanded */}
+        <AnimatePresence>
+          {isExpanded && (
+            <motion.button
+              initial={{ opacity: 0, scale: 0.8 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.8 }}
+              transition={spring.snappy}
+              onClick={onToggle}
+              aria-label="Kapat"
+              whileHover={reduce ? {} : { scale: 1.1 }}
+              whileTap={reduce ? {} : { scale: 0.9 }}
+              style={{
+                background: 'rgba(255,255,255,0.08)', border: 'none',
+                width: 26, height: 26, borderRadius: 8,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                cursor: 'pointer', color: 'rgba(255,255,255,0.5)', flexShrink: 0,
+              }}
+            >
+              <CaretLeft size={13} weight="bold" />
+            </motion.button>
+          )}
+        </AnimatePresence>
+      </div>
+
+      {/* ── Nav items ─────────────────────────────────── */}
+      <div style={{ flex: 1, padding: '8px 0', display: 'flex', flexDirection: 'column', gap: 2 }}>
+        {NAV_ITEMS.map((item) => {
+          const Icon = item.icon
+          const isActive = activeNav === item.id
+          return (
+            <div key={item.id} style={{ padding: '0 12px' }}>
+              <motion.button
+                id={`nav-${item.id}`}
+                onClick={() => onNav(item.id)}
+                title={!isExpanded ? item.label : undefined}
+                aria-label={item.label}
+                aria-current={isActive ? 'page' : undefined}
+                whileHover={reduce ? {} : { scale: isExpanded ? 1.01 : 1.06 }}
+                whileTap={reduce ? {} : { scale: 0.94 }}
+                style={{
+                  position: 'relative', width: '100%', height: 40,
+                  borderRadius: 10, border: 'none', cursor: 'pointer',
+                  display: 'flex', alignItems: 'center',
+                  justifyContent: isExpanded ? 'flex-start' : 'center',
+                  gap: 10, padding: isExpanded ? '0 10px' : 0,
+                  background: 'transparent',
+                  color: isActive ? '#FFFFFF' : 'rgba(255,255,255,0.4)',
+                  transition: 'color 0.18s',
+                }}
+              >
+                {isActive && (
+                  <motion.div
+                    layoutId="nav-pill"
+                    transition={spring.snappy}
+                    style={{
+                      position: 'absolute', inset: 0, borderRadius: 10,
+                      background: 'rgba(255,255,255,0.11)',
+                    }}
+                  />
+                )}
+                <Icon size={19} weight={isActive ? 'fill' : 'regular'} style={{ position: 'relative', zIndex: 1, flexShrink: 0 }} />
+                <AnimatePresence>
+                  {isExpanded && (
+                    <motion.span
+                      initial={{ opacity: 0, x: -8 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      exit={{ opacity: 0, x: -8 }}
+                      transition={spring.snappy}
+                      style={{
+                        position: 'relative', zIndex: 1,
+                        fontFamily: 'Inter, sans-serif',
+                        fontSize: 13, fontWeight: isActive ? 600 : 400,
+                        whiteSpace: 'nowrap',
+                        color: isActive ? '#FFFFFF' : 'rgba(255,255,255,0.55)',
+                      }}
+                    >
+                      {item.label}
+                    </motion.span>
+                  )}
+                </AnimatePresence>
+              </motion.button>
+            </div>
+          )
+        })}
+      </div>
+
+      {/* ── Bottom: mini avatar (collapsed) or sign-out (expanded) ── */}
+      <div style={{
+        borderTop: '1px solid rgba(255,255,255,0.06)',
+        padding: '12px',
+        display: 'flex', alignItems: 'center',
+        justifyContent: isExpanded ? 'space-between' : 'center',
+        gap: 8,
+      }}>
+        {/* Mini avatar — always visible */}
+        <motion.button
+          onClick={onToggle}
+          aria-label="Profil"
+          whileHover={reduce ? {} : { scale: 1.06 }}
+          whileTap={reduce ? {} : { scale: 0.94 }}
+          style={{
+            background: 'none', border: 'none', cursor: 'pointer', padding: 0,
+            display: 'flex', alignItems: 'center', gap: 8, minWidth: 0,
+          }}
+        >
+          <div style={{
+            width: 30, height: 30, borderRadius: 8, flexShrink: 0, overflow: 'hidden',
+            border: '1.5px solid rgba(110,231,183,0.3)',
+          }}>
+            <img
+              src={PROFILE.avatar}
+              alt={PROFILE.name}
+              width={30} height={30}
+              style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+              onError={e => {
+                e.target.style.display = 'none'
+                e.target.parentElement.style.background = 'linear-gradient(135deg,#0D9488,#065F46)'
+                e.target.parentElement.innerHTML = '<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-family:Inter,sans-serif;font-size:11px;font-weight:700;color:#fff">AŞ</div>'
+              }}
+            />
+          </div>
+          <AnimatePresence>
+            {isExpanded && (
+              <motion.span
+                initial={{ opacity: 0, x: -6 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -6 }}
+                transition={spring.snappy}
+                style={{ fontFamily: 'Inter, sans-serif', fontSize: 12, fontWeight: 500, color: 'rgba(255,255,255,0.6)', whiteSpace: 'nowrap' }}
+              >
+                {PROFILE.name}
+              </motion.span>
+            )}
+          </AnimatePresence>
+        </motion.button>
+
+        {/* Sign-out — only when expanded */}
+        <AnimatePresence>
+          {isExpanded && (
+            <motion.button
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={spring.snappy}
+              aria-label="Çıkış"
+              whileHover={reduce ? {} : { scale: 1.1 }}
+              whileTap={reduce ? {} : { scale: 0.9 }}
+              style={{
+                background: 'rgba(255,255,255,0.06)', border: 'none',
+                width: 28, height: 28, borderRadius: 8,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                cursor: 'pointer', color: 'rgba(255,255,255,0.4)', flexShrink: 0,
+              }}
+            >
+              <SignOut size={14} />
+            </motion.button>
+          )}
+        </AnimatePresence>
+      </div>
+    </motion.nav>
   )
 }
 
@@ -1053,8 +1224,9 @@ function CenterShell({ activeNav, activeClaim, onCite, onNavigate, reduce }) {
 
 // ─── App Root ─────────────────────────────────────────────────────────────────
 export default function App() {
-  const [activeNav,   setActiveNav]   = useState('courses')
-  const [activeClaim, setActiveClaim] = useState(CONVERSATION.claims[0])
+  const [activeNav,    setActiveNav]    = useState('courses')
+  const [activeClaim,  setActiveClaim]  = useState(CONVERSATION.claims[0])
+  const [navExpanded,  setNavExpanded]  = useState(false)
   const reduce = useReducedMotion()
 
   const handleCite = useCallback((claim) => {
@@ -1063,15 +1235,22 @@ export default function App() {
 
   const handleNav = useCallback((id) => {
     setActiveNav(id)
-    // Clear source panel when leaving workspace
     if (id !== 'courses') setActiveClaim(null)
-    // Restore default when entering workspace
     if (id === 'courses') setActiveClaim(CONVERSATION.claims[0])
+  }, [])
+
+  const handleToggleNav = useCallback(() => {
+    setNavExpanded(prev => !prev)
   }, [])
 
   return (
     <div style={{ display: 'flex', minHeight: '100dvh', fontFamily: 'Inter, sans-serif', background: T.paper }}>
-      <NavRail activeNav={activeNav} onNav={handleNav} />
+      <NavRail
+        activeNav={activeNav}
+        onNav={handleNav}
+        isExpanded={navExpanded}
+        onToggle={handleToggleNav}
+      />
       <CenterShell
         activeNav={activeNav}
         activeClaim={activeClaim}
@@ -1079,7 +1258,6 @@ export default function App() {
         onNavigate={handleNav}
         reduce={reduce}
       />
-      {/* Source viewer only visible in workspace */}
       <AnimatePresence>
         {activeNav === 'courses' && (
           <motion.div
