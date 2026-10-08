@@ -13,9 +13,10 @@ import uuid
 
 from knot_rag.config import SupportSettings
 from knot_rag.context.builder import BuiltContext, ContextBuilder
+from knot_rag.evidence.conflicts import detect_claim_conflicts, model_conflicts
 from knot_rag.evidence.coverage import question_coverage
 from knot_rag.evidence.mapper import EvidenceMapper
-from knot_rag.evidence.support import SupportAssessor, SupportDecision, aggregate_status
+from knot_rag.evidence.support import SupportAssessor, SupportDecision, aggregate_status, weakest
 from knot_rag.generation.generator import GroundedGenerator
 from knot_rag.retrieval.service import RetrievalResult, RetrievalService
 from knot_rag.schemas.answer import (
@@ -47,6 +48,16 @@ MSG_NO_SUPPORTED = "Üretilen ifadelerin hiçbiri kaynaklarla doğrulanamadı; y
 MSG_PARTIAL = "Yanıtın yalnızca bir kısmı için yeterli kanıt var."
 MSG_UNCOVERED = "Materyallerde karşılığı bulunamayan kavramlar: {terms}"
 MSG_NOT_CONFIRMED = "Kaynak alıntısı doğrulandı ancak anlamsal destek ayrıca doğrulanmadı."
+MSG_CONFLICT = "Kaynaklar bu konuda çelişiyor ({ids}); hangisinin doğru olduğu materyallerden belirlenemiyor."
+MSG_CONFLICT_CLAIM = "Bu ifade başka bir kaynakla çelişiyor ({ids})."
+
+
+def _cap_for_conflict(d: SupportDecision, ids: str) -> SupportDecision:
+    """A claim contradicted by another source is at most GEVEŞEK (never raised)."""
+    status = weakest(d.status, SupportStatus.PARTIALLY_SUPPORTED)
+    note = MSG_CONFLICT_CLAIM.format(ids=ids)
+    explanation = f"{d.explanation} {note}" if d.explanation else note
+    return SupportDecision(status, explanation, d.assessment, True, relevance_only_cap=False)
 
 
 def _overall_verification(levels: list[VerificationLevel]) -> VerificationLevel:
@@ -168,6 +179,17 @@ class RagService:
         gen = self.generator.generate(result.query.normalized, req.scope.course_id, built.evidence)
         mapped = self.mapper.map(gen.answer, built.evidence)
         decisions = self.assessor.assess_all(mapped, result.query.normalized)
+        known = {e.evidence_id for e in built.evidence}
+        conflicts = model_conflicts([c.evidence_ids for c in gen.answer.conflicts], mapped, known)
+        conflicts += detect_claim_conflicts(mapped)
+        conflict_ids: dict[str, set[str]] = {}
+        for cf in conflicts:
+            for cid in cf.claim_ids:
+                conflict_ids.setdefault(cid, set()).update(cf.evidence_ids)
+        decisions = [
+            _cap_for_conflict(d, ", ".join(sorted(conflict_ids[m.claim_id]))) if m.claim_id in conflict_ids else d
+            for m, d in zip(mapped, decisions)
+        ]
         claims: list[Claim] = []
         issues = []
         backing_texts: list[str] = []
@@ -204,6 +226,10 @@ class RagService:
         else:
             overall = SupportStatus.PARTIALLY_SUPPORTED
         missing = list(gen.answer.missing)
+        for cf in conflicts:
+            msg = MSG_CONFLICT.format(ids=", ".join(cf.evidence_ids))
+            if msg not in missing:
+                missing.append(msg)
         context_texts = [f"{e.document_title} {e.location.section_title or ''} {e.text}" for e in built.evidence]
         coverage = question_coverage(result.query.normalized, backing_texts, context_texts)
         # Not ANSWERED if the cited evidence covers too little of the question. `absent_from_context`
