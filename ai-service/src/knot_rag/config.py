@@ -55,6 +55,12 @@ class LLMSettings:
     max_output_tokens: int = 1200
     json_mode: bool = True
     max_attempts: int = 2
+    # Spend/transmission policy (default: nothing leaves the server, $0). Calls to a non-loopback
+    # endpoint need LLM_ALLOW_EXTERNAL=true, a budget > 0 and both prices; see providers/policy.py.
+    allow_external: bool = False
+    budget_usd: float = 0.0
+    price_input_per_mtok: float | None = None
+    price_output_per_mtok: float | None = None
 
 
 @dataclass(frozen=True)
@@ -122,6 +128,10 @@ class Settings:
                     max_output_tokens=int(g("LLM_MAX_OUTPUT_TOKENS", "1200")),
                     json_mode=_bool(g("LLM_JSON_MODE"), True),
                     max_attempts=int(g("LLM_MAX_ATTEMPTS", "2")),
+                    allow_external=_bool(g("LLM_ALLOW_EXTERNAL"), False),
+                    budget_usd=float(g("LLM_BUDGET_USD", "0")),
+                    price_input_per_mtok=_opt_float(g("LLM_PRICE_INPUT_PER_MTOK")),
+                    price_output_per_mtok=_opt_float(g("LLM_PRICE_OUTPUT_PER_MTOK")),
                 ),
             )
         except ValueError as exc:
@@ -147,3 +157,5 @@ class Settings:
             raise ConfigurationError("SUPPORT_JUDGE must be none or llm.")
         if self.llm.max_attempts < 1:
             raise ConfigurationError("LLM_MAX_ATTEMPTS must be >= 1.")
+        if self.llm.budget_usd < 0:
+            raise ConfigurationError("LLM_BUDGET_USD must be >= 0.")

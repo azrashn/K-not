@@ -20,6 +20,9 @@ class LLMRequest:
 class LLMResponse:
     text: str
     finish_reason: str | None = None
+    # Token usage as reported by the provider (None when unknown); used for spend accounting.
+    input_tokens: int | None = None
+    output_tokens: int | None = None
 
 
 class ProviderError(Exception):

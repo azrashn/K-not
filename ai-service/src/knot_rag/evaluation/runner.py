@@ -5,7 +5,9 @@
 
 `--corpus` seeds a throw-away in-memory Chroma (offline mode). Omit it to evaluate against
 the index configured via environment (CHROMA_*), e.g. one built by WBS-2.
-`--provider env` uses the LLM configured via LLM_* variables (a real model).
+`--provider extractive` (default) is offline and free. `--provider env` uses the LLM configured
+via LLM_* variables; a non-local endpoint is refused unless LLM_ALLOW_EXTERNAL=true, a
+LLM_BUDGET_USD > 0 and prices are set (providers/policy.py), and the budget is a hard cap.
 """
 
 from __future__ import annotations
@@ -95,7 +97,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--dataset", required=True)
     ap.add_argument("--corpus", help="Seed an in-memory Chroma with this corpus JSON (offline mode).")
     ap.add_argument("--embedding", choices=["hashing", "env"], default="env")
-    ap.add_argument("--provider", choices=["extractive", "env", "none"], default="env")
+    ap.add_argument("--provider", choices=["extractive", "env", "none"], default="extractive")
     ap.add_argument("--min-score", type=float, default=None, help="Score floor used for the answer step.")
     ap.add_argument("--out", help="Write the JSON report here.")
     args = ap.parse_args(argv)
