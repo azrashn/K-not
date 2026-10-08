@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import request from 'supertest';
 
-import { fingerprint, IndexVersionService } from '../../src/ai/index-versions';
+import { EmbeddingConfiguration, fingerprint, IndexVersionService } from '../../src/ai/index-versions';
 import { hashPassword } from '../../src/auth/auth.service';
 import { createApp } from '../../src/bootstrap';
 import { JsonLogger } from '../../src/common/logging';
@@ -21,6 +21,8 @@ export const PASSWORD = 'correct-horse-battery';
 export const CALLBACK_TOKEN = 'cb-test-token-0123456789';
 export const RAG_TOKEN = 'rag-test-token-0123456789';
 export const PDF = Buffer.from('%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF\n');
+
+jest.setTimeout(30_000); // API tests do several logins + real MySQL round trips
 
 let passwordHash: Promise<string> | null = null;
 
@@ -83,8 +85,9 @@ export class Harness {
     return this.app.get(JobsService);
   }
 
-  /** Fresh database + fixture world: 5 users, 2 courses, ACTIVE e5-small IndexVersion. */
-  async reset(): Promise<World> {
+  /** Fresh database + fixture world: 5 users, 2 courses, an ACTIVE IndexVersion (default: the
+   *  ADR-010 e5-small configuration). */
+  async reset(embedding: EmbeddingConfiguration = E5_SMALL_MVP, collection = 'knot_chunks_v1'): Promise<World> {
     await truncateAll(this.prisma);
     this.ai.reset();
     this.tokens.clear();
@@ -109,15 +112,16 @@ export class Harness {
         { userId: users.mehmet, courseId: os, role: 'STUDENT' },
       ],
     });
-    const fp = fingerprint(E5_SMALL_MVP);
+    const fp = fingerprint(embedding);
     const iv = await this.prisma.indexVersion.create({
       data: {
-        collectionName: 'knot_chunks_v1', embeddingBackend: E5_SMALL_MVP.backend, embeddingModel: E5_SMALL_MVP.model,
-        embeddingRevision: E5_SMALL_MVP.revision, embeddingDimension: 384, queryPrefix: 'query: ', documentPrefix: 'passage: ',
-        normalize: true, distance: 'cosine', embeddingFingerprint: fp, chunkerVersion: 'c1', status: 'ACTIVE', activatedAt: new Date(),
+        collectionName: collection, embeddingBackend: embedding.backend, embeddingModel: embedding.model,
+        embeddingRevision: embedding.revision, embeddingDimension: embedding.dimension, queryPrefix: embedding.query_prefix,
+        documentPrefix: embedding.document_prefix, normalize: embedding.normalize, distance: embedding.distance,
+        embeddingFingerprint: fp, chunkerVersion: 'c1', status: 'ACTIVE', activatedAt: new Date(),
       },
     });
-    this.ai.readyIndex = { collection: 'knot_chunks_v1', embedding_fingerprint: fp, index_version_id: iv.id };
+    this.ai.readyIndex = { collection, embedding_fingerprint: fp, index_version_id: iv.id };
     this.world = { users, courses: { vy, os }, ivId: iv.id, fingerprint: fp };
     this.app.get(IndexVersionService).invalidate();
     return this.world;

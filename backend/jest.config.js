@@ -11,7 +11,7 @@ const base = {
 module.exports = {
   projects: [
     { ...base, displayName: 'unit', testMatch: ['<rootDir>/test/unit/**/*.spec.ts'] },
-    { ...base, displayName: 'api', testMatch: ['<rootDir>/test/api/**/*.spec.ts'], testTimeout: 30000 },
-    { ...base, displayName: 'integration', testMatch: ['<rootDir>/test/integration/**/*.spec.ts'], testTimeout: 600000 },
+    { ...base, displayName: 'api', testMatch: ['<rootDir>/test/api/**/*.spec.ts'] },
+    { ...base, displayName: 'integration', testMatch: ['<rootDir>/test/integration/**/*.spec.ts'] }, // timeout set in the spec
   ],
 };

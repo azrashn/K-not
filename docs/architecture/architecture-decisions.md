@@ -203,12 +203,12 @@ Run on `feature/wbs-1-architecture` on 2026-10-08. Result: **60 checks passed, 0
 
 | # | Decision | Recommendation | Blocking? |
 | --- | --- | --- | --- |
-| U1 | Authentication mechanism (JWT details, registration vs. seed only) | E-mail + password, JWT bearer, accounts seeded for the demo | Not for WBS-2; blocks WBS-4/5 |
+| U1 | ~~Authentication mechanism~~ **Decided (WBS-4, 2026-10-08):** seed-only accounts; e-mail + password with Argon2id; HS256 access JWT (1 h) as `Authorization: Bearer`; no refresh tokens; login rate limit (§8) | — | Resolved |
 | U2 | LLM provider (hosted API vs. local) and credentials | Decide with a data-protection note for student documents | Not for WBS-2 |
 | U3 | ~~Final embedding model + revision (ADR-010)~~ **Decided for the MVP:** e5-small `614241f…` (§3.1) | Re-check with real course data and an independent label review | No |
 | U4 | ~~PDF extraction library and chunk parameters within the bounds~~ **Decided:** ADR-021 to ADR-024 | — | Resolved |
 | U5 | Deployment topology (docker-compose: MySQL, Chroma, ai-service, NestJS, shared volume) | WBS-9 | Not for WBS-2 development |
-| U6 | Redaction of stored answer excerpts after document deletion | Redact on delete for PRIVATE documents | No |
+| U6 | Redaction of stored answer excerpts after document deletion | Redact on delete for PRIVATE documents | **Deferred (WBS-4 decision):** answers are not persisted in WBS-4, so no excerpts of deleted documents are stored. Must be decided before any answer persistence (WBS-8) |
 | U7 | Upload limits (30 MB / 400 pages) | Confirm with real course PDFs | No |
 | U8 | Whether students may later share documents with the course | DEFERRED to Phase 2 (needs moderation) | No |
 
@@ -243,3 +243,27 @@ leaves to WBS-2 are listed below. Changing any of them requires a new `indexing_
 plus the existing WBS-3 suite: 310 passed. Embeddings in these tests are the deterministic
 `HashingEmbedder`; no real embedding model has been run against ingested PDFs yet (ADR-010
 remains PROVISIONAL).
+
+## 8. WBS-4 implementation record (`backend/`, 2026-10-08)
+
+Implemented on `feature/backend-api`. The contracts in this folder are unchanged. The
+following decisions were taken within them:
+
+| Topic | Decision |
+| --- | --- |
+| Stack | NestJS 11 (CommonJS; NestJS 12 is ESM-only), TypeScript 5.9, Prisma 7 with the MariaDB driver adapter, MySQL 8.0 |
+| Schema | `data-model.md` §5 verbatim, as the initial migration |
+| Auth (U1) | Seed-only accounts; Argon2id (19 MiB, t=2, p=1); HS256 JWT (1 h); the user must still exist on every request; login limited to 10 per minute per IP and e-mail |
+| Public error envelope | The WBS-3 `ErrorResponse` shape with `schema_version: "api.v1"`. `document-contract.md` §11 fixes only the shape, so this value is a new label for the public API |
+| Answer persistence (U6) | None. `GroundedAnswer` is proxied unchanged plus the `documents` map |
+| Scope | Derived from MySQL per request (api-contracts §5). Client `document_ids` are intersected. Extra fields such as `scope`, `user_id` or `course_id` are rejected with 422 |
+| Leakage defence | Evidence or citations outside the derived scope fail closed with 500 and an `rag.scope_violation_blocked` log entry |
+| Job events while `QUEUED` | Accepted, moving the job to RUNNING. A dispatch response can be lost after Python accepted the job; otherwise the job would only recover through a stall |
+| Job creation | The document row is locked (`FOR UPDATE`) before the job is inserted, so concurrent creators fail cleanly with 409 instead of deadlocking |
+| Admin operations | CLI (`backend/scripts/admin.ts`): reconcile, purge, sweep, index check. Migration and activation are **not implemented** yet |
+
+**Verification:**
+- **unit + api:** 118 tests on real MySQL 8, with a fake ai-service double.
+- **Real integration:** NestJS → Python WBS-2 → HTTP callbacks → READY → WBS-3 `/answer` and
+  `/retrieve` → purge, with the hashing embedder and with the pinned e5-small model. All passed.
+- **Python suite:** unchanged, 312 passed.
