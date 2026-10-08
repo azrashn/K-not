@@ -76,4 +76,10 @@ class OpenAICompatibleProvider:
             raise ProviderResponseError("provider output truncated (max tokens)")
         if not text.strip():
             raise ProviderResponseError("empty provider output")
-        return LLMResponse(text=text, finish_reason=finish)
+        usage = data.get("usage") if isinstance(data, dict) else None
+        usage = usage if isinstance(usage, dict) else {}
+        return LLMResponse(
+            text=text, finish_reason=finish,
+            input_tokens=usage.get("prompt_tokens") if isinstance(usage.get("prompt_tokens"), int) else None,
+            output_tokens=usage.get("completion_tokens") if isinstance(usage.get("completion_tokens"), int) else None,
+        )
