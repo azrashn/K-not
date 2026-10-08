@@ -34,6 +34,10 @@
 | ADR-018 | Every chunk is tagged `x_job_id` (existing `x_` extension); read-back verification before `SUCCEEDED` | ACCEPTED | review item 2 | [document-lifecycle.md §4.4](document-lifecycle.md#44-defences-against-duplicate-execution-layered) |
 | ADR-019 | Canonical document role = WBS-3 `DocumentType` (`slide/notes/textbook/past_exam/other`); file format = `mime_type`; frontend labels mapped by WBS-5 | ACCEPTED | proposal I1 | [document-contract.md §9](document-contract.md#9-public-document-status-indexingstatus-as-seen-by-the-frontend) |
 | ADR-020 | Status updates by polling (3 s) in Phase 1; no WebSockets | ACCEPTED | — | [api-contracts.md §1](api-contracts.md#1-common-rules) |
+| ADR-021 | PDF extraction with **pypdf 6.17.0** (BSD), pinned exactly; startup refuses another version, because extracted text is part of `indexing_version` `c1` | ACCEPTED (WBS-2) | U4 | §7 |
+| ADR-022 | `c1` text rules: NFC, explicit ligatures, whitespace rules, lowercase-continuation de-hyphenation; **no header/footer removal** | ACCEPTED (WBS-2) | U4 | §7 |
+| ADR-023 | `c1` chunking: prose packed to ≤ 1,200 characters (splits leave ≥ 800), hard max 1,500, minimum 20; overlap ≤ 150 characters from a sentence/line start for prose, **none for slides** | ACCEPTED (WBS-2) | U4 | §7 |
+| ADR-024 | `section_title` = first line of the slide page (≤ 300 characters); prose chunks have none in `c1` | ACCEPTED (WBS-2) | U4 | §7 |
 
 **Superseded guidance:** where `docs/rag-integration.md` (WBS-2/WBS-4 sections and its
 suggested Prisma models) differs from this folder, this folder wins. That file now links
@@ -134,7 +138,7 @@ Run on `feature/wbs-1-architecture` on 2026-10-08. Result: **60 checks passed, 0
 | R1 | Embedding model not validated (ADR-010) | Retrieval quality unknown; Turkish/mixed questions may underperform | Run the pre-registered procedure before the integration milestone (WBS-3/8) |
 | R2 | In-process worker loses queued jobs on restart | Up to ~5 min + backoff delay; re-embedding cost | Sweeper + idempotent jobs; replace with a persistent queue after the MVP (ADR-009) |
 | R3 | Reindex makes documents temporarily unavailable; a failed reindex leaves no chunks | Q&A gaps during reindex | Throttling, retries, stored excerpts (ADR-008) |
-| R4 | C-1 not yet implemented: revision/prefix drift between writer and reader goes undetected | Silently degraded retrieval | Implement C-1 before WBS-2 indexes real data; until then the guard compares the model name only |
+| R4 | ~~C-1 not yet implemented~~ **Resolved:** C-1 implemented on `feature/document-ingestion`; drift now raises `ConfigurationError` | — | Legacy (pre-C-1) collections are still read with the model/dimension check only and log `rag.index.legacy_stamp`; re-create them before production use |
 | R5 | PDF extraction quality (Turkish characters, ligatures, columns, hyphenation) | Wrong offsets or retrieval misses | Determinism rules, Turkish fixture tests (T2), extractor pinned (WBS-2) |
 | R6 | Two embedding models in memory during migration; CPU embedding throughput unmeasured | Out-of-memory, slow indexing | Concurrency 1, batch size configurable; measure in WBS-2 tests |
 | R7 | Offsets are code points; JavaScript uses UTF-16 | Highlight shifts on non-BMP characters | Code-point slicing documented (document-contract §10); WBS-5 test with `𝑛` |
@@ -150,7 +154,7 @@ Run on `feature/wbs-1-architecture` on 2026-10-08. Result: **60 checks passed, 0
 | U1 | Authentication mechanism (JWT details, registration vs. seed only) | E-mail + password, JWT bearer, accounts seeded for the demo | Not for WBS-2; blocks WBS-4/5 |
 | U2 | LLM provider (hosted API vs. local) and credentials | Decide with a data-protection note for student documents | Not for WBS-2 |
 | U3 | Final embedding model + revision (ADR-010) | Run the procedure in §3 | Not for WBS-2 code (config-driven); blocks "accepted" quality claims |
-| U4 | PDF extraction library and chunk parameters within the bounds | WBS-2 proposes, records an ADR entry | Inside WBS-2 |
+| U4 | ~~PDF extraction library and chunk parameters within the bounds~~ **Decided:** ADR-021 to ADR-024 | — | Resolved |
 | U5 | Deployment topology (docker-compose: MySQL, Chroma, ai-service, NestJS, shared volume) | WBS-9 | Not for WBS-2 development |
 | U6 | Redaction of stored answer excerpts after document deletion | Redact on delete for PRIVATE documents | No |
 | U7 | Upload limits (30 MB / 400 pages) | Confirm with real course PDFs | No |
@@ -164,3 +168,26 @@ WBS-1):
 - Citation `seg` → `chunk_id` + `highlight`.
 - Page viewer backed by `GET /documents/:id/pages/:page`.
 - Status polling.
+
+## 7. WBS-2 implementation record (`indexing_version` `c1`)
+
+Implemented on `feature/document-ingestion` as `ai-service/src/knot_ingest/`. The decisions
+that [wbs2-handoff.md §13](wbs2-handoff.md#13-decisions-left-to-wbs-2-within-the-constraints-above)
+leaves to WBS-2 are listed below. Changing any of them requires a new `indexing_version`.
+
+| Decision | `c1` value | Why |
+| --- | --- | --- |
+| Extraction library | pypdf 6.17.0, `extract_text()` default (plain) mode | BSD licence; pure Python; deterministic |
+| Text rules | NFC → ligatures (`ﬀ ﬁ ﬂ ﬃ ﬄ`) → `\r`/tab/NBSP → remove Cc except `\n` → collapse spaces, strip each line → de-hyphenate → at most `\n\n` → NFC | Handoff §5; NBSP is treated as a space |
+| Hyphenation | Join `letter-⏎letter` only when the next letter is lowercase (Turkish-aware `str.islower`) | Keeps `Ağaç-⏎Yapısı` and `2-⏎3` |
+| Headers/footers | Not removed | Slide titles often repeat; removing them loses content |
+| Chunk size | Prose packed greedily to ≤ 1,200 characters; long paragraphs split at the last paragraph/sentence break that leaves ≥ 800 characters, else at whitespace; slides one chunk per page, split only above 1,500 | Handoff §6 |
+| Overlap | Prose: ≤ 150 characters, starting at the earliest sentence or line start in the window (else a word start), never beyond 1,500 total. Slides: none | Slide overlap would make a page-4 chunk start on page 2, so the citation label would read `s.2–4` |
+| `section_title` | Slides: the first line of the page where the chunk's content starts, if ≤ 300 characters. Prose: omitted | No reliable heading signal in plain extracted text |
+| Error code for an unsupported `indexing_version` | HTTP 422 with code `UNSUPPORTED_INDEXING_VERSION` (other 422s use `VALIDATION_ERROR`) | The handoff names the specific code; NestJS treats every 422 as non-retryable |
+| Reconcile | Documents with a queued or running local job are treated as live even if missing from `live_document_ids` | Protects documents uploaded after NestJS built the list |
+
+**Verification (2026-10-08):** 117 WBS-2 tests (T1–T17 and the additional failure scenarios)
+plus the existing WBS-3 suite: 310 passed. Embeddings in these tests are the deterministic
+`HashingEmbedder`; no real embedding model has been run against ingested PDFs yet (ADR-010
+remains PROVISIONAL).

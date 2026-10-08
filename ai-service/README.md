@@ -101,7 +101,28 @@ src/knot_rag/
   api/          FastAPI app: auth, request IDs, error envelope
   evaluation/   Metric definitions + runner
   pipeline.py   RagService orchestration      bootstrap.py  composition root
-tests/          unit/ integration/ evaluation/ fixtures/
+src/knot_ingest/  WBS-2 ingestion, same deployable (mounted only with INGEST_ENABLED=true)
+  extraction.py PDF validation + page text (pypdf, pinned)   normalize.py  c1 text rules
+  chunking.py   offset-preserving chunks + pages.v1 artifact  pipeline.py   one job (§4 algorithm)
+  worker.py     bounded in-process queue                      callbacks.py  sequenced NestJS events
+  service.py    accept / delete / reconcile / verify          api.py        /api/v1/ingestion/*
+tests/          unit/ integration/ evaluation/ fixtures/ ingest/
+```
+
+## Ingestion (WBS-2)
+
+Contracts: `docs/architecture/wbs2-handoff.md`, `document-contract.md` (`ingest.v1`,
+`pages.v1`), `document-lifecycle.md`. NestJS posts a job to `POST /api/v1/ingestion/jobs`;
+the worker extracts page text, chunks it (`chunk.text == document_text[char_start:char_end]`),
+embeds with the job's exact `EmbeddingConfiguration`, deletes the document's old chunks,
+writes the new ones tagged `x_job_id`, verifies them by read-back, writes
+`documents/{id}/pages.{indexing_version}.json`, and reports `SUCCEEDED` to NestJS. No OCR:
+scanned PDFs fail with `NO_TEXT_LAYER`. The worker is in-memory (MVP): jobs lost on restart
+are recovered by the NestJS sweeper and are idempotent.
+
+```bash
+pytest tests/ingest        # HashingEmbedder (mock embeddings), in-memory Chroma, callback stub
+python tests/ingest/fixtures/make_pdfs.py   # regenerate fixture PDFs (needs reportlab)
 ```
 
 ## Known limitations (summary)

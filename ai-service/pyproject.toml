@@ -13,6 +13,9 @@ dependencies = [
     "chromadb>=1.0",
     "httpx>=0.27",
     "uvicorn>=0.30",
+    # WBS-2 PDF extraction. Pinned exactly: extracted text is part of indexing_version "c1";
+    # upgrading it requires a new indexing_version (docs/architecture/wbs2-handoff.md §5).
+    "pypdf==6.17.0",
 ]
 
 [project.optional-dependencies]

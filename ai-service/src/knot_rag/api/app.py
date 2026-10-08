@@ -136,6 +136,7 @@ def create_app(components: Components) -> FastAPI:
         }
 
     auth = [Depends(require_internal_auth)]
+    app.state.internal_auth = require_internal_auth  # shared with the WBS-2 ingestion router
 
     @app.post(
         "/api/v1/rag/retrieve",
