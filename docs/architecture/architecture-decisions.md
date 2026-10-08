@@ -267,3 +267,35 @@ following decisions were taken within them:
 - **Real integration:** NestJS → Python WBS-2 → HTTP callbacks → READY → WBS-3 `/answer` and
   `/retrieve` → purge, with the hashing embedder and with the pinned e5-small model. All passed.
 - **Python suite:** unchanged, 312 passed.
+
+## 9. WBS-5 implementation record (frontend integration, 2026-10-08)
+
+Implemented on `feature/frontend-integration`. The contracts are unchanged. The implemented backend
+(WBS-4) is the source of truth. Deviations from the WBS-1 frontend assumptions:
+
+| Topic | WBS-1 / old frontend | Implemented |
+| --- | --- | --- |
+| Course identity | Slug (`veri-yapilari`) | cuid from `GET /courses`. Old mock deep links redirect to `#/dersler` |
+| Course fields | Exam date, topics, progress | Only `code`, `name`, `term`, `instructor_name`, `my_role` and document counts. The rest stays mock-only (Home) |
+| Document types | `slayt`, `not`, `sinav`, `kitap` | API values `slide`, `notes`, `past_exam`, `textbook`, `other`, mapped for display (`src/lib/materials.js`) |
+| Citation | `{doc, page, seg, label}` | `document_id`, `chunk_id`, `evidence_id`, physical `location.page_start`, `quote`, `quote_verified`, `highlight` (Unicode code-point offsets) |
+| Support strength | Derived in the browser from citations | Taken from the server's `support_status` / `support_label`. A citation never upgrades a claim |
+| Logout | — | Client-side only: no endpoint, and the JWT stays valid until it expires (≤ 1 h) |
+| Download | Link | Blob fetch with the bearer token, because `/documents/:id/file` needs auth |
+
+**Frontend decisions:**
+- **Session:** the JWT lives in `sessionStorage` (`knot.session`) and is expired on a timer or on the first 401.
+- **API client:** `src/api/client.js` adds `X-Request-ID`, parses the `api.v1` error envelope and maps network failures to the retryable `NETWORK_ERROR`.
+- **Status polling:** every 3 s while any document is processing, with back-off on retryable errors. It is cancelled on unmount.
+- **Source viewer:** renders only the real `pages.v1` text. A `<mark>` is drawn only when the code-point range of a verified quote lies on that page; otherwise the evidence excerpt is shown. No PDF coordinates or page blocks are synthesised.
+- **Errors vs. insufficient evidence:** service errors (`AI_SERVICE_UNAVAILABLE`, `GENERATION_FAILED`, `PROVIDER_TIMEOUT`, `INDEX_VERSION_MISMATCH`, `RATE_LIMITED`, …) are errors with "Tekrar sor". `INSUFFICIENT_EVIDENCE` is a normal KOPUK answer.
+- **Extractive provider:** answers from `extractive_baseline` carry a notice that they are not produced by a generative language model.
+
+**Backend fix found by the E2E:** the generated Prisma client imported `./internal/class.ts`, so
+`npm run build && npm start` (compiled `dist/`) failed at startup. Tests were unaffected because
+they run under ts-node/jest. The generator now emits extensionless imports
+(`importFileExtension = ""`), which resolve in both. No behaviour change: 118 backend tests still pass.
+
+**Verification:**
+- **Mocked:** 58 Vitest/Testing Library tests with a fake `fetch`.
+- **Real E2E (`npm run test:e2e`):** 15/15 steps. Chromium → `vite preview` → NestJS → MySQL 8, and NestJS → Python ai-service (WBS-2 ingestion, WBS-3 extractive answers, hashing embedder, in-memory Chroma).

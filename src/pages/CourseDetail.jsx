@@ -213,7 +213,7 @@ export default function CourseDetail({ courseId }) {
                 animate={{ opacity: 1, y: 0, transition: { duration: 0.28, ease: EASE_OUT } }}
                 exit={{ opacity: 0, transition: { duration: 0.1 } }}
                 className="border-t border-hair"
-                data-material={m.id}
+                data-material={m.id} data-state={m.status}
               >
                 <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-6 gap-y-1 py-3.5 md:grid-cols-[minmax(0,2.2fr)_5.5rem_4rem_minmax(0,1.5fr)_auto]">
                   <span className="flex min-w-0 items-center gap-3">

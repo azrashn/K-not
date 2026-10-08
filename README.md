@@ -8,24 +8,38 @@ CLAIM → KNOT → SOURCE        ASK → PRACTICE → ANSWER → FEEDBACK → RE
 
 ## Çalıştırma
 
+Ön yüz yalnızca NestJS API'siyle konuşur (`/api` → `backend/`); Python ai-service'e ya da ChromaDB'ye tarayıcıdan erişilmez ve ön yüzde hiçbir iç servis anahtarı yoktur.
+
 ```bash
 npm install
-npm run dev      # http://localhost:5173
-npm run build
+cp .env.example .env   # VITE_API_BASE_URL=/api, VITE_API_PROXY_TARGET=http://localhost:3000
+npm run dev            # http://localhost:5173 — /api istekleri backend'e aktarılır
+npm run build && npx vite preview   # aynı proxy preview'da da geçerli
 ```
+
+Backend ve ai-service kurulumu için `backend/README.md` ve `ai-service/README.md`. Hesaplar yönetici tarafından tohumlanır (kayıt yok); oturum 1 saatlik JWT'dir, süresi dolunca giriş ekranına dönülür.
+
+### Testler
+
+```bash
+npm test           # Vitest + Testing Library: API istemcisi, giriş/oturum, yükleme/durum/silme, yanıt durumları, kaynak vurgusu (sahte fetch)
+npm run test:e2e   # gerçek uçtan uca: Chromium → vite preview → NestJS → MySQL + Python ai-service (sahte yok)
+```
+
+`test:e2e` boş, ayrı bir MySQL veritabanı ister (`E2E_DATABASE_URL`; varsayılan `mysql://knot:knot-dev-password@localhost:3306/knot_e2e`), önceden `npm run build` ve `backend/` içinde `npm run build` gerekir. Veritabanını sıfırlamaz; içinde belge varsa çalışmayı reddeder. Gömme için model indirmeyen `hashing` arka ucunu, yanıt için çıkarımsal temel sağlayıcıyı (LLM değil) kullanır. Chromium yolu: `CHROMIUM_PATH` (varsayılan `/opt/pw-browsers/chromium`).
 
 ## Sayfalar (hash tabanlı rota)
 
-| Rota | Sayfa |
-| --- | --- |
-| `#/` | Ana Sayfa: “Şimdi ne çalışmalıyım?” — tek devam eylemi, tekrar önerisi, son çalışma |
-| `#/dersler` | Dersler: hazırlık durumu ve ders bazlı bilgi ipi |
-| `#/dersler/:id` | Ders: materyaller (Tümü / Slaytlar / Notlar / Geçmiş Sınavlar), durumlar: Yüklendi → Okunuyor → Hazırlanıyor → Hazır / Sorun var |
-| `#/dersler/veri-yapilari/calisma` | AI Çalışma Alanı: iddia satırları, kaynak etiketi, Düğüm Gücü (nedeniyle), kaynak görüntüleyici, İpucu ver / Basitçe açıkla / Bunu test et |
-| `#/quiz` | Pratik: Ders → Konu → Materyaller; çoktan seçmeli, doğru/yanlış, açık uçlu; kanıta bağlı cevap değerlendirmesi |
-| `#/analitik` | Analitik: **Öğrenmem** (Bilgi İpi) ve **Kaynak güveni** (desteklenen / kısmi / desteksiz yanıtlar) |
+| Rota | Sayfa | Veri |
+| --- | --- | --- |
+| `#/dersler` | Dersler: kayıtlı olunan dersler ve hazırlık durumu | **Gerçek** (`GET /courses`) |
+| `#/dersler/:id` | Ders: PDF yükleme, durum izleme (Yüklendi → Okunuyor → Hazırlanıyor → Hazır / Sorun var), yeniden deneme, indirme, silme | **Gerçek** |
+| `#/dersler/:id/calisma` | Çalışma alanı: iddia satırları, sunucunun destek etiketi (SIKI / GEVEŞEK / KOPUK), gerçek sayfa metninde birebir alıntı vurgusu | **Gerçek** (`POST /courses/:id/answers`, `GET /documents/:id/pages/:n`) |
+| `#/` | Ana Sayfa | Örnek veri (backend yok) |
+| `#/quiz` | Pratik | Örnek veri (WBS-6) |
+| `#/analitik` | Analitik | Örnek veri (WBS-7) |
 
-Veri tamamen mock'tur (`src/data`). Quiz sonuçları Bilgi İpi'ni ve tekrar listesini, çalışma alanındaki yanıtlar Kaynak güveni sayaçlarını canlı günceller.
+Örnek veri kullanan ekranlar “Örnek veri” etiketiyle işaretlidir (`src/data`, `src/app/store.jsx`). Eski mock ders bağlantıları (`#/dersler/veri-yapilari…`) ders listesine yönlendirilir.
 
 ## Öğrenme döngüsü
 

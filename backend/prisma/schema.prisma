@@ -5,6 +5,7 @@ generator client {
   provider     = "prisma-client"
   output       = "../src/generated/prisma"
   moduleFormat = "cjs"
+  importFileExtension = "" // extensionless: resolves .js in dist/ (npm start) and .ts under ts-node/jest
 }
 
 datasource db {
