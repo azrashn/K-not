@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import { CaretDown, List } from '@phosphor-icons/react'
-import { TYPE_LABEL } from '../data/academic'
+import { TYPE_LABEL } from '../lib/materials'
 import { EASE_OUT } from '../lib/motion'
 
 export default function Header({ onMenu, showMenu, course, materials, onBack }) {
@@ -66,10 +66,10 @@ export default function Header({ onMenu, showMenu, course, materials, onBack }) 
               </p>
               <ul className="scroll-quiet m-0 max-h-72 list-none overflow-y-auto p-1.5">
                 {ready.map((m) => (
-                  <li key={m.name} className="flex items-center gap-2.5 rounded-md px-2 py-1.5 hover:bg-paper">
+                  <li key={m.id ?? m.name} className="flex items-center gap-2.5 rounded-md px-2 py-1.5 hover:bg-paper">
                     <span className="w-[4.2rem] shrink-0 font-mono text-[10.5px] font-medium uppercase text-ink-3">{TYPE_LABEL[m.type]}</span>
                     <span className="min-w-0 flex-1 truncate font-mono text-[12px] text-ink">{m.name}</span>
-                    <span className="font-mono text-[11px] text-ink-3 num">{m.pages} s.</span>
+                    <span className="font-mono text-[11px] text-ink-3 num">{m.pages ? `${m.pages} s.` : ''}</span>
                   </li>
                 ))}
               </ul>

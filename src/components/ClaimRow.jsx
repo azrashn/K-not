@@ -22,7 +22,7 @@ export default function ClaimRow({ turnId, claim, active, onActivate }) {
         <p className="m-0 text-[17px] leading-[1.62] text-ink text-pretty" style={{ letterSpacing: '-0.012em' }}>
           {claim.text}
           {!gap && claim.cites.map((c) => (
-            <span key={c.label + c.seg} className="ml-2 whitespace-nowrap">
+            <span key={c.chunkId ?? c.label + c.seg} className="ml-2 whitespace-nowrap">
               <CitationPill turnId={turnId} claim={claim} cite={c} active={active} onActivate={() => onActivate(claim, c)} />
             </span>
           ))}

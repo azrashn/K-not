@@ -4,7 +4,7 @@ import { COVERAGE, STATE_TEXT, UNITS, topicState } from '../data/academic'
 import { useApp } from '../app/store'
 import { excerpt, docFile } from '../lib/docs'
 import { PageFrame, Btn, TextLink } from '../components/ui'
-import { MobileBar } from '../components/PageBits'
+import { MobileBar, SampleNotice } from '../components/PageBits'
 import { UnitThread } from '../components/Threads'
 import CitationPill from '../components/Citation'
 import { EASE_OUT } from '../lib/motion'
@@ -38,6 +38,7 @@ export default function Analytics() {
   return (
     <PageFrame>
       <MobileBar />
+      <SampleNotice>Bilgi İpi ve Kaynak Güveni henüz gerçek verilere bağlı değil (WBS-7/8).</SampleNotice>
       <header className="pb-8 pt-4 lg:pt-14">
         <h1 className="display m-0 text-[40px] text-ink sm:text-[52px]">Analitik</h1>
         <div role="tablist" aria-label="Analitik bölümleri" className="mt-6 inline-flex gap-1 rounded-xl bg-ink/[0.05] p-1">

@@ -1,11 +1,12 @@
 import { useState } from 'react'
 import { motion, useReducedMotion } from 'framer-motion'
 import { ArrowUp, FilePdf, ArrowRight } from '@phosphor-icons/react'
-import { STUDENT, RECENT_MATERIALS, UNITS, topicState, STATE_TEXT } from '../data/academic'
+import { RECENT_MATERIALS, UNITS, topicState, STATE_TEXT } from '../data/academic'
+import { useAuth } from '../app/auth'
 import { SUGGESTIONS } from '../data/mock'
 import { useApp } from '../app/store'
 import { PageFrame, Btn, Section, TextLink } from '../components/ui'
-import { MobileBar } from '../components/PageBits'
+import { MobileBar, SampleNotice } from '../components/PageBits'
 import { KnotGlyph } from '../components/KnotStrength'
 import { EASE_OUT } from '../lib/motion'
 
@@ -17,6 +18,8 @@ const greeting = () => {
 export default function Home() {
   const reduce = useReducedMotion()
   const { navigate, topics, review, recentAnswered } = useApp()
+  const { user } = useAuth()
+  const firstName = (user?.display_name || '').trim().split(/\s+/)[0]
   const [q, setQ] = useState('')
 
   // Şimdi ne çalışmalıyım? → devam (AVL) + en çok tekrar gerektiren diğer ünite
@@ -40,9 +43,10 @@ export default function Home() {
   return (
     <PageFrame>
       <MobileBar />
+      <SampleNotice>Bu özet ve öneriler henüz gerçek çalışma geçmişine bağlı değil. Dersler ve materyaller gerçektir.</SampleNotice>
       <header className="pb-10 pt-4 lg:pt-14">
         <motion.h1 {...stagger(0)} className="display m-0 text-[40px] text-ink sm:text-[52px]">
-          {greeting()}, {STUDENT.name}.
+          {greeting()}{firstName ? `, ${firstName}` : ''}.
         </motion.h1>
         <motion.p {...stagger(1)} className="m-0 mt-3 max-w-[34rem] text-[17px] leading-relaxed text-ink-2">
           Veri Yapıları vizesine 6 gün var. Şimdi ne çalışmalı? Tek bir adım yeter.

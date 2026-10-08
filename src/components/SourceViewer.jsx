@@ -1,8 +1,10 @@
 import { useEffect, useRef } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
-import { CaretLeft, CaretRight, FilePdf, X, ArrowBendDownLeft, Warning, MagnifyingGlass, ArrowUpRight } from '@phosphor-icons/react'
-import { DOCS } from '../data/mock'
-import DocPage from './DocPage'
+import { CaretLeft, CaretRight, FilePdf, X, ArrowBendDownLeft, Warning, ArrowUpRight, Quotes } from '@phosphor-icons/react'
+import { api } from '../api/endpoints'
+import { errorText } from '../api/messages'
+import { useResource } from '../hooks/useApi'
+import { pageRange, splitPage } from '../lib/answer'
 import ClaimMark from './ClaimMark'
 import { EASE_OUT } from '../lib/motion'
 
@@ -44,7 +46,7 @@ function ContextStrip({ active, evidence, reduce, onClose }) {
               <div className="min-w-0">
                 <p className={`m-0 text-[12px] font-medium ${lab}`}>
                   {active.claim.tag || 'Seçili ifade'}
-                  <span className="text-ink-3"> · {gap ? 'kaynak bulunamadı' : partial ? 'kısmen destekleyen kanıt' : `kanıt ${evidence?.label ?? ''}`}</span>
+                  <span className="text-ink-3"> · {gap ? 'yeterli kanıt yok' : partial ? 'kısmen destekleyen kanıt' : evidence ? `kanıt ${evidence.label}` : 'kaynak'}</span>
                 </p>
                 <p className="m-0 mt-0.5 line-clamp-2 text-[14.5px] leading-snug text-ink" style={{ letterSpacing: '-0.008em' }}>{active.claim.text}</p>
                 {partial && (
@@ -62,64 +64,98 @@ function ContextStrip({ active, evidence, reduce, onClose }) {
   )
 }
 
-export default function SourceViewer({ view, setView, active, evidence, pulse, nearest, scan, onClose, onAddMaterial }) {
+/** Çıkarılmış sayfa metni (pages.v1). Düzen yeniden üretilmez; yalnızca metin ve doğrulanmış alıntı vurgusu. */
+export function PageSheet({ page, range, strength, pulse, slide }) {
+  const [before, hit, after] = splitPage(page.text, range)
+  return (
+    <div className="mx-auto w-full max-w-[36rem] rounded-[3px] bg-sheet shadow-[0_1px_2px_rgba(22,24,30,0.08),0_12px_28px_-14px_rgba(22,24,30,0.28)]" data-page={page.page}>
+      <article className={`whitespace-pre-wrap break-words px-7 py-6 text-ink-2 ${slide ? 'text-[14.5px] leading-[1.6]' : 'font-serif text-[15.5px] leading-[1.65]'}`} data-page-text>
+        {before}
+        {hit && <mark key={pulse} className="evidence" data-evidence-mark data-strength={strength === 'partial' ? 'partial' : 'full'}>{hit}</mark>}
+        {after}
+        {!page.text && <span className="italic text-ink-3">Bu sayfada okunabilir metin yok (görsel ya da boş sayfa).</span>}
+      </article>
+      <footer className="flex justify-end px-7 pb-4 font-mono text-[11px] text-ink-3 num">{page.page} / {page.page_count}</footer>
+    </div>
+  )
+}
+
+function pageWindow(cur, total, size = 5) {
+  const half = Math.floor(size / 2)
+  const lo = Math.max(1, Math.min(cur - half, total - size + 1))
+  const hi = Math.min(total, lo + size - 1)
+  const out = []
+  for (let p = lo; p <= hi; p++) out.push(p)
+  return out
+}
+
+export default function SourceViewer({ view, setView, active, evidence, pulse, sources = [], scan, onClose, onAddMaterial }) {
   const reduce = useReducedMotion()
   const scroller = useRef(null)
-  const doc = view ? DOCS[view.doc] : null
-  const atEvidence = !!(evidence && view && evidence.doc === view.doc && evidence.page === view.page)
-  const shown = atEvidence ? evidence : null
+  const doc = view ? sources.find((s) => s.id === view.docId) ?? { id: view.docId, title: 'Belge', documentType: 'other' } : null
+  const evidenceHere = !!(evidence && view && evidence.docId === view.docId && evidence.page != null)
+  const onEvidencePage = evidenceHere && view.page >= evidence.page && view.page <= (evidence.pageEnd ?? evidence.page)
+  const iv = view?.indexingVersion ?? (evidenceHere ? evidence.indexingVersion : undefined)
+  const pageRes = useResource(
+    (signal) => (view ? api.page(view.docId, view.page, iv, signal) : Promise.resolve(null)),
+    [view?.docId, view?.page, iv],
+  )
+  const page = pageRes.data
+  const range = onEvidencePage && page ? pageRange(evidence.highlight, page) : null
   const noEvidence = !!active?.claim?.gap && !view
-  const [lo, hi] = doc ? doc.range : [1, 1]
+  const total = page?.page_count ?? doc?.pageCount ?? view?.page ?? 1
 
   useEffect(() => {
-    if (!shown) return
+    if (!range) return
     const t = setTimeout(() => {
       scroller.current?.querySelector('[data-evidence-mark]')?.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'auto' })
     }, 60)
     return () => clearTimeout(t)
-  }, [shown, pulse, view?.page, view?.doc])
+  }, [range?.start, range?.end, pulse, view?.page, view?.docId])
 
-  const go = (page) => setView({ doc: view.doc, page })
+  const go = (p) => setView({ ...view, page: p })
   const switchDoc = (id) => {
-    if (view?.doc === id) return
-    setView({ doc: id, page: evidence && evidence.doc === id ? evidence.page : DOCS[id].range[0] })
+    if (view?.docId === id) return
+    setView({ docId: id, page: evidence && evidence.docId === id ? evidence.page : 1 })
   }
-  const pages = []
-  for (let p = lo; p <= hi; p++) pages.push(p)
-  const key = view ? `${view.doc}:${view.page}` : 'none'
+  const key = view ? `${view.docId}:${view.page}` : 'none'
 
   return (
     <section className="flex h-full min-h-0 flex-col bg-desk" aria-label="Kaynak görüntüleyici" data-viewer>
       <ContextStrip active={active} evidence={evidence} reduce={reduce} onClose={onClose} />
 
-      {noEvidence ? (
-        <NoEvidence unsupported={!!active?.claim?.unsupported} nearest={nearest} scan={scan} reduce={reduce} onOpen={() => nearest && setView({ doc: nearest.doc, page: nearest.page })} onAddMaterial={onAddMaterial} />
+      {noEvidence || !view ? (
+        noEvidence
+          ? <NoEvidence unsupported={!!active?.claim?.unsupported} scan={scan} reduce={reduce} onAddMaterial={onAddMaterial} />
+          : <div className="flex flex-1 items-center justify-center px-8 text-center text-[14px] text-ink-3">Soru sorduğunda ya da bir materyali açtığında kaynak burada görünür.</div>
       ) : (
         <>
           <div className="shrink-0 bg-paper px-5 pb-2.5 pt-3">
             <div className="flex items-center gap-2">
               <FilePdf size={16} className="shrink-0 text-ink-3" aria-hidden />
-              <p className="m-0 min-w-0 flex-1 truncate font-mono text-[12px] font-medium text-ink" title={doc?.filename}>{doc?.filename}</p>
-              <div role="tablist" aria-label="Belge" className="flex gap-0.5 rounded-lg bg-ink/[0.05] p-0.5">
-                {Object.values(DOCS).map((d) => {
-                  const on = view?.doc === d.id
-                  return (
-                    <button
-                      key={d.id} role="tab" aria-selected={on} type="button" onClick={() => switchDoc(d.id)}
-                      className={`press h-6 rounded-md px-2 text-[12px] font-medium ${on ? 'bg-white text-ink shadow-[0_1px_2px_rgba(22,24,30,0.1)]' : 'text-ink-3 hover:text-ink'}`}
-                    >
-                      {d.short}
-                    </button>
-                  )
-                })}
-              </div>
+              <p className="m-0 min-w-0 flex-1 truncate font-mono text-[12px] font-medium text-ink" title={doc?.filename || doc?.title}>{doc?.filename || doc?.title}</p>
+              {sources.length > 1 && (
+                <div role="tablist" aria-label="Belge" className="flex max-w-[55%] gap-0.5 overflow-x-auto rounded-lg bg-ink/[0.05] p-0.5">
+                  {sources.map((d) => {
+                    const on = view.docId === d.id
+                    return (
+                      <button
+                        key={d.id} role="tab" aria-selected={on} type="button" onClick={() => switchDoc(d.id)} title={d.title}
+                        className={`press h-6 max-w-[9rem] truncate rounded-md px-2 text-[12px] font-medium ${on ? 'bg-white text-ink shadow-[0_1px_2px_rgba(22,24,30,0.1)]' : 'text-ink-3 hover:text-ink'}`}
+                      >
+                        {d.title}
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
             </div>
             <div className="mt-2 flex items-center gap-1">
-              <button type="button" className={arrowBtn} disabled={!view || view.page <= lo} onClick={() => go(view.page - 1)} aria-label="Önceki sayfa"><CaretLeft size={14} /></button>
+              <button type="button" className={arrowBtn} disabled={view.page <= 1} onClick={() => go(view.page - 1)} aria-label="Önceki sayfa"><CaretLeft size={14} /></button>
               <div className="flex flex-1 items-center justify-center gap-0.5" role="group" aria-label="Sayfalar">
-                {pages.map((p) => {
-                  const cur = view?.page === p
-                  const ev = evidence && evidence.doc === view?.doc && evidence.page === p
+                {pageWindow(view.page, total).map((p) => {
+                  const cur = view.page === p
+                  const ev = evidenceHere && p >= evidence.page && p <= (evidence.pageEnd ?? evidence.page)
                   return (
                     <button
                       key={p} type="button" onClick={() => go(p)} aria-label={`Sayfa ${p}`} aria-current={cur ? 'page' : undefined}
@@ -131,32 +167,46 @@ export default function SourceViewer({ view, setView, active, evidence, pulse, n
                   )
                 })}
               </div>
-              <button type="button" className={arrowBtn} disabled={!view || view.page >= hi} onClick={() => go(view.page + 1)} aria-label="Sonraki sayfa"><CaretRight size={14} /></button>
+              <button type="button" className={arrowBtn} disabled={view.page >= total} onClick={() => go(view.page + 1)} aria-label="Sonraki sayfa"><CaretRight size={14} /></button>
             </div>
-            <p className="m-0 mt-1 text-center font-mono text-[11px] text-ink-3 num">{doc ? `sayfa ${view.page} / ${doc.total}` : ''}</p>
+            <p className="m-0 mt-1 text-center font-mono text-[11px] text-ink-3 num">sayfa {view.page} / {total}</p>
           </div>
 
           <div className="relative min-h-0 flex-1">
             <div ref={scroller} data-viewer-scroll className="scroll-quiet absolute inset-0 overflow-y-auto px-5 pb-16 pt-5">
+              {onEvidencePage && !range && evidence.excerpt && (
+                <div className="mx-auto mb-4 max-w-[36rem] rounded-xl bg-white px-4 py-3 shadow-[0_1px_2px_rgba(22,24,30,0.05)]" data-excerpt>
+                  <p className="m-0 flex items-center gap-1.5 text-[12px] font-medium text-ink-3"><Quotes size={13} aria-hidden /> Kaynak alıntısı · sayfada işaretlenmedi (alıntı birebir doğrulanamadı)</p>
+                  <p className="m-0 mt-1.5 whitespace-pre-wrap text-[14px] leading-relaxed text-ink-2">{evidence.excerpt}</p>
+                </div>
+              )}
               <AnimatePresence mode="wait" initial={false}>
                 <motion.div
                   key={key}
-                  initial={{ opacity: 0, y: reduce ? 0 : 8, filter: reduce ? 'blur(0px)' : 'blur(2px)' }}
-                  animate={{ opacity: 1, y: 0, filter: 'blur(0px)', transition: { duration: reduce ? 0.12 : 0.24, ease: EASE_OUT } }}
+                  initial={{ opacity: 0, y: reduce ? 0 : 8 }}
+                  animate={{ opacity: 1, y: 0, transition: { duration: reduce ? 0.12 : 0.24, ease: EASE_OUT } }}
                   exit={{ opacity: 0, transition: { duration: reduce ? 0.08 : 0.11, ease: EASE_OUT } }}
                 >
-                  {doc && <DocPage doc={doc} pageNo={view.page} evidence={shown} pulse={pulse} />}
+                  {pageRes.loading && <p className="m-0 py-10 text-center text-[13.5px] text-ink-3" role="status">Sayfa yükleniyor…</p>}
+                  {pageRes.error && (
+                    <p role="alert" className="m-0 py-10 text-center text-[14px] text-ink-2">
+                      {pageRes.error.code === 'NOT_FOUND' ? 'Bu sayfa ya da belge artık mevcut değil (silinmiş olabilir).' : errorText(pageRes.error)}
+                    </p>
+                  )}
+                  {page && !pageRes.loading && (
+                    <PageSheet page={page} range={range} strength={evidence?.strength} pulse={pulse} slide={doc?.documentType === 'slide'} />
+                  )}
                 </motion.div>
               </AnimatePresence>
             </div>
             <AnimatePresence>
-              {evidence && view && !atEvidence && (
+              {evidenceHere && !onEvidencePage && (
                 <motion.button
                   type="button"
                   initial={{ opacity: 0, y: reduce ? 0 : 8 }}
                   animate={{ opacity: 1, y: 0, transition: { duration: 0.2, ease: EASE_OUT } }}
                   exit={{ opacity: 0, transition: { duration: 0.1 } }}
-                  onClick={() => setView({ doc: evidence.doc, page: evidence.page })}
+                  onClick={() => setView({ docId: evidence.docId, page: evidence.page, indexingVersion: evidence.indexingVersion })}
                   className="press absolute bottom-4 left-1/2 inline-flex h-9 -translate-x-1/2 items-center gap-2 rounded-full bg-ink px-4 text-[13px] font-medium text-white shadow-[0_8px_20px_-8px_rgba(22,24,30,0.55)]"
                 >
                   <ArrowBendDownLeft size={14} /> Kanıta dön <span className="font-mono text-white/70">{evidence.label}</span>
@@ -171,9 +221,9 @@ export default function SourceViewer({ view, setView, active, evidence, pulse, n
 }
 
 // Kanıt yok: güven özelliği, hata değil. Panelin tamamı bu duruma ayrılır.
-function NoEvidence({ unsupported, nearest, scan, reduce, onOpen, onAddMaterial }) {
+function NoEvidence({ unsupported, scan, reduce, onAddMaterial }) {
   return (
-    <div className="flex min-h-0 flex-1 flex-col justify-center overflow-y-auto bg-paper px-7 py-8">
+    <div className="flex min-h-0 flex-1 flex-col justify-center overflow-y-auto bg-paper px-7 py-8" data-no-evidence>
       <motion.div
         initial={{ opacity: 0, y: reduce ? 0 : 8 }}
         animate={{ opacity: 1, y: 0, transition: { duration: 0.3, ease: EASE_OUT } }}
@@ -186,27 +236,13 @@ function NoEvidence({ unsupported, nearest, scan, reduce, onOpen, onAddMaterial 
           <path d="M82 22h3M92 22h3" stroke="var(--color-line-strong)" strokeWidth="1.8" strokeLinecap="round" />
           <circle cx="140" cy="22" r="5" fill="var(--color-paper)" stroke="var(--color-line-strong)" strokeWidth="1.6" strokeDasharray="3 2.6" />
         </svg>
-        <h2 className="display m-0 text-[30px] text-ink">{unsupported ? 'Bu iddia için kaynak bulunamadı.' : 'Bu soru için kaynak bulunamadı.'}</h2>
+        <h2 className="display m-0 text-[30px] text-ink">{unsupported ? 'Bu iddia için yeterli kanıt yok.' : 'Bu soru için kaynak bulunamadı.'}</h2>
         <p className="m-0 mt-3 text-[15px] leading-relaxed text-ink-2">
           {unsupported
-            ? `Yüklediğin ${scan.count} materyalde bu iddiayı destekleyen bir bölüm yok. Bilgi doğru olabilir; ama kaynağı olmadığı için K-not onu kanıtlanmış saymaz.`
-            : `Yüklediğin ${scan.count} materyalde arama yaptım; soruyu yanıtlayan bir bölüm yok. Bu yüzden cevap uydurmadım. Kaynağı olmayan bilgi, K-not’ta yanıt sayılmaz.`}
+            ? `Hazır ${scan.count} materyalde bu iddiayı destekleyen yeterli bir bölüm yok. Bilgi doğru olabilir; ama kaynağı olmadığı için K-not onu kanıtlanmış saymaz.`
+            : `Hazır ${scan.count} materyalde arama yapıldı; soruyu yanıtlayan bir bölüm bulunamadı. Bu yüzden cevap uydurulmadı.`}
         </p>
-        <p className="m-0 mt-4 font-mono text-[11.5px] leading-relaxed text-ink-3">Taranan: {scan.groups}</p>
-
-        {nearest && (
-          <button
-            type="button" onClick={onOpen}
-            className="press group mt-6 flex w-full items-center gap-3 rounded-xl bg-white px-4 py-3 text-left shadow-[0_1px_2px_rgba(22,24,30,0.05)] hover:shadow-[0_2px_8px_rgba(22,24,30,0.1)]"
-          >
-            <MagnifyingGlass size={18} className="shrink-0 text-ink-3" aria-hidden />
-            <span className="min-w-0 flex-1">
-              <span className="block text-[14px] font-medium text-ink">En yakın bölüme bak</span>
-              <span className="block text-[12.5px] text-ink-3"><span className="font-mono">{nearest.label}</span> · İkili arama ağacı, konuyla doğrudan ilgili değil</span>
-            </span>
-            <CaretRight size={14} className="shrink-0 text-ink-3 transition-transform duration-200 group-hover:translate-x-0.5" aria-hidden />
-          </button>
-        )}
+        {scan.groups && <p className="m-0 mt-4 font-mono text-[11.5px] leading-relaxed text-ink-3">Taranan: {scan.groups}</p>}
         {onAddMaterial && (
           <p className="m-0 mt-5 text-[13.5px] leading-relaxed text-ink-3">
             Bu konuyu kapsayan bir materyal eklersen yanıt doğrudan o sayfaya bağlanır.{' '}

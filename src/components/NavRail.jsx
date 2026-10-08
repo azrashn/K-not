@@ -1,4 +1,5 @@
-import { House, BookOpen, Exam, ChartLineUp } from '@phosphor-icons/react'
+import { House, BookOpen, Exam, ChartLineUp, SignOut } from '@phosphor-icons/react'
+import { useAuth } from '../app/auth'
 
 export const NAV = [
   { id: 'home', label: 'Ana Sayfa', Icon: House },
@@ -44,9 +45,25 @@ export default function NavRail({ current, onSelect }) {
           <li key={item.id}><NavButton item={item} current={current === item.id} onSelect={onSelect} /></li>
         ))}
       </ul>
-      <div className="mt-auto grid size-9 place-items-center rounded-full bg-ink/[0.06] font-mono text-[12px] font-semibold text-ink" title="Azra" aria-label="Profil: Azra">
-        A
-      </div>
+      <UserBadge />
     </nav>
+  )
+}
+
+export const initials = (name) => (name || '?').trim().split(/\s+/).slice(0, 2).map((w) => w[0]?.toLocaleUpperCase('tr')).join('')
+
+// Profil + çıkış. Oturum istemci tarafında sonlanır (JWT durumsuz; sunucuda iptal yok).
+export function UserBadge({ vertical = true }) {
+  const { user, logout } = useAuth()
+  if (!user) return null
+  return (
+    <div className={`mt-auto flex ${vertical ? 'flex-col' : 'flex-row'} items-center gap-2`}>
+      <div className="grid size-9 place-items-center rounded-full bg-ink/[0.06] font-mono text-[12px] font-semibold text-ink" title={user.display_name} aria-label={`Profil: ${user.display_name}`}>
+        {initials(user.display_name)}
+      </div>
+      <button type="button" onClick={logout} aria-label="Çıkış yap" title="Çıkış yap" className="press grid size-9 place-items-center rounded-lg text-ink-3 hover:bg-white/70 hover:text-ink">
+        <SignOut size={18} aria-hidden />
+      </button>
+    </div>
   )
 }
