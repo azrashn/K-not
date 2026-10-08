@@ -1,0 +1,451 @@
+{
+  "dataset": "challenge.v1",
+  "corpus_chunks": 42,
+  "retrieval_settings": {
+    "top_k": 8,
+    "max_evidence": 6,
+    "min_score": null,
+    "max_context_tokens": 3000,
+    "max_chunks_per_document": 4,
+    "chars_per_token": 3.0
+  },
+  "environment": {
+    "python": "3.13.16",
+    "platform": "Linux-6.18.44-fc-v80-x86_64-with-glibc2.39",
+    "packages": {
+      "chromadb": "1.5.9",
+      "sentence-transformers": "6.1.0",
+      "torch": "2.14.1",
+      "transformers": "5.19.0",
+      "pydantic": "2.13.5"
+    }
+  },
+  "results": [
+    {
+      "id": "hashing-baseline",
+      "backend": "hashing",
+      "model": "knot-hashing-v1",
+      "revision": null,
+      "query_prefix": null,
+      "document_prefix": null,
+      "notes": "Lexical, dependency-free control. Not a production candidate.",
+      "status": "OK",
+      "model_id": "knot-hashing-v1-d512",
+      "dimension": 512,
+      "resolved_revision": null,
+      "quality": {
+        "retrieval_success": {
+          "value": 0.7576,
+          "numerator": 25,
+          "denominator": 33,
+          "definition": "in-scope questions with >=1 gold passage in the top-k candidates / in-scope questions"
+        },
+        "recall_at_1": {
+          "value": 0.4242,
+          "numerator": 14,
+          "denominator": 33,
+          "definition": "in-scope questions with a gold passage at rank <= 1 / in-scope questions"
+        },
+        "recall_at_3": {
+          "value": 0.6667,
+          "numerator": 22,
+          "denominator": 33,
+          "definition": "in-scope questions with a gold passage at rank <= 3 / in-scope questions"
+        },
+        "mrr": {
+          "value": 0.5404,
+          "numerator": 17.8333,
+          "denominator": 33,
+          "definition": "mean over in-scope questions of 1/rank of the first gold passage (0 if not retrieved)"
+        },
+        "multi_passage_recall": {
+          "value": 0.6667,
+          "numerator": 2,
+          "denominator": 3,
+          "definition": "multi-passage questions with ALL gold passages in context / multi-passage questions"
+        },
+        "scope_leakage": {
+          "value": 0.0,
+          "numerator": 0,
+          "denominator": 328,
+          "definition": "retrieved records outside the authorized scope / all retrieved records (must be 0)"
+        },
+        "by_category": {
+          "direct": {
+            "retrieval_success": 0.6667,
+            "n_in_scope": 15
+          },
+          "multi_passage": {
+            "retrieval_success": 1.0,
+            "n_in_scope": 3
+          },
+          "negation": {
+            "retrieval_success": 0.75,
+            "n_in_scope": 4
+          },
+          "out_of_scope": {
+            "retrieval_success": null,
+            "n_in_scope": 0
+          },
+          "out_of_scope_dijkstra": {
+            "retrieval_success": null,
+            "n_in_scope": 0
+          },
+          "paraphrase": {
+            "retrieval_success": 0.8571,
+            "n_in_scope": 7
+          },
+          "partial": {
+            "retrieval_success": 0.75,
+            "n_in_scope": 4
+          }
+        },
+        "by_split": {
+          "locked": {
+            "value": 0.7576,
+            "numerator": 25,
+            "denominator": 33,
+            "definition": "in-scope questions with >=1 gold passage in the top-k candidates / in-scope questions"
+          }
+        },
+        "threshold_sweep": [
+          {
+            "min_score": 0.0,
+            "retrieval_success": 0.7576,
+            "out_of_scope_rejected": 0.0
+          },
+          {
+            "min_score": 0.1,
+            "retrieval_success": 0.6667,
+            "out_of_scope_rejected": 0.0
+          },
+          {
+            "min_score": 0.15,
+            "retrieval_success": 0.5758,
+            "out_of_scope_rejected": 0.375
+          },
+          {
+            "min_score": 0.2,
+            "retrieval_success": 0.5152,
+            "out_of_scope_rejected": 0.875
+          },
+          {
+            "min_score": 0.25,
+            "retrieval_success": 0.4545,
+            "out_of_scope_rejected": 0.875
+          },
+          {
+            "min_score": 0.3,
+            "retrieval_success": 0.3939,
+            "out_of_scope_rejected": 1.0
+          },
+          {
+            "min_score": 0.35,
+            "retrieval_success": 0.3636,
+            "out_of_scope_rejected": 1.0
+          },
+          {
+            "min_score": 0.4,
+            "retrieval_success": 0.2727,
+            "out_of_scope_rejected": 1.0
+          },
+          {
+            "min_score": 0.5,
+            "retrieval_success": 0.2121,
+            "out_of_scope_rejected": 1.0
+          }
+        ]
+      },
+      "performance": {
+        "index_seconds": 0.057,
+        "query_ms_p50": 0.2,
+        "query_ms_p95": 0.3,
+        "note": "hardware dependent; not comparable across machines"
+      }
+    },
+    {
+      "id": "minilm-l12-multi",
+      "backend": "sentence_transformers",
+      "model": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+      "revision": "e8f8c211226b894fcb81acc59f3b34ba3efd5f42",
+      "query_prefix": null,
+      "document_prefix": null,
+      "notes": "Current default. 384-d, small/fast, 50+ languages incl. Turkish.",
+      "status": "OK",
+      "model_id": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+      "dimension": 384,
+      "resolved_revision": "e8f8c211226b894fcb81acc59f3b34ba3efd5f42",
+      "quality": {
+        "retrieval_success": {
+          "value": 0.9091,
+          "numerator": 30,
+          "denominator": 33,
+          "definition": "in-scope questions with >=1 gold passage in the top-k candidates / in-scope questions"
+        },
+        "recall_at_1": {
+          "value": 0.5152,
+          "numerator": 17,
+          "denominator": 33,
+          "definition": "in-scope questions with a gold passage at rank <= 1 / in-scope questions"
+        },
+        "recall_at_3": {
+          "value": 0.7576,
+          "numerator": 25,
+          "denominator": 33,
+          "definition": "in-scope questions with a gold passage at rank <= 3 / in-scope questions"
+        },
+        "mrr": {
+          "value": 0.6486,
+          "numerator": 21.4024,
+          "denominator": 33,
+          "definition": "mean over in-scope questions of 1/rank of the first gold passage (0 if not retrieved)"
+        },
+        "multi_passage_recall": {
+          "value": 0.6667,
+          "numerator": 2,
+          "denominator": 3,
+          "definition": "multi-passage questions with ALL gold passages in context / multi-passage questions"
+        },
+        "scope_leakage": {
+          "value": 0.0,
+          "numerator": 0,
+          "denominator": 328,
+          "definition": "retrieved records outside the authorized scope / all retrieved records (must be 0)"
+        },
+        "by_category": {
+          "direct": {
+            "retrieval_success": 0.9333,
+            "n_in_scope": 15
+          },
+          "multi_passage": {
+            "retrieval_success": 1.0,
+            "n_in_scope": 3
+          },
+          "negation": {
+            "retrieval_success": 1.0,
+            "n_in_scope": 4
+          },
+          "out_of_scope": {
+            "retrieval_success": null,
+            "n_in_scope": 0
+          },
+          "out_of_scope_dijkstra": {
+            "retrieval_success": null,
+            "n_in_scope": 0
+          },
+          "paraphrase": {
+            "retrieval_success": 0.8571,
+            "n_in_scope": 7
+          },
+          "partial": {
+            "retrieval_success": 0.75,
+            "n_in_scope": 4
+          }
+        },
+        "by_split": {
+          "locked": {
+            "value": 0.9091,
+            "numerator": 30,
+            "denominator": 33,
+            "definition": "in-scope questions with >=1 gold passage in the top-k candidates / in-scope questions"
+          }
+        },
+        "threshold_sweep": [
+          {
+            "min_score": 0.0,
+            "retrieval_success": 0.9091,
+            "out_of_scope_rejected": 0.0
+          },
+          {
+            "min_score": 0.1,
+            "retrieval_success": 0.9091,
+            "out_of_scope_rejected": 0.0
+          },
+          {
+            "min_score": 0.15,
+            "retrieval_success": 0.9091,
+            "out_of_scope_rejected": 0.0
+          },
+          {
+            "min_score": 0.2,
+            "retrieval_success": 0.9091,
+            "out_of_scope_rejected": 0.0
+          },
+          {
+            "min_score": 0.25,
+            "retrieval_success": 0.9091,
+            "out_of_scope_rejected": 0.0
+          },
+          {
+            "min_score": 0.3,
+            "retrieval_success": 0.8788,
+            "out_of_scope_rejected": 0.0
+          },
+          {
+            "min_score": 0.35,
+            "retrieval_success": 0.8788,
+            "out_of_scope_rejected": 0.125
+          },
+          {
+            "min_score": 0.4,
+            "retrieval_success": 0.8485,
+            "out_of_scope_rejected": 0.25
+          },
+          {
+            "min_score": 0.5,
+            "retrieval_success": 0.6667,
+            "out_of_scope_rejected": 0.5
+          }
+        ]
+      },
+      "performance": {
+        "index_seconds": 0.37,
+        "query_ms_p50": 12.41,
+        "query_ms_p95": 18.13,
+        "note": "hardware dependent; not comparable across machines"
+      }
+    },
+    {
+      "id": "e5-small-multi",
+      "backend": "sentence_transformers",
+      "model": "intfloat/multilingual-e5-small",
+      "revision": "614241f622f53c4eeff9890bdc4f31cfecc418b3",
+      "query_prefix": "query: ",
+      "document_prefix": "passage: ",
+      "notes": "384-d; requires prefixes on both sides.",
+      "status": "OK",
+      "model_id": "intfloat/multilingual-e5-small",
+      "dimension": 384,
+      "resolved_revision": "614241f622f53c4eeff9890bdc4f31cfecc418b3",
+      "quality": {
+        "retrieval_success": {
+          "value": 0.9394,
+          "numerator": 31,
+          "denominator": 33,
+          "definition": "in-scope questions with >=1 gold passage in the top-k candidates / in-scope questions"
+        },
+        "recall_at_1": {
+          "value": 0.5758,
+          "numerator": 19,
+          "denominator": 33,
+          "definition": "in-scope questions with a gold passage at rank <= 1 / in-scope questions"
+        },
+        "recall_at_3": {
+          "value": 0.8485,
+          "numerator": 28,
+          "denominator": 33,
+          "definition": "in-scope questions with a gold passage at rank <= 3 / in-scope questions"
+        },
+        "mrr": {
+          "value": 0.7157,
+          "numerator": 23.6167,
+          "denominator": 33,
+          "definition": "mean over in-scope questions of 1/rank of the first gold passage (0 if not retrieved)"
+        },
+        "multi_passage_recall": {
+          "value": 0.6667,
+          "numerator": 2,
+          "denominator": 3,
+          "definition": "multi-passage questions with ALL gold passages in context / multi-passage questions"
+        },
+        "scope_leakage": {
+          "value": 0.0,
+          "numerator": 0,
+          "denominator": 328,
+          "definition": "retrieved records outside the authorized scope / all retrieved records (must be 0)"
+        },
+        "by_category": {
+          "direct": {
+            "retrieval_success": 0.8667,
+            "n_in_scope": 15
+          },
+          "multi_passage": {
+            "retrieval_success": 1.0,
+            "n_in_scope": 3
+          },
+          "negation": {
+            "retrieval_success": 1.0,
+            "n_in_scope": 4
+          },
+          "out_of_scope": {
+            "retrieval_success": null,
+            "n_in_scope": 0
+          },
+          "out_of_scope_dijkstra": {
+            "retrieval_success": null,
+            "n_in_scope": 0
+          },
+          "paraphrase": {
+            "retrieval_success": 1.0,
+            "n_in_scope": 7
+          },
+          "partial": {
+            "retrieval_success": 1.0,
+            "n_in_scope": 4
+          }
+        },
+        "by_split": {
+          "locked": {
+            "value": 0.9394,
+            "numerator": 31,
+            "denominator": 33,
+            "definition": "in-scope questions with >=1 gold passage in the top-k candidates / in-scope questions"
+          }
+        },
+        "threshold_sweep": [
+          {
+            "min_score": 0.0,
+            "retrieval_success": 0.9394,
+            "out_of_scope_rejected": 0.0
+          },
+          {
+            "min_score": 0.1,
+            "retrieval_success": 0.9394,
+            "out_of_scope_rejected": 0.0
+          },
+          {
+            "min_score": 0.15,
+            "retrieval_success": 0.9394,
+            "out_of_scope_rejected": 0.0
+          },
+          {
+            "min_score": 0.2,
+            "retrieval_success": 0.9394,
+            "out_of_scope_rejected": 0.0
+          },
+          {
+            "min_score": 0.25,
+            "retrieval_success": 0.9394,
+            "out_of_scope_rejected": 0.0
+          },
+          {
+            "min_score": 0.3,
+            "retrieval_success": 0.9394,
+            "out_of_scope_rejected": 0.0
+          },
+          {
+            "min_score": 0.35,
+            "retrieval_success": 0.9394,
+            "out_of_scope_rejected": 0.0
+          },
+          {
+            "min_score": 0.4,
+            "retrieval_success": 0.9394,
+            "out_of_scope_rejected": 0.0
+          },
+          {
+            "min_score": 0.5,
+            "retrieval_success": 0.9394,
+            "out_of_scope_rejected": 0.0
+          }
+        ]
+      },
+      "performance": {
+        "index_seconds": 0.44,
+        "query_ms_p50": 11.49,
+        "query_ms_p95": 14.38,
+        "note": "hardware dependent; not comparable across machines"
+      }
+    }
+  ]
+}

@@ -198,13 +198,112 @@ reports numbers only for the hashing control (retrieval success 0.946, R@1 0.679
 The harness is tested for determinism and for reporting BLOCKED instead of numbers.
 
 To run it, use a machine with Hugging Face access (see §3). The report records the resolved
-model commit (`resolved_revision`); pin it in the candidates file.
+model commit (`resolved_revision`); pin it in the candidates file. **Superseded by §4.7.**
+
+### 4.7 ADR-010 real-model evaluation on `challenge.v1` (2026-10-08)
+
+The first run with real models, following the pre-registered ADR-010 procedure. Retrieval only:
+no LLM is involved, so nothing here measures answer quality.
+
+**Setup**
+
+| Item | Value |
+| --- | --- |
+| Dataset | `challenge.v1`: 41 locked questions (TR 20, EN 12, mixed 9; 33 in scope, 8 out of scope), commit `7bc6bb0` on `feature/rag-core-pipeline`, SHA-256 `a036f09d5f1a1f782bee5dc8f00d07208de16704c1d29448235380045246dc50`. Read with `git show`; **not copied or modified** on this branch |
+| Corpus | `corpus.v2` (`tests/fixtures/corpus_v2.json`, 42 chunks, 13 documents in 3 courses) |
+| Scope | The dataset's `default_scope` (9 `veri-yapilari` documents); other-course, private and injected documents are in the index but out of scope |
+| Retrieval | Production `RetrievalService`, `top_k` = 8, no score floor (`min_score=-1`); thresholds and grounding rules unchanged |
+| Index | Each model gets its own in-memory collection with the full C-1 stamp; written and read with the identical `EmbeddingConfiguration` |
+| Machine | 4 vCPU, CPU only; sentence-transformers 6.1.0, torch 2.14.1, transformers 5.19.0, chromadb 1.5.9 |
+| Gold labels | Written by the WBS-3 developer; **no independent review yet** |
+
+**Results** (in-scope questions, `metrics.py` definitions; R@8 is the harness's "retrieval success")
+
+| Model (pinned revision) | n | R@1 | R@3 | R@5 | R@8 | MRR | Leakage |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| hashing baseline (lexical control) | 33 | 0.424 | 0.667 | 0.727 | 0.758 | 0.540 | 0 / 328 |
+| MiniLM-L12-multi `e8f8c21…` (current default) | 33 | 0.515 | 0.758 | 0.818 | 0.909 | 0.649 | 0 / 328 |
+| **multilingual-e5-small `614241f…`** | 33 | **0.576** | **0.848** | **0.909** | **0.939** | **0.716** | 0 / 328 |
+
+By language (in-scope n: TR 16, EN 10, mixed 7):
+
+| Model | TR R@1 / R@8 / MRR | EN R@1 / R@8 / MRR | Mixed R@1 / R@8 / MRR |
+| --- | --- | --- | --- |
+| hashing | 0.50 / 1.00 / 0.67 | 0.20 / 0.50 / 0.31 | 0.57 / 0.57 / 0.57 |
+| MiniLM | 0.38 / 0.81 / 0.54 | 0.70 / 1.00 / 0.83 | 0.57 / 1.00 / 0.64 |
+| e5-small | 0.63 / 1.00 / 0.77 | 0.40 / 0.90 / 0.60 | 0.71 / 0.86 / 0.75 |
+
+ADR-010 gates:
+
+| Gate | Hashing | MiniLM | e5-small |
+| --- | --- | --- | --- |
+| Zero scope leakage | 0 | 0 | 0 |
+| Beats hashing on mixed (R@8) | — | 1.00 > 0.57 | 0.86 > 0.57 |
+| Beats hashing on paraphrase (R@8, n = 7) | — | **0.86 = 0.86 (fails)** | 1.00 > 0.86 |
+| Licence | — | Apache-2.0 | MIT |
+| Query latency p95 ≤ 200 ms (4 vCPU) | 0.4 ms | 19.5 ms | 19.8 ms |
+| RAM ≤ 2 GB (whole process max RSS, model + torch + Chroma) | 98 MB | 1.84 GB | 1.38 GB |
+| Primary metric (R@8, overall) | 0.758 | 0.909 | 0.939 (+0.030, at the tie-rule boundary) |
+
+**Out-of-scope and cross-course behaviour**
+- Scope leakage is 0 for every model. Chunks of other courses, of another student's private
+  notes and of the injected document were never returned. Isolation is enforced by the
+  metadata filter, independent of the model.
+- **Similarity does not separate out-of-scope questions.** For e5-small, the top-1 scores of
+  the 8 out-of-scope questions (0.80–0.86, including all four Dijkstra traps) overlap the
+  in-scope ones (min 0.79, median 0.86). E5 scores are compressed into a narrow high band, so a
+  `RAG_MIN_SCORE` floor cannot reject them; it would also cut in-scope answers. MiniLM
+  overlaps too (out-of-scope 0.34–0.55, in-scope min 0.42). Rejecting out-of-scope questions
+  stays the job of WBS-3's grounding rules (question coverage, support assessment), which this
+  retrieval-only run does not measure. `RAG_MIN_SCORE` stays unset.
+
+**e5-small failures** (gold passage not in the top 3)
+
+| Item | Language / category | Gold rank | Observation |
+| --- | --- | --- | --- |
+| `e3` | EN / direct | not in top 8 | English question; the gold Turkish chunk (`hafta5:001`) is beaten by other weeks' chunks |
+| `m4` | mixed / direct | not in top 8 | Gold `hafta7:002` loses to sibling chunks of the same lecture (`hafta7:004`) |
+| `e1` | EN / direct | 6 | Exam chunks (`sinav-2023/2024`) outrank the lecture slide |
+| `p3`, `p4` | TR, mixed / partial | 5, 4 | Partially answerable questions; neighbouring chunks rank higher |
+
+Weaknesses: English-only questions over Turkish material (EN R@1 0.40; MiniLM is better there
+with 0.70), and exam-paper chunks that restate many topics and so often rank first.
+
+**Distinguishing what is and is not shown**
+1. *Technical pipeline correctness:* shown. PDF ingestion → e5 embeddings → Chroma → `/retrieve`
+   and `/answer` works with exact chunk ids, pages and offsets (2026-10-08 smoke test). Here,
+   writer and reader share one fingerprint (`sha256:7858637f…` for the pinned e5 configuration).
+2. *Retrieval relevance:* measured above on 33 in-scope questions. Small n: one question moves
+   a per-language number by 6–14 points.
+3. *Citation correctness:* not re-measured on this dataset. The smoke test showed verified
+   quotes whose highlights map exactly to the page text; citation integrity is enforced by WBS-3
+   independently of the embedding model.
+4. *LLM answer quality:* **untested**. No LLM provider is configured.
+
+**Reproduce**
+
+```bash
+cd ai-service
+pip install -e ".[embeddings]"   # sentence-transformers; downloads the models from Hugging Face
+git show 7bc6bb0:ai-service/evaluation/validation/challenge_v1.json > /tmp/challenge_v1.json
+sha256sum /tmp/challenge_v1.json   # a036f09d…46dc50
+PYTHONPATH=src python -m knot_rag.evaluation.compare_embeddings \
+  --candidates evaluation/embedding_candidates.json --corpus tests/fixtures/corpus_v2.json \
+  --dataset /tmp/challenge_v1.json --only hashing-baseline,minilm-l12-multi,e5-small-multi \
+  --out evaluation/reports/adr010-challenge-v1-2026-10-08.json
+PYTHONPATH=src python evaluation/scripts/adr010_breakdown.py /tmp/challenge_v1.json \
+  hashing-baseline,minilm-l12-multi,e5-small-multi evaluation/reports/adr010-breakdown-2026-10-08.json
+```
+
+Quality metrics are deterministic for the pinned revisions. Latency and RSS depend on the
+hardware. RSS in the breakdown file accumulates across models within one process; the RAM
+figures above come from separate processes.
 
 ## 5. Not yet measured
 
 | Item | Blocked by | What is needed |
 | --- | --- | --- |
-| Multilingual embedding comparison | huggingface.co denied | Network access, then run `compare_embeddings` |
+| Multilingual embedding comparison | ~~huggingface.co denied~~ Done for 3 candidates (§4.7); mpnet, e5-base, bge-m3 and Turkish BERT not run | Run the remaining candidates if e5-small proves insufficient |
 | Answer quality with a real LLM | No provider configured | `LLM_*` settings, then the runner with `--provider env` |
 | Semantic judge agreement with humans | Both of the above, plus labels | Label ≥ 100 claims; run with `SUPPORT_JUDGE=llm`; report agreement |
 | Independent review of gold labels | Team | A second reviewer for eval.v2 |

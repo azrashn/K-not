@@ -150,12 +150,15 @@ configuration. One configuration equals one `IndexVersion` equals one Chroma col
 - **Until C-1 lands:** the reader checks only model and dimension, so NestJS must also compare
   fingerprints ([api-contracts.md §6](api-contracts.md#6-consistency-guard-nestjs--python)).
 
-**Model status: PROVISIONAL.**
-- The default above is the current WBS-3 code default and has **not** been validated on K-not
-  data.
-- Hugging Face access was verified in a separate team environment, but no benchmark has been
-  run.
-- The selection procedure is fixed in ADR-010.
+**Model status:** the example above is the WBS-3 code default (MiniLM). It is kept as the
+contract example because its fingerprint is checked by tests.
+- **The MVP model selected by ADR-010 (2026-10-08) is `intfloat/multilingual-e5-small`**:
+  revision `614241f622f53c4eeff9890bdc4f31cfecc418b3`, 384-d, `"query: "` / `"passage: "`,
+  normalized, cosine.
+- Its fingerprint is
+  `sha256:7858637ffe512d13b894af08f99e75f8f42be36c457e2e02192bacdfd6671616`.
+- The first `IndexVersion` must use this configuration. See
+  [architecture-decisions.md §3.1](architecture-decisions.md#31-result-2026-10-08).
 
 ## 5. Two version levels
 

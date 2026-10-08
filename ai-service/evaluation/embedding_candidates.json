@@ -3,11 +3,11 @@
  "candidates": [
   {"id": "hashing-baseline", "backend": "hashing", "model": "knot-hashing-v1", "dimension": 512,
    "notes": "Lexical, dependency-free control. Not a production candidate."},
-  {"id": "minilm-l12-multi", "backend": "sentence_transformers", "model": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2", "revision": "main",
+  {"id": "minilm-l12-multi", "backend": "sentence_transformers", "model": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2", "revision": "e8f8c211226b894fcb81acc59f3b34ba3efd5f42",
    "notes": "Current default. 384-d, small/fast, 50+ languages incl. Turkish."},
   {"id": "mpnet-base-multi", "backend": "sentence_transformers", "model": "sentence-transformers/paraphrase-multilingual-mpnet-base-v2", "revision": "main",
    "notes": "768-d, larger multilingual paraphrase model."},
-  {"id": "e5-small-multi", "backend": "sentence_transformers", "model": "intfloat/multilingual-e5-small", "revision": "main",
+  {"id": "e5-small-multi", "backend": "sentence_transformers", "model": "intfloat/multilingual-e5-small", "revision": "614241f622f53c4eeff9890bdc4f31cfecc418b3",
    "query_prefix": "query: ", "document_prefix": "passage: ", "notes": "384-d; requires prefixes on both sides."},
   {"id": "e5-base-multi", "backend": "sentence_transformers", "model": "intfloat/multilingual-e5-base", "revision": "main",
    "query_prefix": "query: ", "document_prefix": "passage: ", "notes": "768-d; requires prefixes on both sides."},

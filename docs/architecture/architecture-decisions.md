@@ -23,7 +23,7 @@
 | ADR-007 | `ChromaChunkWriter` (write path) is owned by WBS-2; the reader `ChromaChunkIndex` stays with WBS-3; contract files are shared | ACCEPTED | A6 | [module-boundaries.md §3](module-boundaries.md#3-shared-contract-code-wbs-1-custodian) |
 | ADR-008 | Reindex = delete-before-replace; the document is out of scope until READY; documented consequences; throttled bulk reindex. Version-filtered "keep old live" reindex DEFERRED. | ACCEPTED (conditional) | A7 | [document-lifecycle.md §7](document-lifecycle.md#7-reindexing-same-embedding-configuration) |
 | ADR-009 | Ingestion is a separate package in the same Python deployable, with a **bounded in-process worker** and authenticated, sequenced, idempotent callbacks. MySQL is authoritative; sweeper for stalls; fencing via `activeJobId`. **Bounded MVP solution, not a durable queue.** | ACCEPTED (conditional) | A9 | [document-lifecycle.md §4](document-lifecycle.md#4-in-process-worker-reliability) |
-| ADR-010 | Embedding model `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2`, 384-d, no prefixes, normalized, cosine; revision unpinned | **PROVISIONAL** | A8 | §3 |
+| ADR-010 | **MVP embedding model: `intfloat/multilingual-e5-small`**, revision `614241f622f53c4eeff9890bdc4f31cfecc418b3`, 384-d, `query: `/`passage: ` prefixes, normalized, cosine (selected by the §3 procedure on 2026-10-08; replaces the unvalidated MiniLM-L12 default) | **ACCEPTED (provisional for the MVP)** | A8 | §3 |
 | ADR-011 | MySQL is authoritative for identity, access and status; ChromaDB is a derived, rebuildable index; storage holds originals and page artifacts | ACCEPTED | proposal D3 | [data-model.md §1](data-model.md#1-where-data-lives) |
 | ADR-012 | Titles and filenames shown to users come from MySQL (NestJS `documents` map); the Chroma `document_title` copy may lag; no rename in Phase 1 | ACCEPTED | proposal I7 | [api-contracts.md §3.4](api-contracts.md#34-answers) |
 | ADR-013 | Two version levels: `IndexVersion` (collection + embedding configuration) and `indexing_version` (extraction/chunker); existing field names kept | ACCEPTED | proposal D4 | [document-contract.md §5](document-contract.md#5-two-version-levels) |
@@ -103,6 +103,58 @@ The procedure below is fixed **before** any results are seen:
    - Update this ADR to `ACCEPTED` with the measured numbers.
    - If the model differs from the provisional one, migrate via ADR-015.
 
+### 3.1 Result (2026-10-08)
+
+Full report: [rag-evaluation.md §4.7](../rag-evaluation.md#47-adr-010-real-model-evaluation-on-challengev1-2026-10-08).
+Candidates run: hashing control, MiniLM-L12-multi (provisional default) and e5-small. The
+other candidates were not run.
+
+| | Hashing | MiniLM `e8f8c21…` | **e5-small `614241f…`** |
+| --- | --- | --- | --- |
+| R@8 (primary), overall / TR / EN / mixed | 0.76 / 1.00 / 0.50 / 0.57 | 0.91 / 0.81 / 1.00 / 1.00 | **0.94 / 1.00 / 0.90 / 0.86** |
+| R@8, paraphrase (n = 7) | 0.86 | 0.86 (does not beat hashing) | **1.00** |
+| R@1 / R@3 / R@5 / MRR | 0.42 / 0.67 / 0.73 / 0.54 | 0.52 / 0.76 / 0.82 / 0.65 | **0.58 / 0.85 / 0.91 / 0.72** |
+| Leakage · p95 latency · max RSS | 0 · 0.4 ms · 0.1 GB | 0 · 19.5 ms · 1.8 GB | 0 · 19.8 ms · 1.4 GB |
+
+**Decision:** e5-small is the MVP embedding model.
+- It is the only real candidate that passes every hard requirement and both "beats hashing"
+  gates; MiniLM ties hashing on paraphrase.
+- It leads on the primary metric overall, on Turkish (the primary course language) and on
+  paraphrase.
+- The tie rule does not reverse this: the two models are the same size class (384-d, about
+  118 M parameters) with equal latency.
+
+**MVP configuration** (`EmbeddingConfiguration`, fingerprint
+`sha256:7858637ffe512d13b894af08f99e75f8f42be36c457e2e02192bacdfd6671616`):
+
+```json
+{"backend": "sentence_transformers", "model": "intfloat/multilingual-e5-small",
+ "revision": "614241f622f53c4eeff9890bdc4f31cfecc418b3", "dimension": 384,
+ "query_prefix": "query: ", "document_prefix": "passage: ", "normalize": true, "distance": "cosine"}
+```
+
+- **Normalization and distance:** checked, not assumed.
+  - Stored vectors have L2 norm 1.0, because `SentenceTransformerEmbedder` always encodes with
+    `normalize_embeddings=True`.
+  - Collections are created with `hnsw:space = cosine`.
+  - These are the only values the embedders support (`EmbeddingConfiguration.unsupported_reason`).
+- **Prefixes:** `"query: "` and `"passage: "` include the trailing space, as the model card and
+  `embedding_candidates.json` specify.
+- **Where it is configured:** the deployment values (`.env.example`) and the first
+  `IndexVersion` that NestJS seeds (WBS-4).
+  - The Python code default in `config.py` stays MiniLM on purpose. Changing it would silently
+    change the model and prefixes of any environment that relies on the default.
+  - A deployment whose `EMBEDDING_*` disagrees with the ACTIVE `IndexVersion` is refused by
+    the C-1 fingerprint check and the `/ready` consistency guard.
+- **No index migration is needed:** no production data has been indexed with MiniLM.
+
+**Caveats:**
+- n is small: 33 in-scope questions, 7–16 per language.
+- Gold labels have not been independently reviewed.
+- Weaker on English-only questions: EN R@1 is 0.40, against 0.70 for MiniLM.
+- Similarity scores do not separate out-of-scope questions, so `RAG_MIN_SCORE` stays unset.
+- LLM answer quality is untested.
+
 ## 4. Validation record
 
 Run on `feature/wbs-1-architecture` on 2026-10-08. Result: **60 checks passed, 0 failed.**
@@ -135,7 +187,7 @@ Run on `feature/wbs-1-architecture` on 2026-10-08. Result: **60 checks passed, 0
 
 | # | Risk | Impact | Mitigation / owner |
 | --- | --- | --- | --- |
-| R1 | Embedding model not validated (ADR-010) | Retrieval quality unknown; Turkish/mixed questions may underperform | Run the pre-registered procedure before the integration milestone (WBS-3/8) |
+| R1 | Embedding model validated on only 33 in-scope questions with unreviewed gold labels (ADR-010) | English-only questions are weaker (EN R@1 0.40); similarity cannot reject out-of-scope questions | Independent label review; grow `challenge` with real course PDFs; out-of-scope rejection stays with WBS-3 grounding |
 | R2 | In-process worker loses queued jobs on restart | Up to ~5 min + backoff delay; re-embedding cost | Sweeper + idempotent jobs; replace with a persistent queue after the MVP (ADR-009) |
 | R3 | Reindex makes documents temporarily unavailable; a failed reindex leaves no chunks | Q&A gaps during reindex | Throttling, retries, stored excerpts (ADR-008) |
 | R4 | ~~C-1 not yet implemented~~ **Resolved:** C-1 implemented on `feature/document-ingestion`; drift now raises `ConfigurationError` | — | Legacy (pre-C-1) collections are still read with the model/dimension check only and log `rag.index.legacy_stamp`; re-create them before production use |
@@ -153,7 +205,7 @@ Run on `feature/wbs-1-architecture` on 2026-10-08. Result: **60 checks passed, 0
 | --- | --- | --- | --- |
 | U1 | Authentication mechanism (JWT details, registration vs. seed only) | E-mail + password, JWT bearer, accounts seeded for the demo | Not for WBS-2; blocks WBS-4/5 |
 | U2 | LLM provider (hosted API vs. local) and credentials | Decide with a data-protection note for student documents | Not for WBS-2 |
-| U3 | Final embedding model + revision (ADR-010) | Run the procedure in §3 | Not for WBS-2 code (config-driven); blocks "accepted" quality claims |
+| U3 | ~~Final embedding model + revision (ADR-010)~~ **Decided for the MVP:** e5-small `614241f…` (§3.1) | Re-check with real course data and an independent label review | No |
 | U4 | ~~PDF extraction library and chunk parameters within the bounds~~ **Decided:** ADR-021 to ADR-024 | — | Resolved |
 | U5 | Deployment topology (docker-compose: MySQL, Chroma, ai-service, NestJS, shared volume) | WBS-9 | Not for WBS-2 development |
 | U6 | Redaction of stored answer excerpts after document deletion | Redact on delete for PRIVATE documents | No |
