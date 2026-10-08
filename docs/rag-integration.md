@@ -4,9 +4,18 @@ How the other work packages connect to WBS-3 without knowing its internals. The 
 is `rag.v1` (see [`rag-api-contract.md`](rag-api-contract.md)); the indexing contract is in
 [`rag-architecture.md` §4](rag-architecture.md#4-indexing-contract-with-wbs-2).
 
+> **WBS-1 (2026-10-08):** the cross-module architecture is now defined in
+> [`docs/architecture/`](architecture/system-overview.md). Where this guide and those documents
+> differ (ingestion jobs, lifecycle, data model, visibility, public API), **`docs/architecture/`
+> is authoritative**. This guide remains the reference for using the WBS-3 API.
+
 ---
 
 ## WBS-2 — Document ingestion
+
+> Superseded in detail by [`architecture/wbs2-handoff.md`](architecture/wbs2-handoff.md) (job
+> protocol, delete-first + verification, page artifacts, offsets, events). The requirements
+> below remain valid.
 
 You own parsing, chunking, embedding and writing to ChromaDB. WBS-3 reads exactly what you
 write, so the following are **contract requirements**:
@@ -116,6 +125,9 @@ export class RagClient {
 - Retry only when `error.retryable` is true, at most once, with backoff.
 
 ### Suggested persistence (proposal; the schema belongs to WBS-4)
+
+> The MVP schema is now [`architecture/data-model.md`](architecture/data-model.md). The
+> `Answer` model below corresponds to the later `QaInteraction` entity there.
 
 ```prisma
 model Answer {
@@ -266,6 +278,10 @@ Each `GroundedAnswer` contains everything needed to measure grounding:
   `CHROMA_COLLECTION` on both sides.
 
 ## Open questions for the team
+
+> Decided or tracked in [`architecture/architecture-decisions.md`](architecture/architecture-decisions.md):
+> embedding selection procedure (ADR-010, PROVISIONAL), visibility model (ADR-003), LLM
+> provider (U2), deployment (U5).
 
 1. **Embedding model choice (WBS-2 + WBS-3):** run
    `python -m knot_rag.evaluation.compare_embeddings --candidates evaluation/embedding_candidates.json --corpus tests/fixtures/corpus_v2.json --dataset tests/fixtures/eval_dataset_v2.json`
