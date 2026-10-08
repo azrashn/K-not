@@ -37,6 +37,9 @@ class SupportSettings:
     # Claim↔question relevance gate for SUPPORTED (calibrated on eval.v1, see rag-evaluation.md).
     question_relevance_min: float = 0.34
     relative_relevance_min: float = 0.6
+    # Rule S8: claim content terms allowed to be absent from the cited evidence before SIKI is
+    # withheld. 0 = every content term of a SIKI claim must occur in its sources (stem match).
+    max_unsupported_terms: int = 0
     # Answer is ANSWERED only if cited evidence covers this share of the question's key terms.
     question_coverage_answered: float = 0.6
     # When true, SUPPORTED requires a semantic judge verdict; heuristic-only becomes PARTIALLY_SUPPORTED.
@@ -114,6 +117,7 @@ class Settings:
                     coverage_partial=float(g("SUPPORT_COVERAGE_PARTIAL", "0.3")),
                     question_relevance_min=float(g("SUPPORT_QUESTION_RELEVANCE_MIN", "0.34")),
                     relative_relevance_min=float(g("SUPPORT_RELATIVE_RELEVANCE_MIN", "0.6")),
+                    max_unsupported_terms=int(g("SUPPORT_MAX_UNSUPPORTED_TERMS", "0")),
                     question_coverage_answered=float(g("RAG_QUESTION_COVERAGE_ANSWERED", "0.6")),
                     require_semantic_confirmation=_bool(g("SUPPORT_REQUIRE_SEMANTIC_CONFIRMATION"), False),
                     judge=g("SUPPORT_JUDGE", "none"),
@@ -153,6 +157,8 @@ class Settings:
         for name in ("question_relevance_min", "relative_relevance_min", "question_coverage_answered"):
             if not 0 <= getattr(sp, name) <= 1:
                 raise ConfigurationError(f"support.{name} must be within [0, 1].")
+        if sp.max_unsupported_terms < 0:
+            raise ConfigurationError("SUPPORT_MAX_UNSUPPORTED_TERMS must be >= 0.")
         if sp.judge not in {"none", "llm"}:
             raise ConfigurationError("SUPPORT_JUDGE must be none or llm.")
         if self.llm.max_attempts < 1:
