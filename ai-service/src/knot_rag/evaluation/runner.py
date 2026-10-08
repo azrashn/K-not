@@ -84,6 +84,25 @@ def evaluate(components: Components, dataset: dict[str, Any], *, generate: bool 
     return results
 
 
+def offline_components(settings: Settings, corpus_path: str, provider=None) -> Components:
+    """Components over a throw-away in-memory Chroma seeded with a corpus JSON (no network)."""
+    import chromadb
+
+    from knot_rag.retrieval.chroma_index import ChromaChunkWriter
+    from knot_rag.retrieval.embedding import build_embedder
+    from knot_rag.schemas.embedding import EmbeddingConfiguration
+
+    settings = replace(settings, chroma_mode="memory", chroma_collection=f"eval_{uuid.uuid4().hex[:8]}")
+    chroma_client = chromadb.EphemeralClient()
+    corpus = json.loads(Path(corpus_path).read_text(encoding="utf-8"))
+    chunks = [IndexedChunk.model_validate(c) for c in corpus["chunks"]]
+    emb = build_embedder(settings.embedding_backend, settings.embedding_model, settings.embedding_query_prefix,
+                         settings.embedding_document_prefix, settings.embedding_revision)
+    config = EmbeddingConfiguration.from_settings(settings, emb.dimension)
+    ChromaChunkWriter(chroma_client, settings.chroma_collection, emb, configuration=config).upsert(chunks)
+    return build_components(settings, embedder=emb, chroma_client=chroma_client, provider=provider)
+
+
 def _assessor_name(components: Components) -> str:
     from knot_rag.evidence.judge import LLMJudgeSupportAssessor
     from knot_rag.evidence.support import METHOD
@@ -114,26 +133,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.min_score is not None:
         settings = replace(settings, retrieval=replace(settings.retrieval, min_score=args.min_score))
 
-    chroma_client = None
-    if args.corpus:
-        import chromadb
-
-        from knot_rag.retrieval.chroma_index import ChromaChunkWriter
-        from knot_rag.retrieval.embedding import build_embedder
-
-        settings = replace(settings, chroma_mode="memory", chroma_collection=f"eval_{uuid.uuid4().hex[:8]}")
-        chroma_client = chromadb.EphemeralClient()
-        corpus = json.loads(Path(args.corpus).read_text(encoding="utf-8"))
-        chunks = [IndexedChunk.model_validate(c) for c in corpus["chunks"]]
-        emb = build_embedder(settings.embedding_backend, settings.embedding_model, settings.embedding_query_prefix,
-                              settings.embedding_document_prefix, settings.embedding_revision)
-        from knot_rag.schemas.embedding import EmbeddingConfiguration
-
-        config = EmbeddingConfiguration.from_settings(settings, emb.dimension)
-        ChromaChunkWriter(chroma_client, settings.chroma_collection, emb, configuration=config).upsert(chunks)
-        components = build_components(settings, embedder=emb, chroma_client=chroma_client)
-    else:
-        components = build_components(settings)
+    components = offline_components(settings, args.corpus) if args.corpus else build_components(settings)
 
     dataset = json.loads(Path(args.dataset).read_text(encoding="utf-8"))
     results = evaluate(components, dataset, generate=args.provider != "none")

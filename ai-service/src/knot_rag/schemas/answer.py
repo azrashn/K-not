@@ -80,6 +80,10 @@ class SupportAssessment(StrictModel):
         "but does not make the answer incomplete."
     )
     judge_verdict: str | None = Field(default=None, description="ENTAILED / PARTIAL / NOT_ENTAILED when a judge ran.")
+    # Added in rag.v1.2 (additive):
+    unsupported_terms: list[str] | None = Field(
+        default=None, description="Rule S8: claim content terms that occur in none of the cited passages (stem match)."
+    )
 
 
 class Claim(StrictModel):
