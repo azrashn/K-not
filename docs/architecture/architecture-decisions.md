@@ -299,3 +299,44 @@ they run under ts-node/jest. The generator now emits extensionless imports
 **Verification:**
 - **Mocked:** 58 Vitest/Testing Library tests with a fake `fetch`.
 - **Real E2E (`npm run test:e2e`):** 15/15 steps. Chromium → `vite preview` → NestJS → MySQL 8, and NestJS → Python ai-service (WBS-2 ingestion, WBS-3 extractive answers, hashing embedder, in-memory Chroma).
+
+## 10. WBS-3 LLM-readiness record (`feature/rag-llm-validation`, 2026-10-08)
+
+**Provider decision: deferred by the project team.** No external LLM provider, external
+transmission of course material, LLM judge or budget is approved. Claude Sonnet (Anthropic API)
+is a candidate only. The evaluation budget cap is **$0**. Nothing in this record was produced
+by a real LLM.
+
+| Topic | Decision |
+| --- | --- |
+| External calls | Default-deny (`generation/providers/policy.py`). A non-loopback `LLM_BASE_URL` is refused at start-up unless `LLM_ALLOW_EXTERNAL=true`, `LLM_BUDGET_USD > 0` and both `LLM_PRICE_*_PER_MTOK` are set. Loopback endpoints (a local model) need no approval because nothing leaves the server and nothing is billed |
+| Budget | Approved providers run behind `BudgetGuardProvider`: a call whose worst-case cost (prompt chars / 2 tokens, plus `max_output_tokens`) would exceed the remaining budget is not made. Spend settles to provider-reported usage. Exhaustion is a non-retried `GENERATION_FAILED` |
+| Evaluation runner | `--provider extractive` (offline) is the default; `--provider env` goes through the same policy |
+| Judge independence | `SUPPORT_JUDGE=llm` requires a separately injected judge provider; the generator is never its own judge. No judge is configured (team decision: no LLM judge) |
+| Prompt | `grounded-answer.v2`: adds an optional `conflicts` list for disagreeing evidence |
+| Conflicts | `evidence/conflicts.py`: model-reported conflicts (≥ 2 evidence ids that were shown) and lexical claim conflicts (stem Jaccard ≥ 0.8, different negation or numbers) cap involved claims at GEVEŞEK and block ANSWERED. They can only lower support |
+| Support rules | `citation-lexical-v3` = v2 + S8 (no claim term absent from all cited passages). `assessment.unsupported_terms` is additive; NestJS passes answers through and React ignores the field, so both are unchanged |
+| Evaluation tools | `evaluation/grounding.py` (constructed-error harness), `evaluation/claim_labels.py` (blind human labelling + claim metrics) |
+
+**Decisions still needed from the team.**
+1. Provider, model and data-transmission approval (and whether real student documents may ever
+   be sent; retention and zero-retention terms must be checked against the provider's current
+   policy). Until then `LLM_ALLOW_EXTERNAL=false`, budget $0.
+2. Budget for the first real evaluation. Rough pre-approval estimate for Claude Sonnet at
+   $2/$10 per 1M tokens, generator only: 107 questions (eval.v2 + challenge.v1) × ~5K input and
+   ~1.5K output tokens ≈ $3 per pass; to be re-estimated with the provider's token counter.
+3. **English and mixed-language questions** (rag-evaluation §4.8, finding 4): lexical relevance
+   (S7) prevents SIKI for English questions over Turkish material (faithful control en 0/5 and
+   0/9). Options: (a) a cross-lingual relevance check using the local multilingual embedding
+   model (no external calls; needs calibration on the calibration split and confirmation on
+   held-out data); (b) answer in the language of the evidence, with the question's language
+   used only for explanations; (c) accept GEVEŞEK for English questions and say so in the UI.
+4. Who independently reviews the gold labels (eval.v2, challenge.v1) and labels claims for the
+   claim-level metrics; the developer's own labels are not independent.
+5. Whether a contradictory-evidence evaluation set (proposed `grounding.v1`, ~30 items incl.
+   conflicting passages) should be written and by whom it is reviewed.
+
+**WBS-3 status: not Done.** The provider-independent parts are implemented and tested. Real
+generation quality, claim-level hallucination metrics, judge agreement and the full
+PDF → e5-small → Chroma → LLM → validation → NestJS → React flow with a real model remain
+unvalidated until the decisions above are made.
