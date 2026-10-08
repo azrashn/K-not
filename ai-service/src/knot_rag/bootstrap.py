@@ -7,6 +7,7 @@ from typing import Callable
 
 from knot_rag.config import Settings
 from knot_rag.context.builder import ContextBuilder
+from knot_rag.errors import ConfigurationError
 from knot_rag.evidence.mapper import EvidenceMapper
 from knot_rag.evidence.judge import LLMJudgeSupportAssessor
 from knot_rag.evidence.support import HeuristicSupportAssessor, SupportAssessor
@@ -57,7 +58,13 @@ def build_components(
     provider = provider or build_provider(settings.llm)
     assessor: SupportAssessor = HeuristicSupportAssessor(settings.support)
     if settings.support.judge == "llm":
-        assessor = LLMJudgeSupportAssessor(assessor, judge_provider or provider, settings.llm)
+        if judge_provider is None:
+            # The generator's own verdict on its claims is not independent verification.
+            raise ConfigurationError(
+                "SUPPORT_JUDGE=llm requires a separately configured judge provider; "
+                "the generator cannot verify its own claims."
+            )
+        assessor = LLMJudgeSupportAssessor(assessor, judge_provider, settings.llm)
     rag = RagService(
         retrieval=RetrievalService(index, embedder, settings.retrieval),
         context_builder=ContextBuilder(settings.retrieval),
