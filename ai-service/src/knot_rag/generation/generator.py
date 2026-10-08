@@ -36,6 +36,13 @@ class ModelClaim(BaseModel):
     support: Literal["full", "partial"] = "full"
 
 
+class ModelConflict(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    evidence_ids: list[str] = Field(default_factory=list, max_length=10)
+    note: str = Field(default="", max_length=500)
+
+
 class ModelAnswer(BaseModel):
     """What the model is allowed to return. Anything else is a generation failure."""
 
@@ -44,6 +51,8 @@ class ModelAnswer(BaseModel):
     status: Literal["answered", "partial", "insufficient"]
     claims: list[ModelClaim] = Field(default_factory=list, max_length=12)
     missing: list[str] = Field(default_factory=list, max_length=10)
+    # Evidence blocks the model says disagree. Used only to lower support (evidence/conflicts.py).
+    conflicts: list[ModelConflict] = Field(default_factory=list, max_length=5)
 
 
 _FENCE = re.compile(r"^```(?:json)?\s*|\s*```$", re.IGNORECASE)

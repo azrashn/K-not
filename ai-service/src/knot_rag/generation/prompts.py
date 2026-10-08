@@ -8,7 +8,7 @@ import re
 from knot_rag.context.builder import render_evidence_context
 from knot_rag.schemas.retrieval import RetrievedEvidence
 
-PROMPT_VERSION = "grounded-answer.v1"
+PROMPT_VERSION = "grounded-answer.v2"
 
 SYSTEM_PROMPT = """You are the grounded answering engine of K-not, a study tool for university students.
 
@@ -21,11 +21,13 @@ You answer ONLY from the course evidence supplied in <evidence> blocks. Rules:
    - "support": "full" if the cited evidence states the claim; "partial" if it supports only part of it.
 4. Do not state anything the evidence does not support. List parts of the question that the evidence cannot answer in "missing".
 5. If the evidence does not answer the question at all, return status "insufficient", an empty "claims" list, and explain in "missing".
-6. Write claims in the same language as the question (usually Turkish). Keep technical identifiers exactly as written in the evidence (e.g. LL, RR, LR, RL, AVL, BST, O(log n)).
-7. Output a single JSON object and nothing else:
+6. If evidence blocks disagree on a point, do not pick one and do not merge them. State what each block says as separate claims, each citing only its own block, and add the disagreement to "conflicts" with the ids of the disagreeing blocks.
+7. Write claims in the same language as the question (usually Turkish). Keep technical identifiers exactly as written in the evidence (e.g. LL, RR, LR, RL, AVL, BST, O(log n)).
+8. Output a single JSON object and nothing else:
 {"status": "answered" | "partial" | "insufficient",
  "claims": [{"text": str, "evidence_ids": [str], "quote": str, "support": "full" | "partial"}],
- "missing": [str]}"""
+ "missing": [str],
+ "conflicts": [{"evidence_ids": [str], "note": str}]}"""
 
 REPAIR_NOTE = (
     "\n\nYour previous output was not valid JSON matching the required schema. "
