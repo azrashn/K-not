@@ -1,5 +1,11 @@
 # RAG Evaluation — Dataset, Metrics, Results
 
+> **Update (2026-10-08, `feature/rag-llm-validation`).** No real LLM has been run: the project
+> team has not approved a provider, external transmission or a budget (budget cap $0). §4.8 adds
+> an **offline grounding harness** that measures the validation layer on errors constructed with
+> known ground truth, and §4.9 lists what can and cannot be validated without a real LLM.
+> Rules are now `citation-lexical-v3` (adds S8).
+>
 > **Status (2026-10-07).** The harness, datasets and support rules are complete and tested.
 > **The production configuration (multilingual embedding model + real LLM) has still not been
 > measured**: the build environment's network policy denies huggingface.co (model downloads
@@ -299,13 +305,114 @@ Quality metrics are deterministic for the pinned revisions. Latency and RSS depe
 hardware. RSS in the breakdown file accumulates across models within one process; the RAM
 figures above come from separate processes.
 
+### 4.8 Offline grounding harness (2026-10-08, no LLM, $0)
+
+`python -m knot_rag.evaluation.grounding` runs every question of a locked dataset through the
+real pipeline (retrieval, context, mapper, support rules, conflict check, outcome logic) with
+a **scripted generator** whose output is wrong in a known way. Because the error is constructed,
+its label is known without a human; the harness measures how the **validation layer** labels
+it. It is not a model hallucination rate and not answer accuracy: a real LLM makes subtler errors
+(paraphrase, partial truths, translation) that cannot be generated this way.
+
+Scenarios: on answerable items the gold sentence is taken from the gold passage (best token
+overlap with the question) and then perturbed: `wrong_citation` (cited to another passage),
+`misleading_citation` (cited to another passage with a verbatim quote from it), `number_changed`,
+`negation_flipped`, `entity_swapped` (AVL↔kırmızı-siyah, sol↔sağ, LL↔RR, O(n log n)→O(n²)…),
+`unsupported_addition` (an unsupported clause appended), `fabricated_claim` (off-corpus statement
+with a real quote), `fabricated_quote`, `fabricated_evidence_id`. Controls: `faithful` (the gold
+sentence itself), `oracle` (gold sentences with the dataset's expected status). On out-of-scope
+items: `overconfident_answer` (general-knowledge claim stated as answered), `irrelevant_quote`
+(a true sentence from the top passage) and `decline` (control). Items whose gold passage was not
+retrieved are counted as `gold_not_in_context` and excluded (retrieval is measured elsewhere).
+
+Reports: `ai-service/evaluation/reports/grounding-*-2026-10-08.json` (per case, with labels and
+explanations). challenge.v1 was read from commit `7bc6bb0` with `git show` (sha256
+`a036f09d…`), not copied into the repository and not modified. e5-small ran from the local
+model cache with `HF_HUB_OFFLINE=1`.
+
+All values are numerator/denominator of **claims** (one claim per case) or of **cases** for
+outcome metrics. "v2" = rules before S8 (`SUPPORT_MAX_UNSUPPORTED_TERMS=99`), "v3" = current.
+
+| Scenario | Metric | eval.v2 hashing v2 | eval.v2 hashing v3 | challenge.v1 hashing v2 | challenge.v1 hashing v3 | challenge.v1 e5-small v3 |
+| --- | --- | --- | --- | --- | --- | --- |
+| faithful (control) | SIKI | 42/50 | 42/50 | 13/25 | 13/25 | 13/31 |
+| oracle (control) | outcome = expected | 40/50 | 40/50 | 17/25 | 17/25 | 18/31 |
+| oracle | unnecessary refusal (INSUFFICIENT on answerable) | 0/50 | 0/50 | 0/25 | 0/25 | 0/31 |
+| oracle | over-claim on partial items (ANSWERED) | 0/4 | 0/4 | 0/3 | 0/3 | 0/4 |
+| decline (out-of-scope) | correct abstention | 9/9 | 9/9 | 8/8 | 8/8 | 8/8 |
+| wrong_citation | incorrect SIKI | 0/50 | 0/50 | 0/25 | 0/25 | 0/31 |
+| misleading_citation | incorrect SIKI | 0/50 | 0/50 | 1/25 | **0/25** | 0/31 |
+| number_changed | incorrect SIKI | 1/11 | 1/11 | 0/6 | 0/6 | 0/6 |
+| negation_flipped | incorrect SIKI | 0/8 | 0/8 | 0/2 | 0/2 | 0/3 |
+| entity_swapped | incorrect SIKI | **20/25** | **7/25** | **5/11** | **2/11** | 2/14 |
+| unsupported_addition | incorrect SIKI | **26/50** | **0/50** | **6/25** | **0/25** | 0/31 |
+| fabricated_claim | incorrect SIKI | 0/50 | 0/50 | 0/25 | 0/25 | 0/31 |
+| fabricated_quote | incorrect SIKI | 0/50 | 0/50 | 0/25 | 0/25 | 0/31 |
+| fabricated_evidence_id | KOPUK | 50/50 | 50/50 | 25/25 | 25/25 | 31/31 |
+| overconfident_answer | incorrect SIKI / ANSWERED | 0/9, 0/9 | 0/9, 0/9 | 0/8, 0/8 | 0/8, 0/8 | 0/8, 0/8 |
+| irrelevant_quote | incorrect SIKI / ANSWERED | 1/9, 0/9 | 1/9, 0/9 | 1/8, 0/8 | 1/8, 0/8 | 1/8, 0/8 |
+
+KOPUK vs GEVEŞEK for errors: `wrong_citation` is KOPUK in 30/50 (eval.v2) and GEVEŞEK otherwise;
+`misleading_citation`, `fabricated_claim`, `fabricated_quote` and every out-of-scope fault are
+**GEVEŞEK, never KOPUK** (0/N KOPUK in every column). Only invented evidence ids are always KOPUK.
+
+**Findings.**
+1. **S8 was added because of this harness.** v2 rated SIKI for 20/25 swapped-entity and 26/50
+   unsupported-addition claims on eval.v2 (S3 tolerates 40 % unmatched terms). S8 was designed on
+   eval.v2; challenge.v1 is the held-out confirmation: 5/11 → 2/11 and 6/25 → 0/25, with the
+   faithful control unchanged (13/25 → 13/25) and eval.v1/eval.v2 runner outcomes unchanged. S8
+   is not the rejected "absent term" rule of §4.3: that compared *question* terms with the context
+   to block ANSWERED; S8 compares *claim* terms with the claim's own cited passages and only
+   withholds SIKI.
+2. **Remaining incorrect SIKI is position-blind.** The 7/25 entity swaps and 1/11 number change
+   that stay SIKI replace a term with one that already occurs in the same passage ("sol … sağ" →
+   "sağ … sağ", "LL, RR" → "RR, RR", "2i+1" → "2i+2"). Bag-of-words rules cannot see this; it
+   needs a semantic (entailment) check.
+3. **Fabricated or mis-cited claims are GEVEŞEK, not KOPUK.** They are never SIKI and never make an
+   answer ANSWERED, but a student sees "kısmen destekleniyor" for a claim with no support. Making
+   them KOPUK lexically (claim vs. quoted sentence overlap below 0.3) would also turn correct
+   English claims over Turkish sources into KOPUK, so it was not done; it needs a semantic check.
+4. **English questions cannot reach SIKI.** On challenge.v1 the faithful control is SIKI for
+   tr 9/16, mixed 4/4 and **en 0/5** (hashing; e5-small: tr 9/16, mixed 4/6, en 0/9). Every miss
+   is S7 (relevance by word overlap between an English question and a Turkish claim). English
+   answers are never refused (unnecessary refusal 0/5 and 0/9) but are under-rated, and the
+   oracle reaches the expected outcome for en in only 1/5 (1/9). See §4.9 and the decision list
+   in architecture-decisions §10.
+5. **Faithful false alarms on Turkish are S7 side-remark caps** (8/8 on eval.v2): the harness's
+   gold sentence is sometimes not the one that answers the question. They do not make answers
+   incomplete (side remarks are excluded) and are a property of the harness's sentence choice
+   as much as of S7.
+6. **Abstention logic holds under a perfect or overconfident generator:** correct abstention 9/9
+   and 8/8, overconfident out-of-scope answers never ANSWERED (0/9, 0/8), and no unnecessary
+   refusal by the validation layer (0/50, 0/25, 0/31). Scope leakage in the eval.v2 runner:
+   0/528 retrieved records.
+
+### 4.9 What can and cannot be validated without a real LLM
+
+| Property | Offline status | How |
+| --- | --- | --- |
+| Invented evidence ids, invented quotes, mis-attributed citations never become SIKI | **Validated** (constructed errors, §4.8) | Mapper + S1/S2/S3/S8 |
+| Unsupported additions and absent-term entity swaps never SIKI | **Validated**, held-out | S8 |
+| Same-passage term swaps, reordered relations, subtle paraphrase errors | **Not detectable** lexically; measured residual 7/25, 2/11, 2/14 | Needs a semantic verifier |
+| Out-of-scope questions: no ANSWERED, abstention when the model declines | **Validated** for scripted generators | Outcome logic |
+| Conflicting evidence lowers support and blocks ANSWERED | **Unit-tested only** (model-reported and lexical negation/number conflicts); no dataset has contradiction items | `evidence/conflicts.py` |
+| Fail-safe on invalid output, timeouts, auth errors, budget exhaustion | **Unit-tested** with scripted providers | Generator, policy |
+| Scope / cross-course isolation | **Validated** (0/528 leakage; NestJS fail-closed) | Retrieval filter, backend |
+| Whether a real model follows the prompt (atomic claims, verbatim quotes, `conflicts`, language) | **Untested** | Needs an approved model |
+| Real hallucination rate, supported/unsupported claim rate, citation precision, answer completeness | **Unmeasured** | Real answers + blind human labels (`evaluation/claim_labels.py`) |
+| Agreement of any semantic judge with humans | **Unmeasured** | Judge provider + ≥ 100 human-labelled claims |
+| English / mixed-language answers reaching SIKI | **Known failure** (finding 4) | Cross-lingual relevance or claim-language policy |
+| Latency within the NestJS timeout (35 s) for real generation | **Untested** | Real provider |
+
 ## 5. Not yet measured
 
 | Item | Blocked by | What is needed |
 | --- | --- | --- |
 | Multilingual embedding comparison | ~~huggingface.co denied~~ Done for 3 candidates (§4.7); mpnet, e5-base, bge-m3 and Turkish BERT not run | Run the remaining candidates if e5-small proves insufficient |
-| Answer quality with a real LLM | No provider configured | `LLM_*` settings, then the runner with `--provider env` |
-| Semantic judge agreement with humans | Both of the above, plus labels | Label ≥ 100 claims; run with `SUPPORT_JUDGE=llm`; report agreement |
+| Answer quality with a real LLM | **No provider approved; budget $0** (team decision, 2026-10-08) | Approval of provider, transmission and budget; then `LLM_ALLOW_EXTERNAL`, `LLM_BUDGET_USD`, prices, and the runner with `--provider env` |
+| Claim-level hallucination metrics (supported/unsupported claim rate, citation precision, incorrect-SIKI rate, completeness) | Real answers + human labels | `claim_labels export` → blind labelling by a reviewer who is not the developer → `claim_labels score` |
+| Semantic judge agreement with humans | Judge provider (must differ from the generator) + labels | Label ≥ 100 claims; run with `SUPPORT_JUDGE=llm`; report agreement |
+| Contradictory-evidence questions | No dataset items | A reviewed set with conflicting passages (proposed `grounding.v1`) |
 | Independent review of gold labels | Team | A second reviewer for eval.v2 |
 | Project targets (≥ 0.80 supported answers, ≥ 0.75 retrieval, ≤ 0.20 unsupported claims) | All of the above | **Not claimed** |
 
@@ -323,3 +430,9 @@ figures above come from separate processes.
    embeddings.
 5. Token budgeting uses a character heuristic; highlights are character offsets, not PDF
    coordinates; the body-size limit relies on `Content-Length`.
+6. S8 (`citation-lexical-v3`) is strict by design: a real LLM that paraphrases with words not in
+   the source will get GEVEŞEK instead of SIKI. Its effect on real answers is unmeasured;
+   `SUPPORT_MAX_UNSUPPORTED_TERMS` exists for calibration once real outputs and human labels exist.
+7. The perturbation harness generates its errors from the source sentence; its rates describe the
+   validation layer on those error types only, with small denominators for some types
+   (negation 8 and 2, numbers 11 and 6).
