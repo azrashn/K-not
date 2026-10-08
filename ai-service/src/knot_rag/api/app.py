@@ -103,6 +103,7 @@ def create_app(components: Components) -> FastAPI:
     def ready():
         checks: dict[str, str] = {}
         ok = True
+        info = None
         try:
             info = components.index.info()
             checks["index"] = f"ok ({info.chunk_count} chunks)"
@@ -114,7 +115,25 @@ def create_app(components: Components) -> FastAPI:
             checks["index"] = "error"
         checks["provider"] = f"{components.provider.name}:{components.provider.model}"
         checks["embedding_model"] = components.embedder.model_id
-        return JSONResponse(status_code=200 if ok else 503, content={"status": "ready" if ok else "not_ready", "checks": checks})
+        content = {"status": "ready" if ok else "not_ready", "checks": checks, "index": _index_identity(info)}
+        return JSONResponse(status_code=200 if ok else 503, content=content)
+
+    def _index_identity(info) -> dict:
+        """C-1 consistency-guard fields (api-contracts.md §6). The fingerprint is the
+        service's configured one; when the collection carries a fingerprint, `info()` has
+        already verified that the two are equal."""
+        fingerprint = None
+        if components.embedding_configuration is not None:
+            try:
+                fingerprint = components.embedding_configuration().fingerprint()
+            except Exception:  # model not loadable: reported as unknown, readiness decided above
+                fingerprint = None
+        return {
+            "collection": info.collection if info is not None else settings.chroma_collection,
+            "embedding_fingerprint": fingerprint,
+            "index_version_id": info.index_version_id if info is not None else None,
+            "stamp": None if info is None else ("full" if info.embedding_fingerprint else "legacy"),
+        }
 
     auth = [Depends(require_internal_auth)]
 

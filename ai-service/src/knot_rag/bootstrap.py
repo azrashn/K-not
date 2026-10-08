@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import Callable
 
 from knot_rag.config import Settings
 from knot_rag.context.builder import ContextBuilder
@@ -16,6 +17,7 @@ from knot_rag.retrieval.chroma_index import ChromaChunkIndex, build_chroma_clien
 from knot_rag.retrieval.embedding import Embedder, build_embedder
 from knot_rag.retrieval.index import ChunkIndex
 from knot_rag.retrieval.service import RetrievalService
+from knot_rag.schemas.embedding import EmbeddingConfiguration
 
 
 @dataclass
@@ -25,6 +27,8 @@ class Components:
     embedder: Embedder
     provider: LLMProvider
     rag: RagService
+    # C-1: the query-side EmbeddingConfiguration (lazy: the dimension needs the loaded model).
+    embedding_configuration: Callable[[], EmbeddingConfiguration] | None = field(default=None, repr=False)
 
 
 def build_components(
@@ -40,11 +44,16 @@ def build_components(
         settings.embedding_backend, settings.embedding_model, settings.embedding_query_prefix,
         settings.embedding_document_prefix, settings.embedding_revision,
     )
+    query_embedder = embedder
+
+    def embedding_configuration() -> EmbeddingConfiguration:
+        return EmbeddingConfiguration.from_settings(settings, query_embedder.dimension)
+
     if index is None:
         client = chroma_client or (
             lambda: build_chroma_client(settings.chroma_mode, settings.chroma_host, settings.chroma_port, settings.chroma_path)
         )
-        index = ChromaChunkIndex(client, settings.chroma_collection, embedder)
+        index = ChromaChunkIndex(client, settings.chroma_collection, embedder, configuration=embedding_configuration)
     provider = provider or build_provider(settings.llm)
     assessor: SupportAssessor = HeuristicSupportAssessor(settings.support)
     if settings.support.judge == "llm":
@@ -58,4 +67,7 @@ def build_components(
         log_questions=settings.log_questions,
         support_settings=settings.support,
     )
-    return Components(settings=settings, index=index, embedder=embedder, provider=provider, rag=rag)
+    return Components(
+        settings=settings, index=index, embedder=embedder, provider=provider, rag=rag,
+        embedding_configuration=embedding_configuration,
+    )

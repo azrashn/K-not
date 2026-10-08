@@ -36,6 +36,9 @@ class IndexInfo:
     embedding_model: str | None
     embedding_dim: int | None
     chunk_count: int
+    # C-1 stamp values (None for legacy collections and non-Chroma indexes).
+    embedding_fingerprint: str | None = None
+    index_version_id: str | None = None
 
 
 class ChunkIndex(Protocol):

@@ -125,7 +125,10 @@ def main(argv: list[str] | None = None) -> int:
         chunks = [IndexedChunk.model_validate(c) for c in corpus["chunks"]]
         emb = build_embedder(settings.embedding_backend, settings.embedding_model, settings.embedding_query_prefix,
                               settings.embedding_document_prefix, settings.embedding_revision)
-        ChromaChunkWriter(chroma_client, settings.chroma_collection, emb).upsert(chunks)
+        from knot_rag.schemas.embedding import EmbeddingConfiguration
+
+        config = EmbeddingConfiguration.from_settings(settings, emb.dimension)
+        ChromaChunkWriter(chroma_client, settings.chroma_collection, emb, configuration=config).upsert(chunks)
         components = build_components(settings, embedder=emb, chroma_client=chroma_client)
     else:
         components = build_components(settings)

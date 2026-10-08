@@ -19,7 +19,7 @@
 | ADR-003 | Visibility `PRIVATE`/`COURSE`; only instructors upload COURSE materials; student uploads are PRIVATE; no visibility change in Phase 1 | ACCEPTED | A2 | [api-contracts.md §5](api-contracts.md#5-authorized-scope-derivation) |
 | ADR-004 | Phase 1 accepts **PDF only** (`%PDF-` magic check, ≤ 30 MB, ≤ 400 pages). The frontend `accept` attribute must change (WBS-5). | ACCEPTED | A3 | [api-contracts.md §3.2](api-contracts.md#32-documents) |
 | ADR-005 | Source viewer shows **extracted page text** (`pages.v1` artifact) with code-point offsets; original PDF available for download. Layout is not reproduced; no layout coordinates are ever produced. | ACCEPTED | A4 | [document-contract.md §7, §10](document-contract.md#7-pageartifact) |
-| ADR-006 | **C-1:** the Chroma collection stamp carries the full `EmbeddingConfiguration` and fingerprint; the WBS-3 reader verifies it; `/ready` reports it. Additive. | ACCEPTED, **not yet implemented** (§2) | A5 | §2 |
+| ADR-006 | **C-1:** the Chroma collection stamp carries the full `EmbeddingConfiguration` and fingerprint; the WBS-3 reader verifies it; `/ready` reports it. Additive. | ACCEPTED, **implemented** on `feature/document-ingestion` (§2) | A5 | §2 |
 | ADR-007 | `ChromaChunkWriter` (write path) is owned by WBS-2; the reader `ChromaChunkIndex` stays with WBS-3; contract files are shared | ACCEPTED | A6 | [module-boundaries.md §3](module-boundaries.md#3-shared-contract-code-wbs-1-custodian) |
 | ADR-008 | Reindex = delete-before-replace; the document is out of scope until READY; documented consequences; throttled bulk reindex. Version-filtered "keep old live" reindex DEFERRED. | ACCEPTED (conditional) | A7 | [document-lifecycle.md §7](document-lifecycle.md#7-reindexing-same-embedding-configuration) |
 | ADR-009 | Ingestion is a separate package in the same Python deployable, with a **bounded in-process worker** and authenticated, sequenced, idempotent callbacks. MySQL is authoritative; sweeper for stalls; fencing via `activeJobId`. **Bounded MVP solution, not a durable queue.** | ACCEPTED (conditional) | A9 | [document-lifecycle.md §4](document-lifecycle.md#4-in-process-worker-reliability) |
@@ -41,8 +41,11 @@ here.
 
 ## 2. C-1 — additive WBS-3 change (approved A5; specification only)
 
-C-1 is **not** implemented on the WBS-1 branch. It is delivered as its own PR on a WBS-3
-branch, reviewed by WBS-2 (writer side) and WBS-3 (reader side).
+C-1 is **not** implemented on the WBS-1 branch. It was delivered as its own commit at the
+start of `feature/document-ingestion` (WBS-2), for review by WBS-2 (writer side) and WBS-3
+(reader side). Implementation: `knot_rag/schemas/embedding.py` (configuration, fingerprint,
+stamp), `ChromaChunkWriter`/`ChromaChunkIndex` (`retrieval/chroma_index.py`), `GET /ready`
+(`index` object, plus `stamp: "full" | "legacy"`). Tests: `tests/integration/test_c1_stamp.py`.
 
 | Part | Change | Owner |
 | --- | --- | --- |

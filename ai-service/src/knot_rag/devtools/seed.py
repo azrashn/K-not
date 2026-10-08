@@ -16,7 +16,7 @@ from pathlib import Path
 from knot_rag.config import Settings
 from knot_rag.retrieval.chroma_index import ChromaChunkWriter, build_chroma_client
 from knot_rag.retrieval.embedding import build_embedder
-from knot_rag.schemas import IndexedChunk
+from knot_rag.schemas import EmbeddingConfiguration, IndexedChunk
 
 
 def main(argv: list[str]) -> int:
@@ -30,7 +30,8 @@ def main(argv: list[str]) -> int:
     chunks = [IndexedChunk.model_validate(c) for c in data["chunks"]]
     embedder = build_embedder(s.embedding_backend, s.embedding_model, s.embedding_query_prefix, s.embedding_document_prefix, s.embedding_revision)
     client = build_chroma_client(s.chroma_mode, s.chroma_host, s.chroma_port, s.chroma_path)
-    n = ChromaChunkWriter(client, s.chroma_collection, embedder).upsert(chunks)
+    config = EmbeddingConfiguration.from_settings(s, embedder.dimension)
+    n = ChromaChunkWriter(client, s.chroma_collection, embedder, configuration=config).upsert(chunks)
     print(f"Upserted {n} chunks into '{s.chroma_collection}' using {embedder.model_id}.")
     return 0
 

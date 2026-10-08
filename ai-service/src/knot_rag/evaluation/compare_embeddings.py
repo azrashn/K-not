@@ -35,7 +35,7 @@ from knot_rag.evaluation.runner import DEFAULT_THRESHOLDS, evaluate
 from knot_rag.generation.providers import ExtractiveBaselineProvider
 from knot_rag.retrieval.chroma_index import ChromaChunkIndex, ChromaChunkWriter
 from knot_rag.retrieval.embedding import Embedder, build_embedder
-from knot_rag.schemas import IndexedChunk
+from knot_rag.schemas import EmbeddingConfiguration, IndexedChunk
 
 
 def _version(pkg: str) -> str | None:
@@ -97,10 +97,15 @@ def run_candidate(c: dict[str, Any], chunks: list[IndexedChunk], dataset: dict[s
     client = chromadb.EphemeralClient()
     name = f"cmp_{uuid.uuid4().hex[:10]}"
     t0 = time.perf_counter()
-    ChromaChunkWriter(client, name, emb).upsert(chunks)
+    config = EmbeddingConfiguration(
+        backend=c["backend"], model=c.get("model", ""), revision=c.get("revision"), dimension=dim,
+        query_prefix=c.get("query_prefix", ""), document_prefix=c.get("document_prefix", ""),
+    )
+    ChromaChunkWriter(client, name, emb, configuration=config).upsert(chunks)
     index_s = time.perf_counter() - t0
 
-    comps = build_components(settings, index=ChromaChunkIndex(client, name, emb), embedder=emb, provider=ExtractiveBaselineProvider())
+    index = ChromaChunkIndex(client, name, emb, configuration=config)
+    comps = build_components(settings, index=index, embedder=emb, provider=ExtractiveBaselineProvider())
     items = evaluate(comps, dataset, generate=False)
 
     lat = []
