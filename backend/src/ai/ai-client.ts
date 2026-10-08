@@ -34,7 +34,9 @@ export class AiServiceClient {
       this.log.log({ event: 'ai.call', method, path: path.split('?')[0], status: res.status, duration_ms: Date.now() - started, request_id: opts.requestId ?? null });
       return { kind: 'response', status: res.status, body };
     } catch (e) {
-      const timeout = e instanceof Error && (e.name === 'TimeoutError' || e.name === 'AbortError');
+      // Check the name only: DOMException is not `instanceof Error` across realms (e.g. VM contexts).
+      const name = (e as { name?: unknown } | null)?.name;
+      const timeout = name === 'TimeoutError' || name === 'AbortError';
       this.log.warn({ event: 'ai.call_failed', method, path: path.split('?')[0], kind: timeout ? 'timeout' : 'unreachable', duration_ms: Date.now() - started });
       return timeout ? { kind: 'timeout' } : { kind: 'unreachable' };
     }

@@ -89,6 +89,11 @@ export class IndexVersionService {
     return this.guard;
   }
 
+  /** Forget the cached state (after an IndexVersion change; used by tests and admin tools). */
+  invalidate(): void {
+    this.guard = null;
+  }
+
   /** Cached guard state, refreshed when older than the check interval. */
   async state(): Promise<GuardState> {
     if (!this.guard || Date.now() - this.guard.checkedAt > this.config.readyCheckIntervalMs || this.guard.state !== 'ok') {

@@ -65,6 +65,13 @@ export class JobsService {
   async createJobTx(
     tx: Tx, documentId: string, kind: JobKind, attempt: number, iv: IndexVersion, notBefore: Date | null = null,
   ): Promise<DocumentProcessingJob> {
+    // Lock the document first: inserting the job takes a shared FK lock on it, and two concurrent
+    // creators upgrading shared → exclusive would deadlock instead of one losing cleanly.
+    const locked = await tx.$queryRaw<{ activeJobId: string | null; deletedAt: Date | null }[]>`
+      SELECT activeJobId, deletedAt FROM Document WHERE id = ${documentId} FOR UPDATE`;
+    if (locked.length !== 1 || locked[0].activeJobId !== null || locked[0].deletedAt !== null) {
+      throw new JobConflict('document already has an active job or is deleted');
+    }
     const job = await tx.documentProcessingJob.create({
       data: { documentId, indexVersionId: iv.id, kind, attempt, status: 'QUEUED', indexingVersion: iv.chunkerVersion, nextAttemptAt: notBefore },
     });

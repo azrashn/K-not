@@ -6,9 +6,10 @@ import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import request from 'supertest';
 
-import { fingerprint } from '../../src/ai/index-versions';
+import { fingerprint, IndexVersionService } from '../../src/ai/index-versions';
 import { hashPassword } from '../../src/auth/auth.service';
 import { createApp } from '../../src/bootstrap';
+import { JsonLogger } from '../../src/common/logging';
 import { AppConfig, loadConfig } from '../../src/config/config';
 import type { PrismaClient } from '../../src/generated/prisma/client';
 import { JobsService } from '../../src/jobs/jobs.service';
@@ -22,6 +23,15 @@ export const RAG_TOKEN = 'rag-test-token-0123456789';
 export const PDF = Buffer.from('%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF\n');
 
 let passwordHash: Promise<string> | null = null;
+
+/** Wraps an async-built supertest request (boxed, because a Test is thenable) so callers can `await` it or chain `.expect(...)`. */
+export function chain(boxed: Promise<{ test: request.Test }>) {
+  return {
+    expect: async (x: number | ((r: request.Response) => void), body?: unknown) =>
+      body === undefined ? (await boxed).test.expect(x as number) : (await boxed).test.expect(x as number, body),
+    then: <T>(ok: (r: request.Response) => T, err?: (e: unknown) => T) => boxed.then(({ test }) => test).then(ok, err),
+  };
+}
 
 export interface World {
   users: { admin: string; instructor: string; ayse: string; mehmet: string; outsider: string };
@@ -40,7 +50,7 @@ export class Harness {
   world!: World;
   private tokens = new Map<string, string>();
 
-  async start(overrides: Partial<AppConfig> = {}): Promise<this> {
+  async start(overrides: Partial<AppConfig> = {}, logger: JsonLogger | false = false): Promise<this> {
     await this.ai.start();
     this.prisma = await prepareDatabase();
     this.storageRoot = mkdtempSync(path.join(tmpdir(), 'knot-storage-'));
@@ -52,7 +62,7 @@ export class Harness {
       }),
       ...overrides,
     };
-    this.app = await createApp(this.config, { logger: false });
+    this.app = await createApp(this.config, { logger });
     await this.app.listen(0, '127.0.0.1'); // supertest must not open/close ephemeral servers per request
     this.url = await this.app.getUrl();
     return this;
@@ -109,6 +119,7 @@ export class Harness {
     });
     this.ai.readyIndex = { collection: 'knot_chunks_v1', embedding_fingerprint: fp, index_version_id: iv.id };
     this.world = { users, courses: { vy, os }, ivId: iv.id, fingerprint: fp };
+    this.app.get(IndexVersionService).invalidate();
     return this.world;
   }
 
@@ -127,17 +138,13 @@ export class Harness {
 
   /** Multipart upload; the result can be awaited (→ Response) or chained with `.expect(...)`. */
   upload(who: keyof World['users'], courseId: string, opts: { file?: Buffer; name?: string; type?: string; visibility?: string; title?: string } = {}) {
-    const ready = (async () => {
+    return chain((async () => {
       const req = this.http().post(`/courses/${courseId}/documents`).set(await this.as(who))
         .field('document_type', opts.type ?? 'slide');
       if (opts.visibility) req.field('visibility', opts.visibility);
       if (opts.title) req.field('title', opts.title);
       return { test: req.attach('file', opts.file ?? PDF, { filename: opts.name ?? 'hafta4.pdf', contentType: 'application/pdf' }) };
-    })();
-    return {
-      expect: async (x: number | ((r: request.Response) => void)) => (await ready).test.expect(x as number),
-      then: <T>(ok: (r: request.Response) => T, err?: (e: unknown) => T) => ready.then(({ test }) => test).then(ok, err),
-    };
+    })());
   }
 
   /** Uploads and asserts 201; returns the DocumentDto. */
