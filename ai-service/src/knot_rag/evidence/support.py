@@ -1,6 +1,6 @@
 """Evidence-support assessment with explicit, inspectable criteria.
 
-`HeuristicSupportAssessor` (method `citation-lexical-v2`) decides per claim. Rules are applied
+`HeuristicSupportAssessor` (method `citation-lexical-v3`) decides per claim. Rules are applied
 in order; every rule that fires is written into `support_explanation`.
 
   UNSUPPORTED (KOPUK)
@@ -20,6 +20,11 @@ in order; every rule that fires is written into `support_explanation`.
     S7  question relevance: the claim mentions ≥ question_relevance_min of the question's key
         terms AND ≥ relative_relevance_min × the best claim's relevance in the same answer.
         (v1 rated any verbatim quote SIKI, including true-but-irrelevant sentences.)
+    S8  no unsupported terms: at most max_unsupported_terms (default 0) content terms of the
+        claim are absent from all cited passages (incl. their titles). Added in v3 after the
+        offline perturbation harness showed v2 rating SIKI for claims with one swapped entity
+        ("AVL" → "kırmızı-siyah", 20/25) or an appended unsupported clause (26/50), because S3
+        tolerates 40 % unmatched terms (docs/rag-evaluation.md, offline validation).
 
   PARTIALLY_SUPPORTED (GEVEŞEK)  everything else.
 
@@ -50,7 +55,7 @@ from knot_rag.text import (
     stem_set,
 )
 
-METHOD = "citation-lexical-v2"
+METHOD = "citation-lexical-v3"
 
 _RANK = {SupportStatus.UNSUPPORTED: 0, SupportStatus.PARTIALLY_SUPPORTED: 1, SupportStatus.SUPPORTED: 2}
 
@@ -89,6 +94,21 @@ def lexical_coverage(claim_text: str, evidence_texts: list[str]) -> float:
     ev_stems = {stem(t) for t in ev_tokens}
     hit = sum(1 for t in claim if t in ev_tokens or stem(t) in ev_stems)
     return round(hit / len(claim), 4)
+
+
+def unsupported_terms(claim_text: str, evidence) -> list[str]:
+    """Claim content terms (numbers excluded: S4) whose stem occurs in none of the cited
+    passages, their document titles or section titles."""
+    source: set[str] = set()
+    for e in evidence:
+        source |= stem_set(f"{e.document_title} {e.location.section_title or ''} {e.text}")
+    out: list[str] = []
+    for tok in content_tokens(claim_text):
+        if tok.replace(".", "").isdigit() or tok in out:
+            continue
+        if not stem_in(stem(tok), source):
+            out.append(tok)
+    return out
 
 
 def question_relevance(claim_text: str, question: str) -> float:
@@ -131,6 +151,7 @@ class HeuristicSupportAssessor:
         numbers_ok = numbers(claim.text) <= ev_numbers
         negation_ok = (not quote_ok) or all(has_negation(claim.text) == has_negation(x) for x in sentences)
         relevant = relevance >= s.question_relevance_min and relevance >= s.relative_relevance_min * best_relevance
+        novel = unsupported_terms(claim.text, claim.cited_evidence) if valid else []
 
         assessment = SupportAssessment(
             method=METHOD,
@@ -145,6 +166,7 @@ class HeuristicSupportAssessor:
             question_relevance=relevance,
             negation_consistent=negation_ok,
             addresses_question=relevant,
+            unsupported_terms=novel if valid else None,
         )
 
         if not valid:  # U1
@@ -177,6 +199,8 @@ class HeuristicSupportAssessor:
             reasons.append("kaynak iddianın yalnızca bir kısmını destekliyor")
         if not relevant:  # S7
             reasons.append("iddia kaynakta geçiyor ancak soruyu doğrudan yanıtlamıyor")
+        if len(novel) > s.max_unsupported_terms:  # S8 (lexical, like S3: a judge may upgrade paraphrases)
+            reasons.append("iddiada kaynakta geçmeyen ifadeler var: " + ", ".join(novel[:5]))
 
         if not reasons:
             return SupportDecision(SupportStatus.SUPPORTED, None, assessment)
