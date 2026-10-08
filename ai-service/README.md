@@ -60,6 +60,11 @@ sentence-extraction baseline (useful for demos and frontend integration; it is *
 A free local model works through `LLM_PROVIDER=openai_compatible` + Ollama
 (`LLM_BASE_URL=http://localhost:11434/v1`).
 
+**External providers are off by default ($0).** A non-loopback `LLM_BASE_URL` is refused at
+start-up unless `LLM_ALLOW_EXTERNAL=true`, `LLM_BUDGET_USD > 0` and both
+`LLM_PRICE_*_PER_MTOK` are set; approved providers run behind a hard budget cap. No external
+provider is approved yet (docs/architecture/architecture-decisions.md §10).
+
 ```bash
 curl -s localhost:8100/api/v1/rag/answer \
   -H "Authorization: Bearer $RAG_INTERNAL_API_TOKEN" -H "Content-Type: application/json" \
@@ -70,7 +75,7 @@ curl -s localhost:8100/api/v1/rag/answer \
 ## Tests
 
 ```bash
-pytest                       # everything (≈10 s, no network, no model download)
+pytest                       # everything (no network, no model download)
 pytest tests/unit            # mocked dependencies only
 pytest -m integration        # real in-memory ChromaDB + FastAPI TestClient
 pytest -m evaluation         # labelled evaluation set end-to-end
@@ -84,8 +89,15 @@ python -m knot_rag.evaluation.runner --corpus tests/fixtures/corpus.json \
 # Embedding model comparison (needs Hugging Face access):
 python -m knot_rag.evaluation.compare_embeddings --candidates evaluation/embedding_candidates.json \
   --corpus tests/fixtures/corpus_v2.json --dataset tests/fixtures/eval_dataset_v2.json
-# Against a real index + real LLM configured in the environment:
+# Against a real index + real LLM configured in the environment (refused unless approved, see above):
 python -m knot_rag.evaluation.runner --dataset tests/fixtures/eval_dataset.json --provider env
+# Offline grounding harness: constructed errors through the real validation layer ($0, no LLM):
+python -m knot_rag.evaluation.grounding --corpus tests/fixtures/corpus_v2.json \
+  --dataset tests/fixtures/eval_dataset_v2.json --out report.json
+# Blind human labelling of real answers, then claim-level metrics:
+python -m knot_rag.evaluation.claim_labels export --corpus tests/fixtures/corpus_v2.json \
+  --dataset tests/fixtures/eval_dataset_v2.json --sheet sheet.jsonl --key key.jsonl
+python -m knot_rag.evaluation.claim_labels score --sheet sheet.labelled.jsonl --key key.jsonl
 ```
 
 ## Layout
@@ -97,9 +109,9 @@ src/knot_rag/
   retrieval/    Embedder + ChunkIndex ports, ChromaDB adapter, scoped RetrievalService
   context/      Deterministic dedup, ranking, token budget, delimited rendering
   generation/   LLM provider port + adapters, prompts, structured generator
-  evidence/     Citation integrity mapper, support assessor (SIKI/GEVEŞEK/KOPUK)
+  evidence/     Citation integrity mapper, support assessor (SIKI/GEVEŞEK/KOPUK), conflicts
   api/          FastAPI app: auth, request IDs, error envelope
-  evaluation/   Metric definitions + runner
+  evaluation/   Metrics, runner, offline grounding harness, claim-labelling tool
   pipeline.py   RagService orchestration      bootstrap.py  composition root
 src/knot_ingest/  WBS-2 ingestion, same deployable (mounted only with INGEST_ENABLED=true)
   extraction.py PDF validation + page text (pypdf, pinned)   normalize.py  c1 text rules

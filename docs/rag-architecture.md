@@ -111,7 +111,7 @@ One Chroma collection per embedding model and chunking scheme (default `knot_chu
 
 ## 6. Support states — explicit criteria
 
-### 6.1 Claim level — method `citation-lexical-v2` (`evidence/support.py`)
+### 6.1 Claim level — method `citation-lexical-v3` (`evidence/support.py`)
 
 | Rule | Check | Effect if it fails |
 | --- | --- | --- |
@@ -124,8 +124,10 @@ One Chroma collection per embedding model and chunking scheme (default `knot_chu
 | S5 | Negation polarity of the claim equals the quoted sentence ("kararlıdır" vs "kararlı değildir") | GEVEŞEK (hard) |
 | S6 | The model did not mark the claim `partial` | GEVEŞEK (hard) |
 | S7 | Question relevance: the claim mentions ≥ `SUPPORT_QUESTION_RELEVANCE_MIN` (0.34) of the question's key terms **and** ≥ `SUPPORT_RELATIVE_RELEVANCE_MIN` (0.6) × the best claim's relevance | GEVEŞEK, `addresses_question=false` (hard) |
+| S8 | At most `SUPPORT_MAX_UNSUPPORTED_TERMS` (0) claim content terms occur in none of the cited passages or their titles (numbers are S4's job); listed in `assessment.unsupported_terms` | GEVEŞEK (judge may upgrade) |
+| C1 | Conflicts (`evidence/conflicts.py`): the model reports disagreeing evidence ids that were shown to it, or two cited claims are near-identical (stem Jaccard ≥ 0.8) but differ in negation or numbers | Involved claims GEVEŞEK (hard); answer not `ANSWERED` |
 
-**SIKI** requires U1–U2 and S1–S7 to pass. Every failed rule is listed in
+**SIKI** requires U1–U2 and S1–S8 to pass and no conflict. Every failed rule is listed in
 `support_explanation`, so the label is always explainable.
 
 Why v2: on eval.v1, **28 of 28** citations that pointed to a non-gold passage came from claims
@@ -135,6 +137,12 @@ and words borrowed from other sentences of a long chunk were rated SIKI. S3, S5 
 those paths. Lexical terms use a 5-character, ASCII-folded prefix stem with prefix-compatible
 matching (`ağaç` ~ `ağacı`, `faktoru` ~ `faktörü`), and question function words
 (`nedir`, `nasıl`, `hangi`, `ne zaman`, …) are ignored.
+
+Why v3 (S8): the offline perturbation harness (`evaluation/grounding.py`, docs/rag-evaluation.md
+§4.8) showed v2 rating SIKI for a correct sentence with one swapped entity (20/25) or with an
+unsupported clause appended (26/50), because S3 tolerates 40 % unmatched terms. S8 closes the
+case where the new term is absent from the source; a swap to a term that already occurs in the
+same passage ("sol" → "sağ") remains undetectable lexically.
 
 ### 6.2 What SIKI does and does not mean
 
@@ -150,7 +158,9 @@ need SIKI to mean "semantically confirmed" set `SUPPORT_REQUIRE_SEMANTIC_CONFIRM
 unconfirmed SIKI is then shown as GEVEŞEK with the explanation "anlamsal destek ayrıca
 doğrulanmadı".
 
-**Semantic judge** (`SUPPORT_JUDGE=llm`, `evidence/judge.py`): one batched LLM call per answer
+**Semantic judge** (`SUPPORT_JUDGE=llm`, `evidence/judge.py`) requires a separately configured
+judge provider: the generator is never accepted as its own judge. No judge is approved (§10 of
+architecture-decisions). One batched LLM call per answer
 asks ENTAILED / PARTIAL / NOT_ENTAILED for each non-KOPUK claim, against only that claim's cited
 passages. Hard rules (S1, S2, S4–S7) still cap the result; the judge may only upgrade S3-only
 GEVEŞEK (paraphrases). Judge failures fall back to the heuristic and are marked as such. Status:
