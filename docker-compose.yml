@@ -1,0 +1,28 @@
+# Local development database ONLY. No credentials in this file: they come from an untracked
+# env file. One-time setup (PowerShell or bash):
+#   copy .env.docker.example .env.docker      # then put NEW random values in .env.docker
+#   docker compose --env-file .env.docker up -d
+# The port is published on 127.0.0.1 only, so the database is not reachable from the network.
+# MYSQL_* variables only initialise an EMPTY data volume; to change passwords of an existing
+# database use ALTER USER (docs/security.md).
+services:
+  db:
+    image: mysql:8
+    container_name: knot_mysql
+    ports:
+      - "127.0.0.1:${MYSQL_HOST_PORT:-3306}:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?set MYSQL_ROOT_PASSWORD in .env.docker}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-knot_dev}
+      MYSQL_USER: ${MYSQL_USER:?set MYSQL_USER in .env.docker}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?set MYSQL_PASSWORD in .env.docker}
+    volumes:
+      - knot_db_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "--silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  knot_db_data:

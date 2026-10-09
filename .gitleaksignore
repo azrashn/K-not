@@ -1,0 +1,16 @@
+# Reviewed gitleaks findings that are NOT secrets (one fingerprint per line).
+# Format: <commit>:<file>:<rule>:<line> for history; <file>:<rule>:<line> for working-tree scans.
+# Add an entry only after a human review, with the reason.
+
+# Figma design-file key + URL used by the design workflow (an identifier, not an access token;
+# access is governed by the file's Figma sharing settings). Present since the first commit.
+b22a5099ae67bd28a112c6469a930eaf4ec05611:.figma-ds-state.json:generic-api-key:3
+.figma-ds-state.json:generic-api-key:3
+
+# Fake password in a unit test with a mocked fetch (never sent anywhere).
+0d4f52e0a04a4bc73fc570aecdc053465b846cc8:tests/frontend/api-client.test.js:generic-api-key:22
+tests/frontend/api-client.test.js:generic-api-key:22
+
+# Old print statement in the seed script that interpolated the email and password variables
+# (a code template, no value). The current script never prints passwords.
+bc0f3cfa61791688fe62e0a2c31debad47409bf6:backend/scripts/seed.ts:generated-password-output:44

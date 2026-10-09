@@ -15,7 +15,7 @@ cd backend
 npm ci                                  # also runs `prisma generate`
 cp .env.example .env                    # fill in secrets; export them or use your process manager
 npx prisma migrate deploy               # MySQL 8 is required
-npx ts-node scripts/seed.ts scripts/seed.example.json   # admin seed: users, courses, ACTIVE IndexVersion
+npm run db:seed:local -- scripts/seed.example.json   # admin seed (loads .env): users, courses, ACTIVE IndexVersion
 npm run build && npm start              # http://localhost:3000
 ```
 
@@ -27,6 +27,13 @@ Run the ai-service with matching settings:
 | `NESTJS_INTERNAL_URL` | The backend URL |
 | `INGEST_ENABLED` | `true` |
 | `EMBEDDING_*`, `CHROMA_COLLECTION` | The ACTIVE IndexVersion |
+
+Generated passwords are **never printed**: they are written once to a credentials file outside
+the repository (OS temp directory by default, or `--credentials-out <file>`; paths inside the
+repo are refused), readable only by you. Read it, then delete it. `--rotate-passwords` gives
+the listed existing users new passwords the same way. Never redirect seed output
+into a file in the repository. `npm run start:local` starts the built server with `.env` loaded.
+See `docs/security.md`.
 
 The seed creates the ACTIVE IndexVersion with the ADR-010 configuration: `intfloat/multilingual-e5-small`,
 revision `614241f…`, fingerprint `sha256:7858637f…`. If the ai-service's `/ready` reports another

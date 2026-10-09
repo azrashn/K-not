@@ -17,7 +17,7 @@ npm run dev            # http://localhost:5173 — /api istekleri backend'e akta
 npm run build && npx vite preview   # aynı proxy preview'da da geçerli
 ```
 
-Backend ve ai-service kurulumu için `backend/README.md` ve `ai-service/README.md`. Hesaplar yönetici tarafından tohumlanır (kayıt yok); oturum 1 saatlik JWT'dir, süresi dolunca giriş ekranına dönülür.
+Backend ve ai-service kurulumu için `backend/README.md` ve `ai-service/README.md`. Gizli bilgiler, yerel veritabanı (Docker) ve commit öncesi tarama için **`docs/security.md`** (bu depo herkese açık: `.env`, parola, yüklenen belge ve üçüncü taraf materyal asla commit edilmez). Hesaplar yönetici tarafından tohumlanır (kayıt yok); oturum 1 saatlik JWT'dir, süresi dolunca giriş ekranına dönülür.
 
 ### Testler
 
