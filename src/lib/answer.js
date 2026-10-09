@@ -72,7 +72,9 @@ export function adaptAnswer(a) {
     }
   })
   const insufficient = a.insufficient_evidence ?? null
-  if (claims.length === 0) {
+  // Selamlaşma / teşekkür: soru değil. Sunucu belge araması yapmaz; kısa yanıtı gösterilir, iddia yoktur.
+  const notQuestion = insufficient?.reason === 'NOT_A_QUESTION'
+  if (claims.length === 0 && !notQuestion) {
     claims = [{
       id: 'none', n: '–', tag: 'Yanıt', gap: true, unsupported: false, support: 'UNSUPPORTED', cites: [],
       text: 'Yüklediğin materyallerde bu soruyu yanıtlamaya yetecek kanıt bulunamadı.',
@@ -95,6 +97,8 @@ export function adaptAnswer(a) {
     verification: a.verification ?? null,
     claims,
     insufficient,
+    notQuestion,
+    reply: notQuestion ? insufficient.message : null,
     uncovered: a.question_coverage?.uncovered_terms ?? [],
     sources: sourceDocs,
     generation: a.generation ?? null,

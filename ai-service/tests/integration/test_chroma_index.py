@@ -114,3 +114,16 @@ def test_recovers_after_collection_is_recreated(chroma_client, collection_name, 
     except RetrievalUnavailable:
         pass  # first call after the swap may fail on the stale handle …
     assert idx.count_in_scope(SCOPE) == 1  # … but the adapter recovers without a restart
+
+
+def test_keyword_search_matches_case_variants_and_never_leaves_the_scope(seeded, corpus):
+    # "LRU" lives only in another course; "rotasyon" (Rotasyon / ROTASYON variants) in scope.
+    assert seeded.keyword_search("LRU", SCOPE, 50) == []
+    hits = seeded.keyword_search("rotasy", SCOPE, 50)
+    expected = {c.chunk_id for c in corpus if c.document.course_id == COURSE and c.document.document_id in SCOPE_DOCS
+                and "rotasy" in c.text.lower()}
+    assert {h.chunk.chunk_id for h in hits} == expected and expected
+    for h in hits:
+        assert h.chunk.document.course_id == COURSE and h.chunk.document.document_id in SCOPE_DOCS
+        assert h.embedding is not None and len(h.embedding) == seeded._embedder.dimension
+    assert len(seeded.keyword_search("rotasy", SCOPE, 1)) == 1  # limit respected

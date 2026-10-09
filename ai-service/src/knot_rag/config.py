@@ -28,6 +28,10 @@ class RetrievalSettings:
     max_context_tokens: int = 3000
     max_chunks_per_document: int = 4
     chars_per_token: float = 3.0  # Conservative for Turkish; used only for budgeting.
+    # Hybrid retrieval: a lexical channel (exact question terms, IDF-weighted) fused with the
+    # dense ranking by reciprocal rank fusion. Dense-only missed "git status" (rank 10–16 of 45).
+    lexical_channel: bool = True
+    lexical_pool: int = 50  # max candidates fetched per question term
 
 
 @dataclass(frozen=True)
@@ -111,6 +115,8 @@ class Settings:
                     max_context_tokens=int(g("RAG_MAX_CONTEXT_TOKENS", "3000")),
                     max_chunks_per_document=int(g("RAG_MAX_CHUNKS_PER_DOCUMENT", "4")),
                     chars_per_token=float(g("RAG_CHARS_PER_TOKEN", "3.0")),
+                    lexical_channel=_bool(g("RAG_LEXICAL_CHANNEL"), True),
+                    lexical_pool=int(g("RAG_LEXICAL_POOL", "50")),
                 ),
                 support=SupportSettings(
                     coverage_supported=float(g("SUPPORT_COVERAGE_SUPPORTED", "0.6")),

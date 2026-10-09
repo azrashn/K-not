@@ -1,6 +1,7 @@
 """Deterministic evidence selection and context rendering.
 
-Selection order: score desc (None last) → original rank → chunk_id. Then:
+Selection order: fused rank score when the lexical channel contributed (`ChunkHit.fused`),
+then score desc (None last) → original rank → chunk_id. Then:
   1. drop exact chunk_id duplicates;
   2. drop text duplicates (folded text equal, or contained in an already selected chunk);
   3. cap chunks per document (keeps one long document from crowding out others);
@@ -31,7 +32,8 @@ def citation_label(chunk: IndexedChunk) -> str:
 
 
 def _sort_key(h: ChunkHit):
-    return (h.score is None, -(h.score or 0.0), h.rank, h.chunk.chunk_id)
+    # Dense-only hits have fused=None, so their order is unchanged (score desc).
+    return (h.fused is None, -(h.fused or 0.0), h.score is None, -(h.score or 0.0), h.rank, h.chunk.chunk_id)
 
 
 def _truncate(text: str, max_chars: int) -> str:

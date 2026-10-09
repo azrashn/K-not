@@ -340,3 +340,23 @@ by a real LLM.
 generation quality, claim-level hallucination metrics, judge agreement and the full
 PDF → e5-small → Chroma → LLM → validation → NestJS → React flow with a real model remain
 unvalidated until the decisions above are made.
+
+## 11. Answer-quality record (`feature/rag-answer-quality`, 2026-10-09)
+
+Base: `feature/frontend-integration` @ `68bda0c`, plus the five offline WBS-3 commits of
+`feature/rag-llm-validation` cherry-picked (they were not on the base). Still no LLM, no external
+calls, budget $0. Contracts: additive only (`insufficient_evidence.reason = NOT_A_QUESTION`);
+NestJS passes it through; React shows the reply without a support label.
+
+| Change | Where | Why (measured) |
+| --- | --- | --- |
+| Question intent: greetings/thanks/acknowledgements answered without retrieval | `query/intent.py`, `pipeline.py` | "Merhaba" matched a PDF sentence and was rated SIKI |
+| Hybrid retrieval: lexical channel + RRF, top-2 lexical hits reserved | `retrieval/service.py`, `chroma_index.keyword_search` | e5-small ranked the only `git status` chunk 10th–16th of 45 |
+| Slide-aware segmentation, exact-substring quotes | `text.segment_spans` | titles and page numbers were glued into claims |
+| Extractive baseline v2 (IDF share, specific term, named-subject abstention, partial fallback) | `generation/providers/mock.py` | one shared word ("Git") qualified a sentence |
+| Support `citation-lexical-v4`: S9 (statement), S7+ (specific term, named subject) | `evidence/support.py` | relevance weighed "Git" like "status"; titles could be claims |
+| Question stop-words: "işe yarar", "komut", "command", greetings, pronouns | `text.py` | function words counted as topics |
+
+Results: rag-evaluation §4.10. Main trade-off: fewer wrong answers, more abstentions on
+cross-lingual questions. Not done (would need an LLM or translation): cross-lingual answering,
+reliable partial-answer detection for one missing term out of several.

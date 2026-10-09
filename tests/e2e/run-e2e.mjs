@@ -260,6 +260,15 @@ async function main() {
       console.log(`    off-topic label: ${await t2.locator('[data-knot]').first().getAttribute('data-knot')}`)
     })
 
+    await step('greeting is answered as a greeting, not matched against the documents', async () => {
+      await page.getByLabel('Materyallerine bir soru sor').fill('Merhaba')
+      await page.getByRole('button', { name: 'Soruyu gönder' }).click()
+      const reply = page.locator('[data-turn="t3"] [data-not-question]')
+      await reply.waitFor({ timeout: 30_000 })
+      check(await page.locator('[data-turn="t3"] [data-knot], [data-turn="t3"] [data-claim]').count() === 0, 'greeting must not show claims or a strength label')
+      console.log(`    reply: ${(await reply.innerText()).slice(0, 70)}`)
+    })
+
     await step('delete (two-step) removes the document', async () => {
       await page.goto(`${web}/${courseHash}`)
       await page.reload()

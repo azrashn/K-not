@@ -385,7 +385,7 @@ model cited a fabricated id (`E9`). The fabricated citation was removed and repo
 | `citations[].chunk_id` | Stable WBS-2 id. **Persist this**, not `evidence_id` (which is response-local). |
 | `citations[].location` | Page range / offsets as indexed; `null` means unknown and is never guessed |
 | `citations[].quote_verified`, `highlight` | Highlight offsets exist only for verbatim-verified quotes. `chunk_char_*` index into `evidence[].text`; `document_char_*` index into the extracted document text when WBS-2 supplied chunk offsets and the chunk was not truncated. |
-| `claims[].assessment` | Inputs to the support decision (rules S1–S8, see architecture §6). `verification`: `HEURISTIC` · `SEMANTIC_JUDGE` · `HEURISTIC_FALLBACK`; `semantically_verified` is `true` only for `SEMANTIC_JUDGE` |
+| `claims[].assessment` | Inputs to the support decision (rules S1–S9, see architecture §6). `verification`: `HEURISTIC` · `SEMANTIC_JUDGE` · `HEURISTIC_FALLBACK`; `semantically_verified` is `true` only for `SEMANTIC_JUDGE` |
 | `claims[].assessment.addresses_question` | `false` = side remark (rule S7). Shown as GEVEŞEK but does not make the answer incomplete; the UI may de-emphasise it |
 | `claims[].assessment.unsupported_terms` | *(additive, `citation-lexical-v3`)* Claim content terms found in none of the cited passages (rule S8); non-empty blocks SIKI by default. `null` when the claim has no valid citation |
 | Conflicting evidence | No new field: conflicted claims are GEVEŞEK with "…başka bir kaynakla çelişiyor (E1, E3)." in `support_explanation`, and `insufficient_evidence.missing_information` names the disagreeing evidence ids (`reason` `PARTIAL_COVERAGE`) |
@@ -394,7 +394,8 @@ model cited a fabricated id (`E9`). The fabricated citation was removed and repo
 | `question_coverage` | Key terms of the question, those not found in the backing evidence (`uncovered_terms`), `ratio`, and `absent_from_context` (informational). `ratio < 0.6` prevents `ANSWERED` |
 | `citation_issues[]` | `UNKNOWN_EVIDENCE_ID` (fabricated reference) or `QUOTE_NOT_FOUND` (quote absent from cited chunk) |
 | `evidence[].score` | Cosine similarity ranking signal; **not a probability** |
-| `insufficient_evidence` | Set whenever `outcome ≠ ANSWERED`: `reason` (`NO_RETRIEVED_EVIDENCE` · `MODEL_DECLINED` · `NO_SUPPORTED_CLAIMS` · `PARTIAL_COVERAGE`), a Turkish `message`, and `missing_information` |
+| `insufficient_evidence` | Set whenever `outcome ≠ ANSWERED`: `reason` (`NO_RETRIEVED_EVIDENCE` · `MODEL_DECLINED` · `NO_SUPPORTED_CLAIMS` · `PARTIAL_COVERAGE` · *additive:* `NOT_A_QUESTION`), a Turkish `message`, and `missing_information` |
+| `reason = NOT_A_QUESTION` | *(additive, rag.v1.3)* The input was only a greeting, thanks or acknowledgement ("Merhaba", "teşekkürler", "ok"). No retrieval ran; `claims` and `evidence` are empty; `message` is a short reply, not an answer. Clients should show the message without a support label |
 | `generation` | Provider, model, prompt version, attempts, latency; `null` if the LLM was not called |
 
 ### Changelog

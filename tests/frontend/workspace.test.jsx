@@ -109,6 +109,18 @@ describe('questions and answers', () => {
     expect(document.querySelector('[data-knot]')).not.toBeInTheDocument()
   })
 
+  test('a greeting (NOT_A_QUESTION) shows the reply, no claims, no strength label and no source panel', async () => {
+    const raw = { ...answerWith({ label: 'KOPUK', outcome: 'INSUFFICIENT_EVIDENCE' }), claims: [], evidence: [],
+      insufficient_evidence: { reason: 'NOT_A_QUESTION', message: 'Merhaba! Materyallerinle ilgili bir soru sorabilirsin.', missing_information: [] } }
+    setup({ body: raw })
+    await ask('Merhaba')
+    expect(await screen.findByText('Merhaba! Materyallerinle ilgili bir soru sorabilirsin.')).toBeInTheDocument()
+    expect(document.querySelector('[data-not-question]')).toBeInTheDocument()
+    expect(document.querySelector('[data-knot]')).toBeNull()
+    expect(document.querySelector('[data-claim]')).toBeNull()
+    expect(screen.queryByText(/yanıtlamaya yetecek kanıt bulunamadı/)).not.toBeInTheDocument()
+  })
+
   test('a failed question can be retried', async () => {
     let n = 0
     setup(() => (++n === 1 ? { status: 503, body: envelope('AI_SERVICE_UNAVAILABLE') } : { body: answerWith() }))

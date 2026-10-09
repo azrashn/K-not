@@ -25,6 +25,14 @@ in order; every rule that fires is written into `support_explanation`.
         offline perturbation harness showed v2 rating SIKI for claims with one swapped entity
         ("AVL" → "kırmızı-siyah", 20/25) or an appended unsupported clause (26/50), because S3
         tolerates 40 % unmatched terms (docs/rag-evaluation.md, offline validation).
+    S9  the claim is a statement: ≥ 3 content tokens and not just a document/section title.
+        (Slide titles such as "Git and GitHub" were presented as answer claims.)
+  S7 also requires the claim to contain at least one question key term that is less widespread
+  in the retrieved passages than the question's most widespread term (`specific_terms`). For
+  "Git status nedir?" over Git slides, "Git is a distributed VCS" shares only the generic "Git"
+  and is a side remark, never SIKI. If a NAMED question term
+  ("Dijkstra", "Python") occurs in no retrieved passage, no claim is SIKI: the question is about
+  something the material does not cover. (v4 = v3 + S9 + focus + named subject.)
 
   PARTIALLY_SUPPORTED (GEVEŞEK)  everything else.
 
@@ -46,16 +54,20 @@ from knot_rag.schemas.answer import SupportAssessment, VerificationLevel
 from knot_rag.schemas.common import SupportStatus
 from knot_rag.text import (
     content_tokens,
+    fold,
     has_negation,
+    is_statement,
+    named_terms,
     numbers,
     question_key_terms,
     sentence_around,
+    specific_question_terms,
     stem,
     stem_in,
     stem_set,
 )
 
-METHOD = "citation-lexical-v3"
+METHOD = "citation-lexical-v4"
 
 _RANK = {SupportStatus.UNSUPPORTED: 0, SupportStatus.PARTIALLY_SUPPORTED: 1, SupportStatus.SUPPORTED: 2}
 
@@ -81,7 +93,7 @@ class SupportAssessor(Protocol):
     """WBS-8 extension point. Receives all claims of one answer plus the question, so
     assessors can use answer-level context (relative relevance, one batched judge call)."""
 
-    def assess_all(self, claims: list[MappedClaim], question: str) -> list[SupportDecision]: ...
+    def assess_all(self, claims: list[MappedClaim], question: str, context: list[str] | None = None) -> list[SupportDecision]: ...
 
 
 def lexical_coverage(claim_text: str, evidence_texts: list[str]) -> float:
@@ -111,6 +123,13 @@ def unsupported_terms(claim_text: str, evidence) -> list[str]:
     return out
 
 
+def specific_terms(question: str, passages: list[str]) -> tuple[bool, list[tuple[str, str]]]:
+    """(constrained, [(stem, surface form)]) of the question terms a claim must contain to be
+    relevant, judged over the retrieved passages (`text.specific_question_terms`)."""
+    constrained, specific = specific_question_terms(question, [stem_set(p) for p in passages])
+    return constrained, [(stem(tok), raw) for raw, tok in question_key_terms(question) if stem(tok) in specific]
+
+
 def question_relevance(claim_text: str, question: str) -> float:
     keys = [stem(t) for _, t in question_key_terms(question)]
     if not keys:
@@ -134,12 +153,27 @@ class HeuristicSupportAssessor:
     def __init__(self, settings: SupportSettings):
         self._s = settings
 
-    def assess_all(self, claims: list[MappedClaim], question: str) -> list[SupportDecision]:
+    def assess_all(self, claims: list[MappedClaim], question: str, context: list[str] | None = None) -> list[SupportDecision]:
+        """`context`: texts of all evidence shown to the model (for the focus term); defaults to
+        the evidence the claims cite."""
         rels = [question_relevance(c.text, question) for c in claims]
         best = max(rels, default=0.0)
-        return [self._assess(c, r, best) for c, r in zip(claims, rels)]
+        missing_named: list[str] = []
+        if context is not None:
+            # Only with the full retrieved context: a named subject absent from ALL of it.
+            ctx_stems = set().union(*(stem_set(t) for t in context)) if context else set()
+            missing_named = [t for t in named_terms(question) if not stem_in(stem(fold(t)), ctx_stems)]
+        else:
+            seen: dict[str, str] = {}
+            for c in claims:
+                for e in c.cited_evidence:
+                    seen.setdefault(e.evidence_id, e.text)
+            context = list(seen.values())
+        constrained, focus = specific_terms(question, context) if context else (False, [])
+        return [self._assess(c, r, best, focus if constrained else None, missing_named) for c, r in zip(claims, rels)]
 
-    def _assess(self, claim: MappedClaim, relevance: float, best_relevance: float) -> SupportDecision:
+    def _assess(self, claim: MappedClaim, relevance: float, best_relevance: float,
+                focus: list[tuple[str, str]] | None = None, missing_named: list[str] | None = None) -> SupportDecision:
         s = self._s
         texts = [e.text for e in claim.cited_evidence]
         valid = bool(claim.cited_evidence)
@@ -151,7 +185,12 @@ class HeuristicSupportAssessor:
         numbers_ok = numbers(claim.text) <= ev_numbers
         negation_ok = (not quote_ok) or all(has_negation(claim.text) == has_negation(x) for x in sentences)
         relevant = relevance >= s.question_relevance_min and relevance >= s.relative_relevance_min * best_relevance
+        claim_stems = stem_set(claim.text)
+        focus_ok = focus is None or any(stem_in(st, claim_stems) for st, _ in focus)
+        relevant = relevant and focus_ok and not missing_named
         novel = unsupported_terms(claim.text, claim.cited_evidence) if valid else []
+        titles = [t for e in claim.cited_evidence for t in (e.document_title, e.location.section_title) if t]
+        statement = is_statement(claim.text, titles)
 
         assessment = SupportAssessment(
             method=METHOD,
@@ -183,7 +222,7 @@ class HeuristicSupportAssessor:
         reasons = []
         hard = (
             claim.had_unknown_ids or not quote_ok or not numbers_ok or not negation_ok
-            or claim.model_marked_partial or not relevant
+            or claim.model_marked_partial or not relevant or not statement
         )
         if claim.had_unknown_ids:  # S1
             reasons.append("bazı atıflar getirilen kaynaklarda yok")
@@ -198,7 +237,15 @@ class HeuristicSupportAssessor:
         if claim.model_marked_partial:  # S6
             reasons.append("kaynak iddianın yalnızca bir kısmını destekliyor")
         if not relevant:  # S7
-            reasons.append("iddia kaynakta geçiyor ancak soruyu doğrudan yanıtlamıyor")
+            if missing_named:
+                reasons.append("sorudaki " + ", ".join(missing_named) + " kaynaklarda geçmiyor; iddia soruyu yanıtlamıyor")
+            elif focus_ok:
+                reasons.append("iddia kaynakta geçiyor ancak soruyu doğrudan yanıtlamıyor")
+            else:
+                reasons.append("iddia sorunun yalnızca genel terimlerini içeriyor; sorulan kavramı içermiyor"
+                               + (" (" + ", ".join(raw for _, raw in focus) + ")" if focus else ""))
+        if not statement:  # S9
+            reasons.append("iddia tam bir ifade değil (başlık ya da parça)")
         if len(novel) > s.max_unsupported_terms:  # S8 (lexical, like S3: a judge may upgrade paraphrases)
             reasons.append("iddiada kaynakta geçmeyen ifadeler var: " + ", ".join(novel[:5]))
 

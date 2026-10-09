@@ -105,8 +105,8 @@ class LLMJudgeSupportAssessor:
             return {}
         return {v.claim_id: v for v in parsed.verdicts}
 
-    def assess_all(self, claims: list[MappedClaim], question: str) -> list[SupportDecision]:
-        base = self._base.assess_all(claims, question)
+    def assess_all(self, claims: list[MappedClaim], question: str, context: list[str] | None = None) -> list[SupportDecision]:
+        base = self._base.assess_all(claims, question, context)
         to_judge = [c for c, d in zip(claims, base) if d.status != SupportStatus.UNSUPPORTED]
         verdicts = self._judge(to_judge) if to_judge else {}
         out = []

@@ -112,6 +112,9 @@ class InsufficientEvidenceReason(str, Enum):
     MODEL_DECLINED = "MODEL_DECLINED"
     NO_SUPPORTED_CLAIMS = "NO_SUPPORTED_CLAIMS"
     PARTIAL_COVERAGE = "PARTIAL_COVERAGE"
+    # Added in rag.v1.3 (additive): greeting / thanks / acknowledgement, not a question about the
+    # material. No retrieval was run; `message` is a short reply, not an answer.
+    NOT_A_QUESTION = "NOT_A_QUESTION"
 
 
 class InsufficientEvidence(StrictModel):

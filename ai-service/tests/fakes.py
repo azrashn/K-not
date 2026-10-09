@@ -7,7 +7,7 @@ import math
 from pathlib import Path
 
 from knot_rag.errors import IndexNotReady
-from knot_rag.retrieval.index import ChunkHit, IndexInfo, SearchScope
+from knot_rag.retrieval.index import ChunkHit, IndexInfo, KeywordHit, SearchScope
 from knot_rag.schemas.documents import IndexedChunk
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -66,3 +66,12 @@ class InMemoryIndex:
 
     def get_chunks(self, chunk_ids, scope):
         return [c for c in self._chunks if c.chunk_id in chunk_ids and scope.contains(c)]
+
+    def keyword_search(self, needle, scope, limit):
+        # Mirrors Chroma `$contains` with case variants (lower / Capitalised / UPPER / as given).
+        if self.fail:
+            raise self.fail
+        variants = {needle, needle.lower(), needle[:1].upper() + needle[1:].lower(), needle.upper()}
+        pool = [(c, v) for c, v in zip(self._chunks, self._vecs) if self.leak or scope.contains(c)]
+        hits = [KeywordHit(chunk=c, embedding=list(v)) for c, v in pool if any(x in c.text for x in variants)]
+        return sorted(hits, key=lambda h: h.chunk.chunk_id)[:limit]

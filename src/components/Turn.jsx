@@ -38,7 +38,7 @@ export default function Turn({ turn, activeId, onActivate, onRetry, activeCount 
   const { question, status, id, answer, error } = turn
   const claims = answer?.claims ?? []
   const sources = answer ? new Set(claims.flatMap((c) => c.cites.map((x) => x.docId))).size : 0
-  const meta = status !== 'ready'
+  const meta = status !== 'ready' || answer?.notQuestion
     ? null
     : sources
       ? `${activeCount} materyalde arandı · ${sources} kaynakta bulundu`
@@ -57,7 +57,10 @@ export default function Turn({ turn, activeId, onActivate, onRetry, activeCount 
 
       {status === 'searching' && <Searching count={activeCount} />}
       {status === 'error' && <ServiceError error={error} onRetry={onRetry} />}
-      {status === 'ready' && answer && (
+      {status === 'ready' && answer?.notQuestion && (
+        <p className="m-0 text-[16px] leading-relaxed text-ink-2" data-not-question>{answer.reply}</p>
+      )}
+      {status === 'ready' && answer && !answer.notQuestion && (
         <>
           <div>
             {claims.map((c) => (
