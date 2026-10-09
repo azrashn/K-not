@@ -74,7 +74,7 @@ export default function Workspace({ courseId }) {
       const answer = adaptAnswer(await api.answer(courseId, question))
       setTurns((ts) => ts.map((t) => (t.id === turnId ? { ...t, status: 'ready', answer } : t)))
       const first = answer.claims[0]
-      activate(turnId, first, first.unsupported ? null : first.cites?.[0], { quiet: true })
+      if (first) activate(turnId, first, first.unsupported ? null : first.cites?.[0], { quiet: true })
     } catch (error) {
       setTurns((ts) => ts.map((t) => (t.id === turnId ? { ...t, status: 'error', error } : t)))
     }

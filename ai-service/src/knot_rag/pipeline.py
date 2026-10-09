@@ -16,8 +16,16 @@ from knot_rag.context.builder import BuiltContext, ContextBuilder
 from knot_rag.evidence.conflicts import detect_claim_conflicts, model_conflicts
 from knot_rag.evidence.coverage import question_coverage
 from knot_rag.evidence.mapper import EvidenceMapper
-from knot_rag.evidence.support import SupportAssessor, SupportDecision, aggregate_status, weakest
+from knot_rag.evidence.support import (
+    SupportAssessor,
+    SupportDecision,
+    aggregate_status,
+    weakest,
+)
 from knot_rag.generation.generator import GroundedGenerator
+from knot_rag.query.intent import MESSAGES as INTENT_MESSAGES
+from knot_rag.query.intent import Intent
+from knot_rag.query.intent import classify as classify_intent
 from knot_rag.retrieval.service import RetrievalResult, RetrievalService
 from knot_rag.schemas.answer import (
     AnswerOutcome,
@@ -150,6 +158,24 @@ class RagService:
     # ── grounded answer ────────────────────────────────────────────────────────────
     def answer(self, req: AnswerRequest, request_id: str) -> GroundedAnswer:
         started = time.monotonic()
+        intent = classify_intent(req.question)
+        if intent != Intent.ACADEMIC:
+            # A greeting is not matched against the documents ("Merhaba" → a PDF sentence
+            # containing "Merhaba" was rated SIKI). No retrieval, no claims, no evidence.
+            self._log("rag.answer", request_id, req, started, outcome="INSUFFICIENT_EVIDENCE", claims=0, intent=intent.value)
+            return GroundedAnswer(
+                answer_id=str(uuid.uuid4()), request_id=request_id, question=req.question,
+                course_id=req.scope.course_id, evidence=[], retrieval=RetrievalDiagnostics(),
+                outcome=AnswerOutcome.INSUFFICIENT_EVIDENCE,
+                support_status=SupportStatus.UNSUPPORTED,
+                support_label=SupportStatus.UNSUPPORTED.ui_label,
+                answer_text="",
+                claims=[],
+                insufficient_evidence=InsufficientEvidence(
+                    reason=InsufficientEvidenceReason.NOT_A_QUESTION, message=INTENT_MESSAGES[intent]
+                ),
+                generation=None,
+            )
         result, built = self._retrieve_and_build(req)
         diagnostics = self._diagnostics(result, built)
         base = dict(
@@ -178,7 +204,10 @@ class RagService:
 
         gen = self.generator.generate(result.query.normalized, req.scope.course_id, built.evidence)
         mapped = self.mapper.map(gen.answer, built.evidence)
-        decisions = self.assessor.assess_all(mapped, result.query.normalized)
+        decisions = self.assessor.assess_all(
+            mapped, result.query.normalized,
+            [f"{e.document_title} {e.location.section_title or ''} {e.text}" for e in built.evidence],
+        )
         known = {e.evidence_id for e in built.evidence}
         conflicts = model_conflicts([c.evidence_ids for c in gen.answer.conflicts], mapped, known)
         conflicts += detect_claim_conflicts(mapped)
@@ -236,7 +265,8 @@ class RagService:
         # is reported for analysis only: as a hard rule ("any absent term blocks ANSWERED") it
         # fired on ordinary function words in held-out questions (docs/rag-evaluation.md §4.3).
         under_covered = bool(claims) and coverage.ratio < self._support.question_coverage_answered
-        if under_covered and coverage.uncovered_terms:
+        prefix = MSG_UNCOVERED.split("{")[0]
+        if under_covered and coverage.uncovered_terms and not any(m.startswith(prefix) for m in missing):
             missing.append(MSG_UNCOVERED.format(terms=", ".join(coverage.uncovered_terms)))
         insufficient: InsufficientEvidence | None = None
         if not claims:

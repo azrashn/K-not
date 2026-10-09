@@ -28,6 +28,7 @@ class ChunkHit:
     chunk: IndexedChunk
     score: float | None  # Higher is more similar. Not a probability.
     rank: int
+    fused: float | None = None  # Reciprocal-rank-fusion score when the lexical channel ran.
 
 
 @dataclass(frozen=True)
@@ -54,3 +55,15 @@ class ChunkIndex(Protocol):
     def search(self, query_embedding: list[float], scope: SearchScope, k: int) -> list[ChunkHit]: ...
 
     def get_chunks(self, chunk_ids: list[str], scope: SearchScope) -> list[IndexedChunk]: ...
+
+    # Optional (lexical channel). Indexes without it are searched densely only.
+    # def keyword_search(self, needle: str, scope: SearchScope, limit: int) -> list[KeywordHit]: ...
+
+
+@dataclass(frozen=True)
+class KeywordHit:
+    """A chunk whose text contains a needle (case variants included), within the scope.
+    `embedding` lets the caller report the same dense score as a vector hit."""
+
+    chunk: IndexedChunk
+    embedding: list[float] | None = None

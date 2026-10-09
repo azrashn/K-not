@@ -111,7 +111,7 @@ One Chroma collection per embedding model and chunking scheme (default `knot_chu
 
 ## 6. Support states — explicit criteria
 
-### 6.1 Claim level — method `citation-lexical-v3` (`evidence/support.py`)
+### 6.1 Claim level — method `citation-lexical-v4` (`evidence/support.py`)
 
 | Rule | Check | Effect if it fails |
 | --- | --- | --- |
@@ -125,9 +125,26 @@ One Chroma collection per embedding model and chunking scheme (default `knot_chu
 | S6 | The model did not mark the claim `partial` | GEVEŞEK (hard) |
 | S7 | Question relevance: the claim mentions ≥ `SUPPORT_QUESTION_RELEVANCE_MIN` (0.34) of the question's key terms **and** ≥ `SUPPORT_RELATIVE_RELEVANCE_MIN` (0.6) × the best claim's relevance | GEVEŞEK, `addresses_question=false` (hard) |
 | S8 | At most `SUPPORT_MAX_UNSUPPORTED_TERMS` (0) claim content terms occur in none of the cited passages or their titles (numbers are S4's job); listed in `assessment.unsupported_terms` | GEVEŞEK (judge may upgrade) |
+| S9 | The claim is a statement: ≥ 3 content tokens and not just a document/section title | GEVEŞEK (hard) |
+| S7+ | Relevance also requires (a) a question term less widespread in the retrieved passages than the question's most widespread one (`specific_question_terms`; a claim sharing only "Git" does not answer "Git status nedir?"), and (b) that no capitalised/identifier question term ("Dijkstra", "Python") is absent from every retrieved passage | GEVEŞEK, side remark (hard) |
 | C1 | Conflicts (`evidence/conflicts.py`): the model reports disagreeing evidence ids that were shown to it, or two cited claims are near-identical (stem Jaccard ≥ 0.8) but differ in negation or numbers | Involved claims GEVEŞEK (hard); answer not `ANSWERED` |
 
-**SIKI** requires U1–U2 and S1–S8 to pass and no conflict. Every failed rule is listed in
+**SIKI** requires U1–U2 and S1–S9 to pass and no conflict.
+
+### 6.0 Before support: question intent, hybrid retrieval, extractive selection (answer-quality work)
+
+- **Intent** (`query/intent.py`): an input made only of greeting/thanks/acknowledgement words
+  (closed Turkish/English list, ≤ 6 words) returns `INSUFFICIENT_EVIDENCE` with reason
+  `NOT_A_QUESTION` and a short reply, without retrieval. Any other word keeps it a question.
+- **Hybrid retrieval** (`retrieval/service.py`): besides the dense search, each question key term
+  (≤ 8) fetches the in-scope chunks containing it (Chroma `$contains`, case variants, same scope
+  filter), verified by stem match and ranked by summed IDF. Both lists are fused by reciprocal
+  rank fusion (k = 60); the two best lexical hits always make the cut. `score` stays the dense
+  cosine. `RAG_LEXICAL_CHANNEL`, `RAG_LEXICAL_POOL`.
+- **Extractive baseline v2** (`generation/providers/mock.py`, still not an LLM): slide-aware
+  segmentation (`text.segment_spans`: titles, page numbers and list markers removed; quotes are
+  exact source substrings), IDF-weighted question-term share ≥ 0.34 plus a specific term,
+  abstention when a named subject is absent, and a weak-match fallback that is at most GEVEŞEK. Every failed rule is listed in
 `support_explanation`, so the label is always explainable.
 
 Why v2: on eval.v1, **28 of 28** citations that pointed to a non-gold passage came from claims

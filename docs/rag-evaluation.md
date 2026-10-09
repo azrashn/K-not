@@ -404,6 +404,70 @@ KOPUK vs GEVEŞEK for errors: `wrong_citation` is KOPUK in 30/50 (eval.v2) and G
 | English / mixed-language answers reaching SIKI | **Known failure** (finding 4) | Cross-lingual relevance or claim-language policy |
 | Latency within the NestJS timeout (35 s) for real generation | **Untested** | Real provider |
 
+### 4.10 Answer-quality work (`feature/rag-answer-quality`, 2026-10-09; extractive baseline, no LLM)
+
+**Reported failures, reproduced locally** on two documents a user uploaded to a local
+installation: a third-party English lecture deck about Git (47 slides) and a one-line Turkish
+test PDF. They are **not** part of the repository and are not quoted here; the regression tests
+use original synthetic slides with the same layout (`tests/unit/test_answer_quality.py`).
+Chunked with the real WBS-2 chunker, embedded with e5-small offline; nothing left the machine.
+
+| Question | Before (`frontend-integration`) | After |
+| --- | --- | --- |
+| Git status nedir ne işe yarar? | PARTIAL/GEVEŞEK: a generic "Git is a distributed VCS" sentence with the slide title and page number glued on (s.11) + a title slide (s.1) | ANSWERED/SIKI: the `git status` line of the command list (s.26) |
+| What does git status do? | 3 claims rated **SIKI** (s.11, s.38, s.21), none about `git status` | ANSWERED/SIKI: the s.26 line |
+| Merhaba | ANSWERED/**SIKI**: the test PDF's only sentence, which starts with "Merhaba" | NOT_A_QUESTION reply, no retrieval |
+| Merhaba, git status nedir? | — | ANSWERED/SIKI: the s.26 line |
+| Git'in dağıtık mimarisi nedir? | PARTIAL: 3 GEVEŞEK claims incl. two slide titles | INSUFFICIENT: "dağıtık, mimarisi" not in the material (English slides; no translation) |
+| What is Git's distributed architecture? | ANSWERED/SIKI (s.11, title glued in) + 2 GEVEŞEK | ANSWERED/SIKI: the s.11 sentence only (one of 3 terms uncovered; see limitation) |
+| git status ve git push komutları ne işe yarar? | PARTIAL, generic s.11 claim | ANSWERED/SIKI: the s.26 line ("push" missing; see limitation) |
+| Python'da liste nasıl sıralanır? | PARTIAL: title slide as claim | INSUFFICIENT |
+| Dijkstra algoritması nedir? | INSUFFICIENT | INSUFFICIENT (an intermediate version matched "Secure Hash Algorithm"; fixed by the named-subject rule) |
+
+**Root causes.** (1) Retrieval: dense e5-small ranked the only `git status` chunk 10th–16th
+of 45 (top_k 8) — fixed by the lexical channel. (2) Extraction: sentences split only on `.!?`
+glued titles/page numbers onto statements, and one shared word ("Git") qualified a sentence —
+fixed by slide-aware segmentation and IDF-weighted selection. (3) Intent: no greeting check.
+(4) Support: relevance weighed "Git" like "status"; titles could be claims — S7+ and S9.
+
+**Locked datasets** (labels unchanged; before = `frontend-integration` extractive v1 with
+`citation-lexical-v2`, after = this branch). Hashing embedder for eval.v1/eval.v2; e5-small
+(offline cache) for challenge.v1, read from commit `7bc6bb0` without modification.
+Abstention correctness = `out_of_scope_abstention`; unnecessary refusal = answerable items
+(expected outcome without INSUFFICIENT_EVIDENCE) answered INSUFFICIENT_EVIDENCE.
+
+| Dimension | Metric | eval.v1 | eval.v2 | challenge.v1 (held-out) |
+| --- | --- | --- | --- | --- |
+| Retrieval relevance | gold passage in context | 21/23 → 22/23 | 50/56 → 51/56 | 31/33 → 30/33 |
+| | Recall@1 | 14/23 → 15/23 | 38/56 → 39/56 | 19/33 → 23/33 |
+| | scope leakage | 0/224 → 0/224 | 0/528 → 0/528 | 0/328 → 0/328 |
+| Citation correctness | citations to a gold passage | 32/60 → 25/40 | 70/160 → 54/99 | 33/70 → 18/30 |
+| Claim support | SIKI citations to a gold passage | 26/34 → 23/34 | 58/91 → 50/79 | 16/23 → 16/23 |
+| | SIKI claims on out-of-scope questions | 3/4 → 0/0 | 4/15 → 0/1 | 2/11 → 2/2 |
+| Abstention | out-of-scope → INSUFFICIENT | 3/5 → 5/5 | 3/10 → 9/10 | 3/8 → 7/8 |
+| | unnecessary refusals | 1/23 → 4/23 | 1/56 → 5/56 | 6/33 → 14/33 |
+| Answer relevance | over-claim (ANSWERED when it shouldn't be) | 1/7 → 0/7 | 5/16 → 3/16 | 1/12 → 0/12 |
+| | fully answerable → ANSWERED | 17/21 → 17/21 | 41/48 → 37/48 | 13/28 → 13/28 |
+| | partial → PARTIALLY_ANSWERED | 1/2 → 1/2 | 2/6 → 3/6 | 3/4 → 2/4 |
+| | outcome = expected | 21/28 → 23/28 | 49/66 → 50/66 | 20/41 → 23/41 |
+
+challenge.v1 by language (outcome = expected; unnecessary refusals): tr 12/20 → 15/20
+(0/16 → 2/16), en 2/12 → 2/12 (6/10 → 9/10), mixed 6/9 → 6/9 (0/7 → 3/7).
+
+Offline grounding harness (§4.8, eval.v2, scripted errors, rules v3 → v4): unchanged 0 incorrect
+SIKI for wrong/misleading citations, fabricated claims/quotes/ids and unsupported additions;
+irrelevant quote on out-of-scope questions 1/9 → 0/9; entity swaps 7/25 (unchanged, lexical
+limit); faithful control 42/50 → 41/51.
+
+**Trade-off, stated plainly.** The baseline now abstains or answers "partially" instead of
+presenting loosely related sentences. Out-of-scope abstention and over-claiming improved on
+every set, but unnecessary refusals rose, mostly for English and mixed-language questions over
+Turkish material (held-out: 6 → 14 of 33). An extractive method cannot bridge languages or
+paraphrases; it now says so instead of guessing. Tuning decisions (fallback share 0.2) were made
+on eval.v2 only; challenge.v1 was used once per design, for confirmation. Rejected after
+measurement: a "term absent from the whole course → not ANSWERED" rule (challenge.v1
+answered-on-answerable 13/28 → 4/28, English questions).
+
 ## 5. Not yet measured
 
 | Item | Blocked by | What is needed |
@@ -436,3 +500,10 @@ KOPUK vs GEVEŞEK for errors: `wrong_citation` is KOPUK in 30/50 (eval.v2) and G
 7. The perturbation harness generates its errors from the source sentence; its rates describe the
    validation layer on those error types only, with small denominators for some types
    (negation 8 and 2, numbers 11 and 6).
+8. Answer completeness is lexical coverage ≥ 0.6: one missing term out of three (e.g. "git push"
+   in "git status ve git push …", "architecture") still yields ANSWERED
+   (`test_known_limitation_one_missing_term_of_three_still_counts_as_answered`).
+9. Cross-lingual questions (Turkish question, English material or vice versa) share few terms;
+   the extractive baseline abstains or answers GEVEŞEK. e5-small sentence similarity was measured
+   and could not separate relevant from unrelated sentences (a slide title scored above the
+   correct sentence), so it is not used to select or approve claims.

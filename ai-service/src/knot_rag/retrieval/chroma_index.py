@@ -16,7 +16,7 @@ from typing import Any, Callable, Sequence, Union
 
 from knot_rag.errors import ConfigurationError, IndexNotReady, RagError, RetrievalUnavailable
 from knot_rag.retrieval.embedding import Embedder
-from knot_rag.retrieval.index import ChunkHit, IndexInfo, SearchScope
+from knot_rag.retrieval.index import ChunkHit, IndexInfo, KeywordHit, SearchScope
 from knot_rag.schemas.documents import META_COURSE_ID, META_DOCUMENT_ID, META_EXTRA_PREFIX, IndexedChunk
 from knot_rag.schemas.embedding import (
     STAMP_DIM,
@@ -212,6 +212,32 @@ class ChromaChunkIndex:
                 log.warning("rag.index.malformed_record", extra={"chunk_id": cid})
                 continue
             hits.append(ChunkHit(chunk=chunk, score=self._score(dist), rank=rank))
+        return hits
+
+    def keyword_search(self, needle: str, scope: SearchScope, limit: int) -> list[KeywordHit]:
+        """Chunks in scope whose text contains `needle` (Chroma `$contains` is case-sensitive,
+        so lower / Capitalised / UPPER variants are OR-ed). Same scope filter as `search`."""
+        variants = sorted({needle, needle.lower(), needle[:1].upper() + needle[1:].lower(), needle.upper()})
+        where_document = {"$contains": variants[0]} if len(variants) == 1 else {"$or": [{"$contains": v} for v in variants]}
+        col = self._get_collection()
+        try:
+            res = col.get(where=scope_filter(scope), where_document=where_document, limit=limit,
+                          include=["documents", "metadatas", "embeddings"])
+        except RagError:
+            raise
+        except Exception as exc:
+            raise self._unavailable(exc) from exc
+        embs = res.get("embeddings")
+        if embs is None:
+            embs = [None] * len(res.get("ids") or [])
+        hits: list[KeywordHit] = []
+        for cid, text, meta, emb in zip(res.get("ids") or [], res.get("documents") or [], res.get("metadatas") or [], embs):
+            try:
+                chunk = IndexedChunk.from_chroma(cid, text or "", meta or {})
+            except Exception:
+                log.warning("rag.index.malformed_record", extra={"chunk_id": cid})
+                continue
+            hits.append(KeywordHit(chunk=chunk, embedding=None if emb is None else [float(x) for x in emb]))
         return hits
 
     def get_chunks(self, chunk_ids: list[str], scope: SearchScope) -> list[IndexedChunk]:
