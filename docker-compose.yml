@@ -1,0 +1,18 @@
+version: '3.8'
+
+services:
+  db:
+    image: mysql:8
+    container_name: knot_mysql
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: root_password
+      MYSQL_DATABASE: knot_dev
+      MYSQL_USER: knot_user
+      MYSQL_PASSWORD: knot_pass
+    volumes:
+      - knot_db_data:/var/lib/mysql
+
+volumes:
+  knot_db_data:

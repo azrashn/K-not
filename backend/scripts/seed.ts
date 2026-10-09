@@ -97,7 +97,7 @@ if (require.main === module) {
     console.error('usage: ts-node scripts/seed.ts <seed.json>');
     process.exit(2);
   }
-  const prisma = new PrismaClient({ adapter: new PrismaMariaDb(mariaDbUrl(process.env.DATABASE_URL ?? '')) });
+  const prisma = new PrismaClient({ adapter: new PrismaMariaDb(mariaDbUrl(process.env.DATABASE_URL ?? 'mysql://knot_user:knot_pass@localhost:3306/knot_dev')) });
   seed(prisma, JSON.parse(readFileSync(file, 'utf8')) as SeedFile)
     .then(() => console.log('seed complete'))
     .catch((e) => { console.error(`seed failed: ${(e as Error).message}`); process.exitCode = 1; })
