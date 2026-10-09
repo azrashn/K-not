@@ -25,7 +25,8 @@ K-not is a **public** repository. Nothing secret, and no uploaded document, may 
   ```powershell
   winget install --id Gitleaks.Gitleaks     # or download v8.24.3 from GitHub releases and verify its SHA-256
   git config core.hooksPath .githooks       # Git for Windows runs the bash hook
-  gitleaks git --redact --config .gitleaks.toml .   # optional: scan your local history
+  gitleaks git --log-opts=HEAD --redact --config .gitleaks.toml .   # optional: scan the current branch
+  # (without --log-opts it scans every local branch, including the known 2026-10-09 commits)
   ```
 
 ## Local database (Docker)
