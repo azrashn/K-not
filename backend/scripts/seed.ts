@@ -61,11 +61,13 @@ export async function seed(prisma: PrismaClient, data: SeedFile, print: (s: stri
     }
     if (password !== undefined && password.length < MIN_PASSWORD_LENGTH) throw new Error(`password for ${email} is shorter than ${MIN_PASSWORD_LENGTH}`);
     const passwordHash = password ? await hashPassword(password) : undefined;
-    const row = await prisma.user.upsert({
-      where: { email },
-      update: { displayName: u.display_name, role: u.role ?? 'USER', ...(passwordHash ? { passwordHash } : {}) },
-      create: { email, displayName: u.display_name, role: u.role ?? 'USER', passwordHash: passwordHash! },
-    });
+    const row = existing && !passwordHash
+      ? await prisma.user.update({ where: { email }, data: { displayName: u.display_name, role: u.role ?? 'USER' } })
+      : await prisma.user.upsert({
+        where: { email },
+        update: { displayName: u.display_name, role: u.role ?? 'USER', ...(passwordHash ? { passwordHash } : {}) },
+        create: { email, displayName: u.display_name, role: u.role ?? 'USER', passwordHash: passwordHash! },
+      });
     users.set(email, row.id);
   }
   const courses = new Map<string, string>();

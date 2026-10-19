@@ -8,6 +8,20 @@ CLAIM → KNOT → SOURCE        ASK → PRACTICE → ANSWER → FEEDBACK → RE
 
 ## Çalıştırma
 
+### Tek komutla (Windows, önerilen)
+
+Docker Desktop açıkken:
+
+```powershell
+npm run dev:all      # MySQL + backend + AI servisi + ön yüz; ilk seferde kurulumu da yapar
+npm run dev:status   # servis durumu
+npm run dev:stop     # hepsini durdur
+```
+
+Betik (`scripts/dev.ps1`) tekrar çalıştırılabilir: `.env` dosyalarını eşitler (veritabanı adresi `.env.docker`'dan türetilir, backend ile ai-service aynı tokenları ve `data/storage` yolunu kullanır), eksik bağımlılıkları kurar, migrasyon ve seed'i uygular, servisleri arka planda başlatır (günlükler `logs/`). Giriş: http://localhost:5173. İlk seed'de üretilen şifreler repo dışında bir geçici dosyaya yazılır (yolu ekrana basılır).
+
+Aşağıdaki elle adımlar yalnızca betiği kullanmak istemezsen gerekir.
+
 Ön yüz yalnızca NestJS API'siyle konuşur (`/api` → `backend/`); Python ai-service'e ya da ChromaDB'ye tarayıcıdan erişilmez ve ön yüzde hiçbir iç servis anahtarı yoktur.
 
 ```bash
