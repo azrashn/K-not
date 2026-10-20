@@ -80,7 +80,7 @@ export default function Home() {
               </p>
               <div className="mt-4 flex flex-wrap gap-2">
                 <Btn variant="soft" size="sm" onClick={() => navigate('/quiz', { topic: rec.weakest.id })}>3 soruyla tekrar et</Btn>
-                <Btn variant="quiet" size="sm" onClick={() => navigate('/analitik', { topic: rec.weakest.id })}>Bilgi İpinde gör</Btn>
+                <Btn variant="quiet" size="sm" onClick={() => navigate('/analitik', { topic: rec.weakest.id })}>Analizde gör</Btn>
               </div>
             </motion.section>
           )}

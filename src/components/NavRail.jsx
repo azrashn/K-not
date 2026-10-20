@@ -5,7 +5,7 @@ export const NAV = [
   { id: 'home', label: 'Ana Sayfa', Icon: House },
   { id: 'courses', label: 'Dersler', Icon: BookOpen },
   { id: 'quiz', label: 'Quiz', Icon: Exam },
-  { id: 'analytics', label: 'Analitik', Icon: ChartLineUp },
+  { id: 'analytics', label: 'Öğrenme Analizi', Icon: ChartLineUp },
 ]
 
 export function KnotMark({ size = 32 }) {

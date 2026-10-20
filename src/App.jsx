@@ -34,7 +34,7 @@ function Shell() {
   const onNav = (id) => { setMenuOpen(false); navigate(pathFor(id)) }
   const pageKey = `${route.view}:${route.courseId || ''}`
   useEffect(() => {
-    const names = { home: 'Ana Sayfa', list: 'Dersler', course: 'Ders', workspace: 'Çalışma alanı', quiz: 'Quiz', analytics: 'Bilgi İpi' }
+    const names = { home: 'Ana Sayfa', list: 'Dersler', course: 'Ders', workspace: 'Çalışma alanı', quiz: 'Quiz', analytics: 'Öğrenme Analizi' }
     document.title = `${names[route.view] || 'K-not'} — K-not`
   }, [route.view])
 
