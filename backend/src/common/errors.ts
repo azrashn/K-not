@@ -22,6 +22,8 @@ export type PublicErrorCode =
   | 'NOT_FOUND'
   | 'DUPLICATE_DOCUMENT'
   | 'DUPLICATE_COURSE'
+  | 'ROUTE_NOT_FOUND'
+  | 'DATABASE_NOT_MIGRATED'
   | 'QUIZ_GENERATION_FAILED'
   | 'QUIZ_ALREADY_SUBMITTED'
   | 'JOB_ALREADY_RUNNING'
@@ -44,6 +46,8 @@ const STATUS: Record<PublicErrorCode, number> = {
   NOT_FOUND: 404,
   DUPLICATE_DOCUMENT: 409,
   DUPLICATE_COURSE: 409,
+  ROUTE_NOT_FOUND: 404,
+  DATABASE_NOT_MIGRATED: 503,
   QUIZ_GENERATION_FAILED: 422,
   QUIZ_ALREADY_SUBMITTED: 409,
   JOB_ALREADY_RUNNING: 409,
@@ -77,7 +81,8 @@ export class ApiError extends HttpException {
   readonly retryable: boolean;
 }
 
-export const notFound = (what = 'Resource') => new ApiError('NOT_FOUND', `${what} not found.`);
+/** `details.resource` lets the UI say what was not found (course, document, quiz, ...) without guessing. */
+export const notFound = (what = 'Resource') => new ApiError('NOT_FOUND', `${what} not found.`, { resource: what.toLowerCase() });
 
 export interface ErrorEnvelope {
   schema_version: string;
@@ -121,6 +126,12 @@ export class ApiExceptionFilter implements ExceptionFilter {
     }
     if (exception instanceof HttpException) {
       const status = exception.getStatus();
+      // Express/Nest router miss ("Cannot POST /x"): the route does not exist in the running build.
+      if ((status === 404 || status === 405) && /^Cannot (GET|POST|PUT|PATCH|DELETE) /.test(exception.message)) {
+        this.log.warn({ event: 'http.route_not_found', request_id: requestId, method: req.method, path: req.path });
+        res.status(404).json(envelope('ROUTE_NOT_FOUND', exception.message, requestId, false, { method: req.method, path: req.path }));
+        return;
+      }
       const code = FRAMEWORK_CODES[status] ?? (status >= 500 ? 'INTERNAL_ERROR' : 'VALIDATION_ERROR');
       const body = exception.getResponse();
       // class-validator messages describe fields, never echo submitted values.
@@ -129,6 +140,13 @@ export class ApiExceptionFilter implements ExceptionFilter {
         : null;
       const message = code === 'VALIDATION_ERROR' ? 'The request is invalid.' : exception.message;
       res.status(STATUS[code]).json(envelope(code, message, requestId, RETRYABLE.has(code), details));
+      return;
+    }
+    // Prisma "table/column does not exist": the database has not been migrated to this build.
+    const prismaCode = (exception as { code?: unknown } | null)?.code;
+    if (prismaCode === 'P2021' || prismaCode === 'P2022') {
+      this.log.error({ event: 'http.database_not_migrated', request_id: requestId, prisma_code: prismaCode });
+      res.status(503).json(envelope('DATABASE_NOT_MIGRATED', 'The database schema is out of date; run `prisma migrate deploy`.', requestId, false));
       return;
     }
     this.log.error({

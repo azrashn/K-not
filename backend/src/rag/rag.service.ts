@@ -99,6 +99,11 @@ export class RagService {
     if (r.kind === 'timeout') return new ApiError(op === 'answer' ? 'PROVIDER_TIMEOUT' : 'AI_SERVICE_UNAVAILABLE', op === 'answer' ? PUBLIC_MESSAGE.PROVIDER_TIMEOUT! : PUBLIC_MESSAGE.AI_SERVICE_UNAVAILABLE!);
     if (r.kind === 'unreachable') return new ApiError('AI_SERVICE_UNAVAILABLE', PUBLIC_MESSAGE.AI_SERVICE_UNAVAILABLE!);
     const pyCode = aiErrorCode(r.body);
+    if (!pyCode && (r.status === 404 || r.status === 405)) {
+      // The ai-service is up but does not know this route: it is an older build than the backend.
+      this.log.error({ event: 'rag.ai_service_outdated', op, status: r.status });
+      return new ApiError('AI_SERVICE_UNAVAILABLE', 'The AI service is running an outdated build; restart it.', { reason: 'ai_service_outdated' });
+    }
     const code: PublicErrorCode = (pyCode && PY_TO_PUBLIC[pyCode]) || (r.status >= 500 ? 'AI_SERVICE_UNAVAILABLE' : 'INTERNAL_ERROR');
     if (code === 'INTERNAL_ERROR') this.log.error({ event: 'rag.upstream_contract_error', op, status: r.status, code: pyCode });
     return new ApiError(code, PUBLIC_MESSAGE[code] ?? 'Internal error.');

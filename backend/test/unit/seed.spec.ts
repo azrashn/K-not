@@ -17,6 +17,7 @@ function fakePrisma() {
         if (!rows.has(key)) rows.set(key, { id: id() });
         return rows.get(key);
       },
+      update: async ({ where }: any) => rows.get(`u:${where.email}`) ?? { id: id() },
     },
     course: { upsert: async () => ({ id: id() }) },
     courseMembership: { upsert: async () => ({}) },

@@ -44,9 +44,11 @@ export class HashingTempStorage implements StorageEngine {
         if (head.length < PDF_MAGIC.length) head = Buffer.concat([head, chunk]).subarray(0, PDF_MAGIC.length);
       });
       // Size limit hit: multer reports LIMIT_FILE_SIZE; make sure the partial file is removed.
+      // Delete only after the handle is closed (an open file cannot be removed on Windows) and never
+      // let a failed delete escape as an unhandled rejection; the temp sweeper removes leftovers.
       file.stream.on('limit', () => {
+        out.once('close', () => { void this.storage.delete(key).catch(() => undefined); });
         out.destroy();
-        void this.storage.delete(key);
       });
       file.stream.on('error', (e: unknown) => finish(e));
       out.on('error', (e) => finish(e));

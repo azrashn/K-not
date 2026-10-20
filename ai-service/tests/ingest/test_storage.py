@@ -1,6 +1,8 @@
 """T10 (storage_key safety) and atomic artifact writes."""
 
 import os
+import subprocess
+import sys
 
 import pytest
 
@@ -27,7 +29,14 @@ def test_symlink_leaving_the_root_is_rejected(storage, tmp_path):
     outside = tmp_path / "secret"
     outside.mkdir()
     (outside / "x.pdf").write_bytes(b"%PDF-")
-    os.symlink(outside, storage.root / "documents")
+    link = storage.root / "documents"
+    try:
+        os.symlink(outside, link)
+    except OSError:
+        # Windows without the symlink privilege: a directory junction is the same escape hatch and needs none.
+        if sys.platform != "win32":
+            raise
+        subprocess.run(["cmd", "/c", "mklink", "/J", str(link), str(outside)], check=True, capture_output=True)
     with pytest.raises(UnsafeStorageKey):
         storage.resolve("documents/x.pdf")
 
