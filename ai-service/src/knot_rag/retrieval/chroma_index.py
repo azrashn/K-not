@@ -254,6 +254,35 @@ class ChromaChunkIndex:
         ]
         return [c for c in chunks if scope.contains(c)]
 
+    def list_chunks(self, scope: SearchScope, limit: int) -> list[IndexedChunk]:
+        col = self._get_collection()
+        chunks: list[IndexedChunk] = []
+        fetched = 0
+        page = 500
+        try:
+            while fetched < limit:
+                n = min(page, limit - fetched)
+                res = col.get(where=scope_filter(scope), limit=n, offset=fetched, include=["documents", "metadatas"])
+                ids = res.get("ids") or []
+                for cid, text, meta in zip(ids, res.get("documents") or [], res.get("metadatas") or []):
+                    try:
+                        chunks.append(IndexedChunk.from_chroma(cid, text or "", meta or {}))
+                    except Exception:
+                        log.warning("rag.index.malformed_record", extra={"chunk_id": cid})
+                fetched += len(ids)
+                if len(ids) < n:
+                    break
+        except RagError:
+            raise
+        except Exception as exc:
+            raise self._unavailable(exc) from exc
+        chunks = [c for c in chunks if scope.contains(c)]
+        return sorted(
+            chunks,
+            key=lambda c: (c.document.document_id, c.location.char_start if c.location.char_start is not None else -1,
+                           c.location.page_start or 0, c.chunk_id),
+        )[:limit]
+
 
 def _document_where(document_id: str) -> dict[str, Any]:
     return {META_DOCUMENT_ID: {"$eq": document_id}}

@@ -55,13 +55,13 @@ async function waitFor(what, fn, ms = 120_000) {
 }
 
 function run(cmd, args, opts) {
-  const r = spawnSync(cmd, args, { stdio: 'inherit', ...opts })
+  const r = spawnSync(cmd, args, { stdio: 'inherit', shell: process.platform === 'win32', ...opts })
   if (r.status !== 0) throw new Error(`${cmd} ${args.join(' ')} failed (${r.status})`)
 }
 
 function start(name, cmd, args, opts) {
   const out = openSync(path.join(work, `${name}.log`), 'w')
-  const p = spawn(cmd, args, { stdio: ['ignore', out, out], ...opts })
+  const p = spawn(cmd, args, { stdio: ['ignore', out, out], shell: process.platform === 'win32' && cmd === 'npx', ...opts })
   procs.push(p)
   return p
 }
@@ -275,6 +275,77 @@ async function main() {
       await page.getByRole('button', { name: 'scanned.pdf sil' }).click()
       await page.getByRole('button', { name: 'Sil', exact: true }).click()
       await waitFor('row removed', async () => (await page.locator('[data-material]').filter({ hasText: 'scanned.pdf' }).count()) === 0, 15_000)
+    })
+
+    let quizCourseHash = ''
+    await step('NEW COURSE: "+ Yeni Ders" creates a personal course (persisted in MySQL) and opens it', async () => {
+      await page.goto(`${web}/#/dersler`)
+      await page.getByRole('button', { name: '+ Yeni Ders' }).click()
+      const dialog = page.getByRole('dialog')
+      await dialog.getByLabel('Ders adı *').fill('E2E Quiz Dersi')
+      await dialog.getByRole('button', { name: 'Dersi oluştur' }).click()
+      await page.waitForFunction(() => /#\/dersler\/[^/]+$/.test(location.hash))
+      quizCourseHash = await page.evaluate(() => location.hash)
+      await page.getByText('E2E Quiz Dersi').first().waitFor()
+      const rows = await page.evaluate(async () => {
+        const { token } = JSON.parse(sessionStorage.getItem('knot.session'))
+        return (await fetch('/api/courses', { headers: { Authorization: `Bearer ${token}` } })).json()
+      })
+      const mine = rows.find((c) => c.name === 'E2E Quiz Dersi')
+      check(mine && mine.is_owner && mine.can_edit && rows.some((c) => c.code === 'BIL 211' && !c.is_owner), 'created course missing or enrolled course lost')
+    })
+
+    await step('upload a PDF into the new course → READY', async () => {
+      await page.getByRole('button', { name: /Materyal ekle/ }).click()
+      await page.getByLabel('Dosya seç').setInputFiles(path.join(FIXTURES, 'slides_tr.pdf'))
+      const row = page.locator('[data-material]').filter({ hasText: 'slides_tr.pdf' })
+      await row.waitFor()
+      const id = await row.getAttribute('data-material')
+      await page.locator(`[data-material="${id}"][data-state="ready"]`).waitFor({ timeout: 180_000 })
+    })
+
+    await step('QUIZ: configure → generate from the selected material only → no answer key in the browser', async () => {
+      await page.goto(`${web}/#/quiz`)
+      const value = await page.locator('select option', { hasText: 'E2E Quiz Dersi' }).getAttribute('value')
+      await page.locator('select').first().selectOption(value)
+      await page.getByRole('checkbox').first().check()
+      await page.getByRole('radio', { name: '5', exact: true }).click()
+      const generated = page.waitForResponse((r) => /\/courses\/[^/]+\/quizzes$/.test(r.url()) && r.request().method() === 'POST')
+      await page.getByRole('button', { name: 'Quiz Oluştur' }).click()
+      const res = await generated
+      const body = await res.json()
+      if (res.status() === 422) { console.log(`    generator reported: ${body.error.message}`); throw new Error('quiz generation produced no questions from slides_tr.pdf') }
+      check(res.status() === 201, `quiz create returned ${res.status()}`)
+      check(body.generator === 'extractive-v1' && body.llm_used === false, 'generator must be reported honestly')
+      check(!/correct_index|explanation|quote/.test(JSON.stringify(body)), 'answer key leaked before submission')
+      console.log(`    questions: ${body.question_count}/${body.requested_count}, warnings: ${body.warnings.length}`)
+      await page.locator('[data-question]').first().waitFor()
+      await shot('04-quiz')
+    })
+
+    await step('QUIZ: answer, autosave, submit → server-graded result with explanation and source quote', async () => {
+      const n = await page.locator('[data-question]').count()
+      for (let i = 0; i < n; i++) await page.locator('[data-question]').nth(i).locator('input[type=radio]').first().check()
+      await page.getByText('Kaydedildi').waitFor({ timeout: 10_000 })
+      await page.getByRole('button', { name: 'Quizi bitir' }).click()
+      await page.getByRole('button', { name: 'Teslim et' }).click()
+      await page.locator('[data-score]').waitFor({ timeout: 30_000 })
+      const score = await page.locator('[data-score]').innerText()
+      check(/^%\d+$/.test(score), `unexpected score ${score}`)
+      await page.getByText('Kaynak', { exact: true }).first().waitFor()
+      const summary = await page.evaluate(async () => {
+        const { token } = JSON.parse(sessionStorage.getItem('knot.session'))
+        return (await fetch('/api/analytics/quiz-summary', { headers: { Authorization: `Bearer ${token}` } })).json()
+      })
+      check(summary.completed_quizzes === 1 && summary.attempts.length === 1 && summary.topics.length > 0, 'attempt was not persisted for analytics')
+      console.log(`    score ${score}, topics: ${summary.topics.map((t) => t.topic).join(' | ').slice(0, 80)}`)
+      await shot('05-quiz-result')
+    })
+
+    await step('ANALYTICS shows the persisted quiz', async () => {
+      await page.goto(`${web}/#/analitik`)
+      await page.getByText('Teslim edilen denemeler').waitFor({ timeout: 15_000 })
+      await shot('06-analytics')
     })
 
     await step('expired/invalid session returns to login with a notice', async () => {

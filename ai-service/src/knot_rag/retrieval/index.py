@@ -56,6 +56,11 @@ class ChunkIndex(Protocol):
 
     def get_chunks(self, chunk_ids: list[str], scope: SearchScope) -> list[IndexedChunk]: ...
 
+    def list_chunks(self, scope: SearchScope, limit: int) -> list[IndexedChunk]:
+        """Chunks of the scope's documents in deterministic order (document, offset/page), at most `limit`.
+        Used by quiz generation, which reads the selected materials instead of searching them."""
+        ...
+
     # Optional (lexical channel). Indexes without it are searched densely only.
     # def keyword_search(self, needle: str, scope: SearchScope, limit: int) -> list[KeywordHit]: ...
 

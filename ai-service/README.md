@@ -137,6 +137,25 @@ pytest tests/ingest        # HashingEmbedder (mock embeddings), in-memory Chroma
 python tests/ingest/fixtures/make_pdfs.py   # regenerate fixture PDFs (needs reportlab)
 ```
 
+## Quiz generation (`POST /api/v1/quiz/generate`)
+
+Generator `extractive-v1` (`knot_rag/quiz/`). It is **not an LLM**: nothing leaves the server,
+nothing is paraphrased, cost is zero. It reads the chunks of the authorized scope
+(`ChunkIndex.list_chunks`), picks one sentence per question and builds either a cloze
+multiple-choice question (key term blanked, distractors = same-kind terms from other
+sentences of the selected materials) or a true/false statement (verbatim sentence, or the
+sentence with its key term swapped; kept only if the altered text occurs nowhere in the
+materials). `source.quote` is always a verbatim substring of the chunk text. Candidates that
+are ambiguous (repeated key term, fewer than 3 distractors, option collisions), duplicated or
+unverifiable are dropped and counted in `rejected`; if fewer than `count` questions survive,
+`produced < requested` and a Turkish `warnings` entry says so (zero questions → `questions: []`).
+Output is deterministic for a given `request_id`.
+
+Limitations: questions test recall of sentence terms, not reasoning; distractors are
+heuristic (no semantic check that a distractor cannot also be correct), so quality depends on
+the amount of clean text in the materials. Swapping in an LLM generator would only need a new
+class behind the same response schema.
+
 ## Known limitations (summary)
 
 - Support states come from explicit **lexical rules** (`citation-lexical-v2`: verbatim quote,

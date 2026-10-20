@@ -18,6 +18,9 @@ const TEXT = {
   GENERATION_FAILED: 'Yanıt üretilemedi. Bu bir hizmet sorunu; kaynaklarla ilgili değil. Tekrar dene.',
   AI_SERVICE_UNAVAILABLE: 'Yapay zekâ hizmetine şu an ulaşılamıyor. Birazdan tekrar dene.',
   INDEX_VERSION_MISMATCH: 'Arama dizini bakımda. Birazdan tekrar dene.',
+  CONFLICT: 'Bu kod ve dönem için zaten bir ders var. Farklı bir kod ya da dönem dene.',
+  QUIZ_GENERATION_FAILED: 'Seçtiğin materyallerden güvenilir soru çıkarılamadı. Daha fazla metin içeren materyaller seçmeyi dene.',
+  QUIZ_ALREADY_SUBMITTED: 'Bu quiz denemesi zaten teslim edildi.',
   PROVIDER_TIMEOUT: 'Yanıt zamanında üretilemedi. Tekrar dene.',
 }
 

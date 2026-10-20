@@ -55,6 +55,7 @@ const PUBLIC_MESSAGE: Partial<Record<PublicErrorCode, string>> = {
 export class RagService {
   private readonly log = new Logger('rag');
   private readonly answerLimiter: RateLimiter;
+  private readonly quizLimiter: RateLimiter;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -64,6 +65,7 @@ export class RagService {
     @Inject(APP_CONFIG) private readonly config: AppConfig,
   ) {
     this.answerLimiter = new RateLimiter(config.answerRateLimitPerMinute);
+    this.quizLimiter = new RateLimiter(Math.max(5, Math.ceil(config.answerRateLimitPerMinute / 2)));
   }
 
   /** api-contracts.md §5 — the only place access to course material for AI calls is decided. */
@@ -168,5 +170,36 @@ export class RagService {
     if (r.kind !== 'response' || r.status !== 200) throw this.mapFailure(r, 'retrieve');
     this.assertWithinScope(scope, r.body, 'retrieve');
     return { ...r.body, documents: await this.documentsMap(r.body) };
+  }
+
+  /**
+   * Grounded quiz generation (extractive, local, no LLM). Scope is derived from MySQL exactly as for
+   * answers; every explicitly selected document must be inside it (nothing is silently dropped).
+   */
+  async generateQuiz(
+    user: AuthUser, courseId: string, documentIds: string[],
+    params: { count: number; question_types: string[]; difficulty: string }, requestId?: string,
+  ) {
+    if (!this.quizLimiter.take(user.id)) throw new ApiError('RATE_LIMITED', 'Too many quiz requests. Try again in a minute.');
+    const scope = await this.authorizedScope(user.id, courseId, documentIds);
+    const inScope = new Set(scope.document_ids);
+    const missing = documentIds.filter((id) => !inScope.has(id));
+    if (missing.length) throw new ApiError('DOCUMENT_NOT_READY', 'Some selected documents are not ready or not available.', { document_ids: missing });
+    await this.requireConsistentIndex();
+    const rid = this.requestId(requestId);
+    const r = await this.ai.call('POST', '/api/v1/quiz/generate', {
+      body: { schema_version: 'rag.v1', request_id: rid, scope, params }, timeoutMs: this.config.answerTimeoutMs, requestId: rid,
+    });
+    if (r.kind !== 'response' || r.status !== 200) throw this.mapFailure(r, 'quiz');
+    const body = r.body;
+    const questions: any[] = Array.isArray(body?.questions) ? body.questions : [];
+    for (const q of questions) {
+      if (typeof q?.source?.document_id !== 'string' || !inScope.has(q.source.document_id)) {
+        this.log.error({ event: 'rag.scope_violation_blocked', op: 'quiz', course_id: courseId, user_id: user.id });
+        throw new ApiError('INTERNAL_ERROR', 'Internal error.');
+      }
+    }
+    this.log.log({ event: 'quiz.generated', request_id: rid, course_id: courseId, user_id: user.id, scope_size: scope.document_ids.length, produced: questions.length });
+    return body;
   }
 }

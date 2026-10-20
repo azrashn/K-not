@@ -339,6 +339,8 @@ export class JobsService {
         where: { id: documentId },
         data: { deletedAt: new Date(), status: 'DELETING', activeContentHash: null, activeJobId: null },
       });
+      // No stored excerpts of deleted documents (U6): quiz source quotes are cleared, references stay.
+      await tx.quizQuestion.updateMany({ where: { sourceDocumentId: documentId }, data: { sourceQuote: null } });
     }));
     this.log.log({ event: 'document.deleted', document_id: documentId });
   }

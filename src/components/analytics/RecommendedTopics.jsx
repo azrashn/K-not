@@ -2,7 +2,7 @@ import { LEARN_LABEL, topicState } from '../../data/academic'
 import { Btn } from '../ui'
 import EmptyState, { Panel } from './EmptyState'
 
-export default function RecommendedTopics({ topics, review, navigate }) {
+export default function RecommendedTopics({ topics, review, navigate, real = false }) {
   const studied = topics.filter((t) => t.score > 0)
   const needs = studied.filter((t) => topicState(t.score) !== 'tight').sort((a, b) => a.score - b.score)
   const queued = review.map((r) => topics.find((t) => t.id === r.topicId)).filter(Boolean)
@@ -26,7 +26,7 @@ export default function RecommendedTopics({ topics, review, navigate }) {
               </div>
               <div className="flex gap-2">
                 <Btn size="sm" variant="soft" onClick={() => navigate('/dersler/veri-yapilari/calisma', { question: `${t.name} nedir, nasıl çalışır?` })}>Konuyu tekrar et</Btn>
-                <Btn size="sm" onClick={() => navigate('/quiz', { topic: t.id })}>Quiz çöz</Btn>
+                <Btn size="sm" onClick={() => navigate('/quiz', real ? undefined : { topic: t.id })}>Quiz çöz</Btn>
               </div>
             </li>
           ))}

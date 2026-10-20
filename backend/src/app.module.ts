@@ -19,6 +19,8 @@ import { JobsService } from './jobs/jobs.service';
 import { SchedulerService } from './jobs/scheduler.service';
 import { PrismaService } from './prisma/prisma.service';
 import { AnswersController } from './rag/answers.controller';
+import { QuizController } from './quiz/quiz.controller';
+import { QuizService } from './quiz/quiz.service';
 import { RagService } from './rag/rag.service';
 import { LocalStorage, Storage } from './storage/storage';
 
@@ -51,9 +53,10 @@ export class AppModule implements NestModule {
     return {
       module: AppModule,
       imports: [CoreModule.forRoot(config), DocumentsModule],
-      controllers: [HealthController, AuthController, CoursesController, AnswersController, InternalCallbacksController],
+      controllers: [HealthController, AuthController, CoursesController, AnswersController, QuizController, InternalCallbacksController],
       providers: [
         RagService,
+        QuizService,
         SchedulerService,
         { provide: APP_GUARD, useClass: JwtAuthGuard },
         { provide: APP_FILTER, useClass: ApiExceptionFilter },

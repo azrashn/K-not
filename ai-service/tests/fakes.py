@@ -67,6 +67,12 @@ class InMemoryIndex:
     def get_chunks(self, chunk_ids, scope):
         return [c for c in self._chunks if c.chunk_id in chunk_ids and scope.contains(c)]
 
+    def list_chunks(self, scope, limit):
+        if self.fail:
+            raise self.fail
+        pool = [c for c in self._chunks if self.leak or scope.contains(c)]
+        return sorted(pool, key=lambda c: (c.document.document_id, c.chunk_id))[:limit]
+
     def keyword_search(self, needle, scope, limit):
         # Mirrors Chroma `$contains` with case variants (lower / Capitalised / UPPER / as given).
         if self.fail:

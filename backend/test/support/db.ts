@@ -8,7 +8,7 @@ import { PrismaClient } from '../../src/generated/prisma/client';
 import { mariaDbUrl } from '../../src/prisma/prisma.service';
 
 const SERVER = (process.env.TEST_DATABASE_SERVER_URL ?? 'mysql://knot:knot-dev-password@localhost:3306').replace(/\/+$/, '');
-const TABLES = ['DocumentProcessingJob', 'Document', 'CourseMembership', 'Course', 'User', 'IndexVersion'];
+const TABLES = ['QuizAttemptAnswer', 'QuizAttempt', 'QuizQuestion', 'QuizDocument', 'Quiz', 'DocumentProcessingJob', 'Document', 'CourseMembership', 'Course', 'User', 'IndexVersion'];
 const migrated = new Set<string>();
 
 export function testDatabaseUrl(suffix = ''): string {

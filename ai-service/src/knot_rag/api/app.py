@@ -17,6 +17,7 @@ from knot_rag.bootstrap import Components
 from knot_rag.errors import RagError, Unauthorized
 from knot_rag.schemas.answer import AnswerRequest, GroundedAnswer
 from knot_rag.schemas.common import ErrorBody, ErrorCode, ErrorResponse
+from knot_rag.schemas.quiz import QuizRequest, QuizResponse
 from knot_rag.schemas.retrieval import RetrieveRequest, RetrieveResponse
 
 log = logging.getLogger(__name__)
@@ -159,5 +160,16 @@ def create_app(components: Components) -> FastAPI:
     )
     def answer(body: AnswerRequest, request: Request) -> GroundedAnswer:
         return components.rag.answer(body, resolve_request_id(request, body.request_id))
+
+    @app.post(
+        "/api/v1/quiz/generate",
+        response_model=QuizResponse,
+        dependencies=auth,
+        tags=["quiz"],
+        summary="Grounded extractive quiz from the selected materials (no LLM; every question carries a verbatim source quote).",
+        responses={401: _ERR, 403: _ERR, 409: _ERR, 422: _ERR, 503: _ERR},
+    )
+    def generate_quiz(body: QuizRequest, request: Request) -> QuizResponse:
+        return components.quiz.generate(body, resolve_request_id(request, body.request_id))
 
     return app

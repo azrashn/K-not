@@ -7,13 +7,17 @@ const Card = ({ label, value, note }) => (
 )
 
 // Yalnızca gerçekten bilinen sayılar gösterilir; kaydedilmeyenler "—" ve açıklama taşır.
-export default function SummaryCards({ topics }) {
+export default function SummaryCards({ topics, summary }) {
   const studied = topics.filter((t) => t.score > 0).length
   return (
     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
       <Card label="Çalışılan konular" value={studied} note={`${topics.length} konudan`} />
-      <Card label="Tamamlanan quizler" note="Henüz quiz tamamlanmadı" />
-      <Card label="Ortalama başarı" note="Henüz değerlendirme verisi yok" />
+      {summary?.completed_quizzes > 0
+        ? <Card label="Tamamlanan quizler" value={summary.completed_quizzes} note="Teslim edilen denemeler" />
+        : <Card label="Tamamlanan quizler" note="Henüz quiz tamamlanmadı" />}
+      {summary?.average_score_pct != null
+        ? <Card label="Ortalama başarı" value={`%${Math.round(summary.average_score_pct)}`} note="Tüm denemelerin ortalaması" />
+        : <Card label="Ortalama başarı" note="Henüz değerlendirme verisi yok" />}
       <Card label="Çalışma süresi" note="Çalışma süresi henüz kaydedilmiyor" />
     </div>
   )

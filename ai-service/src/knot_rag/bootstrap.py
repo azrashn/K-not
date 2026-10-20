@@ -14,6 +14,7 @@ from knot_rag.evidence.support import HeuristicSupportAssessor, SupportAssessor
 from knot_rag.generation.generator import GroundedGenerator
 from knot_rag.generation.providers import LLMProvider, build_provider
 from knot_rag.pipeline import RagService
+from knot_rag.quiz import QuizGenerator
 from knot_rag.retrieval.chroma_index import ChromaChunkIndex, build_chroma_client
 from knot_rag.retrieval.embedding import Embedder, build_embedder
 from knot_rag.retrieval.index import ChunkIndex
@@ -28,6 +29,7 @@ class Components:
     embedder: Embedder
     provider: LLMProvider
     rag: RagService
+    quiz: QuizGenerator
     # C-1: the query-side EmbeddingConfiguration (lazy: the dimension needs the loaded model).
     embedding_configuration: Callable[[], EmbeddingConfiguration] | None = field(default=None, repr=False)
 
@@ -75,6 +77,6 @@ def build_components(
         support_settings=settings.support,
     )
     return Components(
-        settings=settings, index=index, embedder=embedder, provider=provider, rag=rag,
+        settings=settings, index=index, embedder=embedder, provider=provider, rag=rag, quiz=QuizGenerator(index),
         embedding_configuration=embedding_configuration,
     )

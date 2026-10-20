@@ -88,7 +88,7 @@ describe('courses', () => {
     signIn()
     window.location.hash = '#/dersler'
     const { unmount } = render(<App />)
-    expect(await screen.findByText(/Henüz bir derse kayıtlı değilsin/)).toBeInTheDocument()
+    expect(await screen.findByText(/Henüz bir dersin yok/)).toBeInTheDocument()
     unmount()
     let n = 0
     fakeApi({ 'GET /courses': () => (++n === 1 ? new TypeError('down') : { body: [COURSE] }) })

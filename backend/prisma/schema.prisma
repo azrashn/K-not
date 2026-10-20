@@ -69,6 +69,9 @@ model User {
   createdAt    DateTime           @default(now())
   memberships  CourseMembership[]
   documents    Document[]
+  createdCourses Course[]         @relation("CourseCreator")
+  quizzes      Quiz[]
+  quizAttempts QuizAttempt[]
 }
 
 model Course {
@@ -77,11 +80,16 @@ model Course {
   name           String             @db.VarChar(200)
   instructorName String?            @db.VarChar(200)
   term           String             @db.VarChar(32)
+  description    String?            @db.VarChar(1000)
+  createdById    String?            // set for student-created personal courses; NULL for seeded/enrolled ones
   createdAt      DateTime           @default(now())
+  createdBy      User?              @relation("CourseCreator", fields: [createdById], references: [id])
   memberships    CourseMembership[]
   documents      Document[]
+  quizzes        Quiz[]
 
   @@unique([code, term])
+  @@index([createdById])
 }
 
 model CourseMembership {
@@ -185,4 +193,101 @@ model IndexVersion {
   droppedAt            DateTime?
   jobs                 DocumentProcessingJob[]
   documents            Document[]
+}
+
+enum QuizStatus {
+  READY
+  FAILED
+}
+
+enum QuizAttemptStatus {
+  IN_PROGRESS
+  SUBMITTED
+}
+
+// Generated from the selected READY documents. Owned by one student; the answer key lives only here.
+model Quiz {
+  id             String         @id @default(cuid())
+  userId         String
+  courseId       String
+  title          String         @db.VarChar(200)
+  status         QuizStatus     @default(READY)
+  difficulty     String         @db.VarChar(8)   // easy|medium|hard
+  questionTypes  String         @db.VarChar(64)  // comma list: multiple_choice,true_false
+  requestedCount Int
+  questionCount  Int
+  generator      String         @db.VarChar(64)  // e.g. extractive-v1
+  llmUsed        Boolean        @default(false)
+  warnings       String?        @db.Text         // JSON array of user-facing notes
+  createdAt      DateTime       @default(now())
+  user           User           @relation(fields: [userId], references: [id])
+  course         Course         @relation(fields: [courseId], references: [id])
+  documents      QuizDocument[]
+  questions      QuizQuestion[]
+  attempts       QuizAttempt[]
+
+  @@index([userId, courseId, createdAt])
+}
+
+model QuizDocument {
+  quizId     String
+  documentId String
+  quiz       Quiz   @relation(fields: [quizId], references: [id], onDelete: Cascade)
+
+  @@id([quizId, documentId])
+  @@index([documentId])
+}
+
+model QuizQuestion {
+  id               String              @id @default(cuid())
+  quizId           String
+  ordinal          Int
+  type             String              @db.VarChar(16)   // multiple_choice|true_false
+  prompt           String              @db.Text
+  options          String              @db.Text          // JSON string[]
+  correctIndex     Int
+  explanation      String              @db.Text
+  topic            String              @db.VarChar(300)
+  difficulty       String              @db.VarChar(8)
+  sourceDocumentId String              @db.VarChar(191)
+  sourceChunkId    String              @db.VarChar(191)
+  sourcePageStart  Int?
+  sourcePageEnd    Int?
+  sourceQuote      String?             @db.Text          // cleared when the source document is deleted (no stored excerpts of deleted documents)
+  quiz             Quiz                @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  answers          QuizAttemptAnswer[]
+
+  @@unique([quizId, ordinal])
+  @@index([sourceDocumentId])
+}
+
+model QuizAttempt {
+  id           String              @id @default(cuid())
+  quizId       String
+  userId       String
+  status       QuizAttemptStatus   @default(IN_PROGRESS)
+  startedAt    DateTime            @default(now())
+  submittedAt  DateTime?
+  totalCount   Int                 @default(0)
+  correctCount Int                 @default(0)
+  scorePct     Int?                // 0..100, set on submit
+  quiz         Quiz                @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  user         User                @relation(fields: [userId], references: [id])
+  answers      QuizAttemptAnswer[]
+
+  @@index([userId, status, submittedAt])
+  @@index([quizId])
+}
+
+model QuizAttemptAnswer {
+  attemptId     String
+  questionId    String
+  selectedIndex Int?
+  isCorrect     Boolean?
+  answeredAt    DateTime     @default(now())
+  attempt       QuizAttempt  @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  question      QuizQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@id([attemptId, questionId])
+  @@index([questionId])
 }
