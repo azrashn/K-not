@@ -1,5 +1,9 @@
 # Video çalışması — devam notu, 31 Ekim 2026
 
+Güncel ana geliştirme kaydı artık `docs/development/IMPLEMENTATION_STATUS.md`.
+Master gereksinim incelemesi ve kalıcı izleme geliştirmesi orada izlenir;
+bu dosyanın aşağıdaki ilk sürüm notları tarihsel kanıttır.
+
 Duraklatma sonrasında çalışma sürdürüldü; ilk çalışan video sürümü ve son tarayıcı
 doğrulaması tamamlandı. Sonraki geliştirmeler aşağıdaki notlardan devam edebilir.
 Dal: `feature/video-integration`, başlangıç `2fdc005`.

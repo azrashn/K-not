@@ -22,10 +22,10 @@ export const newRequestId = () =>
 /**
  * @param {string} method
  * @param {string} path  e.g. `/courses`
- * @param {{ body?: unknown, form?: FormData, signal?: AbortSignal, as?: 'json'|'blob', auth?: boolean }} [opts]
+ * @param {{ body?: unknown, form?: FormData, signal?: AbortSignal, as?: 'json'|'blob', auth?: boolean, keepalive?: boolean }} [opts]
  */
 export async function request(method, path, opts = {}) {
-  const { body, form, signal, as = 'json', auth = true } = opts
+  const { body, form, signal, as = 'json', auth = true, keepalive = false } = opts
   const requestId = newRequestId()
   const headers = { Accept: as === 'blob' ? 'application/octet-stream' : 'application/json', 'X-Request-ID': requestId }
   const tok = auth ? session.token() : null
@@ -35,7 +35,7 @@ export async function request(method, path, opts = {}) {
   let res
   try {
     res = await fetch(`${API_BASE}${path}`, {
-      method, headers, signal,
+      method, headers, signal, keepalive,
       body: form ?? (body !== undefined ? JSON.stringify(body) : undefined),
     })
   } catch (e) {

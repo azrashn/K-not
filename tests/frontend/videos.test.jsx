@@ -3,7 +3,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import Videos from '../../src/pages/Videos'
 import { validateVideoFile, videoTime, videoErrorText } from '../../src/lib/video'
 import { api } from '../../src/api/endpoints'
-vi.mock('../../src/api/endpoints', () => ({ api: { videos: vi.fn(), videoTranscript: vi.fn(), videoFrames: vi.fn(), videoFile: vi.fn(), videoFrame: vi.fn(), videoAnswer: vi.fn(), importVideoLink: vi.fn(), removeVideo: vi.fn() } }))
+vi.mock('../../src/api/endpoints', () => ({ api: { videos: vi.fn(), videoTranscript: vi.fn(), videoFrames: vi.fn(), videoFile: vi.fn(), videoFrame: vi.fn(), videoAnswer: vi.fn(), importVideoLink: vi.fn(), removeVideo: vi.fn(), videoProgress: vi.fn(), saveVideoProgress: vi.fn() } }))
 vi.mock('../../src/app/store', () => ({ useApp: () => ({ navigate: vi.fn() }) }))
 vi.mock('../../src/components/PageBits', () => ({ MobileBar: () => null }))
 beforeEach(() => {
@@ -14,6 +14,10 @@ beforeEach(() => {
   api.videoFile.mockResolvedValue(new Blob(['video']))
   api.videoTranscript.mockResolvedValue({ chunks: [{ text: 'A real timestamp contract', start_seconds: 65, end_seconds: 72 }] })
   api.videoFrames.mockResolvedValue({ frames: [] })
+  api.videoProgress.mockResolvedValue({ video_id: 'video-1', duration_ms: 100000, position_ms: 65000,
+    watched_ms: 5000, watched_percent: 5, intervals: [{ start_ms: 0, end_ms: 5000 }], revision: 1 })
+  api.saveVideoProgress.mockResolvedValue({ video_id: 'video-1', duration_ms: 100000, position_ms: 65000,
+    watched_ms: 5000, watched_percent: 5, intervals: [{ start_ms: 0, end_ms: 5000 }], revision: 2 })
 })
 test('formats timestamps and rejects unsupported/oversized uploads', () => {
   expect(videoTime(65.9)).toBe('1:05')
@@ -34,6 +38,13 @@ test('clicking a transcript seeks the authenticated video blob', async () => {
   fireEvent.click(line)
   expect(screen.getByLabelText('Ders videosu').currentTime).toBe(65)
   expect(api.videoFile).toHaveBeenCalledWith('course-1', 'video-1', expect.any(AbortSignal))
+})
+test('server progress is shown separately from mastery with a working resume control', async () => {
+  render(<Videos courseId="course-1" />)
+  fireEvent.click(await screen.findByRole('button', { name: 'Kaldığın yere dön · 1:05' }))
+  expect(screen.getByLabelText('Ders videosu').currentTime).toBe(65)
+  expect(screen.getByRole('progressbar', { name: 'İzlenen video oranı' })).toHaveAttribute('aria-valuenow', '5')
+  expect(screen.getByText(/Bu kayıt konu hâkimiyetini ölçmez/)).toBeInTheDocument()
 })
 test('link import shows progress, preserves errors and submits to the current course', async () => {
   let reject

@@ -18,6 +18,8 @@ export const api = {
   },
   retryVideo: (courseId, videoId) => request('POST', `/courses/${enc(courseId)}/videos/${enc(videoId)}/retry`),
   removeVideo: (courseId, videoId) => request('DELETE', `/courses/${enc(courseId)}/videos/${enc(videoId)}`),
+  videoProgress: (courseId, videoId, signal) => request('GET', `/courses/${enc(courseId)}/videos/${enc(videoId)}/progress`, { signal }),
+  saveVideoProgress: (courseId, videoId, body, signal, keepalive = false) => request('PUT', `/courses/${enc(courseId)}/videos/${enc(videoId)}/progress`, { body, signal, keepalive }),
   videoTranscript: (courseId, videoId, signal) => request('GET', `/courses/${enc(courseId)}/videos/${enc(videoId)}/transcript`, { signal }),
   videoFrames: (courseId, videoId, signal) => request('GET', `/courses/${enc(courseId)}/videos/${enc(videoId)}/frames`, { signal }),
   videoFile: (courseId, videoId, signal) => request('GET', `/courses/${enc(courseId)}/videos/${enc(videoId)}/file`, { as: 'blob', signal }),

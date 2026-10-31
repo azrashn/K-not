@@ -4,6 +4,7 @@ import { useApp } from '../app/store'
 import { Btn, PageFrame } from '../components/ui'
 import { MobileBar } from '../components/PageBits'
 import { validateVideoFile, videoTime, videoErrorText as errorText } from '../lib/video'
+import { useVideoProgress } from '../hooks/useVideoProgress'
 
 const STATES = { pending: 'Sırada', queued: 'Sırada', fetching: 'Video okunuyor', sampling: 'Kareler çıkarılıyor',
   embedding: 'Ses ve görseller hazırlanıyor', indexed: 'Hazır', failed: 'İşlenemedi', skipped: 'Daha önce işlendi' }
@@ -50,6 +51,7 @@ export default function Videos({ courseId }) {
   const active = videos.find(v => v.id === selected)
   useEffect(() => () => linkAbort.current?.abort(), [courseId])
   const ready = active?.status === 'indexed'
+  const watch = useVideoProgress(courseId, selected, ready, player)
   const refresh = useCallback(async (signal) => {
     const version = listVersion.current
     try {
@@ -194,8 +196,26 @@ export default function Videos({ courseId }) {
             <section className="min-w-0 border border-hair p-3" aria-label="Video oynatıcı">
               {mediaLoading && <p role="status" className="p-4 text-sm">Video açılıyor…</p>}
               {fileUrl && <video ref={player} controls preload="metadata" src={fileUrl} className="aspect-video w-full bg-black"
-                onTimeUpdate={e => setTime(e.currentTarget.currentTime)} aria-label="Ders videosu" />}
+                onTimeUpdate={e => { setTime(e.currentTarget.currentTime); watch.observe() }}
+                onPlay={watch.observe} onPlaying={watch.observe} onPause={watch.flush} onEnded={watch.flush}
+                onSeeking={watch.reset} onSeeked={watch.seeked}
+                onRateChange={watch.reset} onWaiting={watch.reset} aria-label="Ders videosu" />}
               <p className="mt-2 text-xs text-ink-3">Bir transkript satırına veya kareye tıklayarak ilgili zamana git.</p>
+              <div aria-label="Video izleme ilerlemesi" className="mt-4 border-t border-hair pt-3">
+                {watch.progress ? <>
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                    <span>İzlenen: <strong>%{watch.progress.watched_percent}</strong> · {videoTime(watch.progress.watched_ms / 1000)} / {videoTime(watch.progress.duration_ms / 1000)}</span>
+                    <span className="text-ink-3" role="status">{watch.error ? 'Kaydedilemedi' : watch.saving ? 'Kaydediliyor…' : 'İlerleme kayıtlı'}</span>
+                  </div>
+                  <div className="relative mt-2 h-2 border border-hair bg-paper" role="progressbar" aria-label="İzlenen video oranı" aria-valuenow={watch.progress.watched_percent} aria-valuemin={0} aria-valuemax={100}>
+                    {watch.progress.intervals.map(range => <span key={range.start_ms} className="absolute bottom-0 top-0 bg-accent"
+                      style={{ left: `${range.start_ms / watch.progress.duration_ms * 100}%`, width: `${(range.end_ms - range.start_ms) / watch.progress.duration_ms * 100}%` }} />)}
+                  </div>
+                  {watch.progress.position_ms > 1000 && <button onClick={() => seek(watch.progress.position_ms / 1000)} className="mt-3 text-xs text-accent">Kaldığın yere dön · {videoTime(watch.progress.position_ms / 1000)}</button>}
+                  <p className="mt-2 text-xs text-ink-3">Atladığın bölümler izlenmiş sayılmaz. Bu kayıt konu hâkimiyetini ölçmez.</p>
+                </> : <p className="text-xs text-ink-3">İzleme kaydı hazırlanıyor…</p>}
+                {watch.error && <p role="alert" className="mt-2 text-xs text-kopuk">İzleme kaydı: {watch.error} <button onClick={watch.retry} className="ml-2 underline">Tekrar dene</button></p>}
+              </div>
             </section>
             <section aria-label="Zaman damgalı transkript" className="max-h-[30rem] overflow-y-auto border border-hair">
               <h2 className="sticky top-0 border-b border-hair bg-paper p-3 text-sm font-medium">Transkript</h2>

@@ -70,6 +70,7 @@ model User {
   memberships  CourseMembership[]
   documents    Document[]
   videos       Video[]
+  videoProgress VideoProgress[]
 }
 
 model Course {
@@ -97,11 +98,28 @@ model Video {
   contentSha256    String   @db.Char(64)
   engineVideoId    String   @db.VarChar(64)
   createdAt        DateTime @default(now())
+  durationMs       Int?
+  progress         VideoProgress[]
   course           Course   @relation(fields: [courseId], references: [id])
   owner            User     @relation(fields: [ownerId], references: [id])
 
   @@unique([courseId, ownerId, contentSha256])
   @@index([ownerId])
+}
+
+// Media observation only. Watched time is not a measurement of topic mastery.
+model VideoProgress {
+  videoId    String
+  userId     String
+  positionMs Int      @default(0)
+  intervals  Json
+  revision   Int      @default(0)
+  updatedAt  DateTime @updatedAt
+  video      Video   @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  user       User    @relation(fields: [userId], references: [id])
+
+  @@id([videoId, userId])
+  @@index([userId])
 }
 
 model CourseMembership {

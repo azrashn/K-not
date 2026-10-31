@@ -15,6 +15,9 @@ Yerel video profili `scripts/Start-KnotVideo.ps1` ile açılır:
 http://127.0.0.1:5174/#/dersler. Bu profil backend için 3100, AI için 8110 kullanır;
 OpenTutor ve DocsGPT portlarıyla çakışmaz. Videolar ilk sürümde yükleyene özeldir.
 Kurulum/sınırlar: [Video entegrasyonu](docs/video-integration.md).
+Kalıcı izleme aralıkları, atlamayı izlenmiş saymayan ilerleme çizgisi ve kaldığı
+yere dönme eklendi. [Güncel geliştirme kaydı](docs/development/IMPLEMENTATION_STATUS.md)
+tamamlanan işleri, test kanıtlarını ve henüz uygulanmamış hoca beklentilerini ayırır.
 Sonraki işler: [5 kişilik görev dağılımı](docs/video-team-tasks.md).
 
 ### Tek komutla (Windows, önerilen)
