@@ -13,6 +13,7 @@ import CourseDetail from './pages/CourseDetail'
 import Workspace from './pages/Workspace'
 import Quiz from './pages/Quiz'
 import Analytics from './pages/Analytics'
+import Videos from './pages/Videos'
 
 // Rota prop olarak donar: çıkış animasyonundaki eski sayfa yeni rotayı okuyup erken oluşmaz.
 function Page({ route }) {
@@ -21,6 +22,7 @@ function Page({ route }) {
     case 'list': return <Courses />
     case 'course': return <CourseDetail courseId={courseId} />
     case 'workspace': return <Workspace courseId={courseId} />
+    case 'videos': return <Videos courseId={courseId} />
     case 'quiz': return <Quiz />
     case 'analytics': return <Analytics />
     default: return <Home />
@@ -35,7 +37,7 @@ function Shell() {
   const pageKey = `${route.view}:${route.courseId || ''}`
   useEffect(() => {
     const names = { home: 'Ana Sayfa', list: 'Dersler', course: 'Ders', workspace: 'Çalışma alanı', quiz: 'Quiz', analytics: 'Öğrenme Analizi' }
-    document.title = `${names[route.view] || 'K-not'} — K-not`
+    document.title = `${route.view === 'videos' ? 'Ders videoları' : names[route.view] || 'K-not'} — K-not`
   }, [route.view])
 
   return (

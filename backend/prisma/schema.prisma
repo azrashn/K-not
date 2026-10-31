@@ -69,6 +69,7 @@ model User {
   createdAt    DateTime           @default(now())
   memberships  CourseMembership[]
   documents    Document[]
+  videos       Video[]
 }
 
 model Course {
@@ -80,8 +81,27 @@ model Course {
   createdAt      DateTime           @default(now())
   memberships    CourseMembership[]
   documents      Document[]
+  videos         Video[]
 
   @@unique([code, term])
+}
+
+// Videos are private to their uploader in this first release. The engine's
+// shared physical blob identity never grants access in K-not.
+model Video {
+  id               String   @id
+  courseId         String
+  ownerId          String
+  title            String   @db.VarChar(300)
+  originalFilename String   @db.VarChar(255)
+  contentSha256    String   @db.Char(64)
+  engineVideoId    String   @db.VarChar(64)
+  createdAt        DateTime @default(now())
+  course           Course   @relation(fields: [courseId], references: [id])
+  owner            User     @relation(fields: [ownerId], references: [id])
+
+  @@unique([courseId, ownerId, contentSha256])
+  @@index([ownerId])
 }
 
 model CourseMembership {

@@ -12,6 +12,7 @@ function fakePrisma() {
   return {
     user: {
       findUnique: async ({ where }: any) => rows.get(`u:${where.email}`) ?? null,
+      update: async ({ where }: any) => rows.get(`u:${where.email}`),
       upsert: async ({ where }: any) => {
         const key = `u:${where.email}`;
         if (!rows.has(key)) rows.set(key, { id: id() });

@@ -9,6 +9,18 @@ export const api = {
 
   courses: (signal) => request('GET', '/courses', { signal }),
   course: (courseId, signal) => request('GET', `/courses/${enc(courseId)}`, { signal }),
+  videos: (courseId, signal) => request('GET', `/courses/${enc(courseId)}/videos`, { signal }),
+  uploadVideo: (courseId, file) => {
+    const form = new FormData()
+    form.append('file', file, file.name)
+    return request('POST', `/courses/${enc(courseId)}/videos`, { form })
+  },
+  retryVideo: (courseId, videoId) => request('POST', `/courses/${enc(courseId)}/videos/${enc(videoId)}/retry`),
+  videoTranscript: (courseId, videoId, signal) => request('GET', `/courses/${enc(courseId)}/videos/${enc(videoId)}/transcript`, { signal }),
+  videoFrames: (courseId, videoId, signal) => request('GET', `/courses/${enc(courseId)}/videos/${enc(videoId)}/frames`, { signal }),
+  videoFile: (courseId, videoId, signal) => request('GET', `/courses/${enc(courseId)}/videos/${enc(videoId)}/file`, { as: 'blob', signal }),
+  videoFrame: (courseId, videoId, index, signal) => request('GET', `/courses/${enc(courseId)}/videos/${enc(videoId)}/frames/${enc(index)}`, { as: 'blob', signal }),
+  videoAnswer: (courseId, videoId, question, signal) => request('POST', `/courses/${enc(courseId)}/videos/${enc(videoId)}/answers`, { body: { question }, signal }),
 
   documents: (courseId, signal) => request('GET', `/courses/${enc(courseId)}/documents`, { signal }),
   document: (documentId, signal) => request('GET', `/documents/${enc(documentId)}`, { signal }),

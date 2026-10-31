@@ -11,6 +11,7 @@ export interface AppConfig {
   corsOrigin: string | null;
   storageRoot: string;
   aiServiceUrl: string;
+  videoServiceUrl?: string;
   ragInternalApiToken: string;
   ingestCallbackToken: string;
   uploadMaxBytes: number;
@@ -62,6 +63,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     corsOrigin: env.CORS_ORIGIN || null,
     storageRoot: required(env, 'STORAGE_ROOT'),
     aiServiceUrl,
+    videoServiceUrl: env.VIDEO_SERVICE_URL || 'http://127.0.0.1:7862',
     ragInternalApiToken: required(env, 'RAG_INTERNAL_API_TOKEN', 16),
     ingestCallbackToken: required(env, 'INGEST_CALLBACK_TOKEN', 16),
     uploadMaxBytes: int(env, 'UPLOAD_MAX_BYTES', 30 * 1024 * 1024, 1),

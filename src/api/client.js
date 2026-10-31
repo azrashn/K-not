@@ -27,7 +27,7 @@ export const newRequestId = () =>
 export async function request(method, path, opts = {}) {
   const { body, form, signal, as = 'json', auth = true } = opts
   const requestId = newRequestId()
-  const headers = { Accept: as === 'blob' ? 'application/pdf' : 'application/json', 'X-Request-ID': requestId }
+  const headers = { Accept: as === 'blob' ? 'application/octet-stream' : 'application/json', 'X-Request-ID': requestId }
   const tok = auth ? session.token() : null
   if (tok) headers.Authorization = `Bearer ${tok}`
   if (body !== undefined) headers['Content-Type'] = 'application/json'

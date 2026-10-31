@@ -129,6 +129,7 @@ export default function CourseDetail({ courseId }) {
           <Btn arrow className="group" disabled={r.ready === 0} onClick={() => navigate(`/dersler/${c.id}/calisma`)}>Çalışma alanını aç</Btn>
           <Btn variant="soft" disabled title="Alıştırma üretimi henüz bağlı değil (WBS-6)">Alıştırma başlat</Btn>
           <Btn variant="quiet" onClick={() => setUploader((u) => !u)} aria-expanded={uploader}><UploadSimple size={16} /> Materyal ekle</Btn>
+          <Btn variant="soft" onClick={() => navigate(`/dersler/${c.id}/videolar`)}>Ders videoları</Btn>
         </div>
         {r.ready === 0 && <p className="m-0 mt-3 text-[13px] text-ink-3">Çalışma alanı, en az bir materyal hazır olduğunda açılır.</p>}
       </div>

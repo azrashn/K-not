@@ -8,6 +8,15 @@ CLAIM → KNOT → SOURCE        ASK → PRACTICE → ANSWER → FEEDBACK → RE
 
 ## Çalıştırma
 
+### Video geliştirme dalı
+
+`feature/video-integration` dalında ders içinden **Ders videoları** ekranı eklendi.
+Yerel video profili `scripts/Start-KnotVideo.ps1` ile açılır:
+http://127.0.0.1:5174/#/dersler. Bu profil backend için 3100, AI için 8110 kullanır;
+OpenTutor ve DocsGPT portlarıyla çakışmaz. Videolar ilk sürümde yükleyene özeldir.
+Kurulum/sınırlar: [Video entegrasyonu](docs/video-integration.md).
+Sonraki işler: [5 kişilik görev dağılımı](docs/video-team-tasks.md).
+
 ### Tek komutla (Windows, önerilen)
 
 Docker Desktop açıkken:
@@ -65,7 +74,7 @@ Döngü ayrı bir diyagram olarak değil, eylemlerle kurulur: yanıttaki **Bunu 
 
 ## Kapsam
 
-Faz 1: ders materyali indeksleme, kaynağa dayalı soru-cevap, otomatik soru üretimi, cevap değerlendirme ve kanıt ölçümü. Video/transkript, öğretmen paneli, sosyal özellikler ve oyunlaştırma kapsam dışıdır.
+Faz 1: ders materyali indeksleme, kaynağa dayalı soru-cevap, otomatik soru üretimi, cevap değerlendirme ve kanıt ölçümü. Bu dalda ayrı ve deneysel video/transkript akışı eklenmiştir; öğretmen paneli, sosyal özellikler ve oyunlaştırma kapsam dışıdır.
 
 ## Tasarım dili
 

@@ -13,6 +13,7 @@ import { APP_CONFIG, AppConfig } from './config/config';
 import { AccessService } from './courses/access.service';
 import { CoursesController } from './courses/courses.controller';
 import { DocumentsModule } from './documents/documents.module';
+import { VideosModule } from './videos/videos.module';
 import { HealthController } from './health/health.controller';
 import { InternalCallbacksController } from './jobs/internal-callbacks.controller';
 import { JobsService } from './jobs/jobs.service';
@@ -50,7 +51,7 @@ export class AppModule implements NestModule {
   static forRoot(config: AppConfig): DynamicModule {
     return {
       module: AppModule,
-      imports: [CoreModule.forRoot(config), DocumentsModule],
+      imports: [CoreModule.forRoot(config), DocumentsModule, VideosModule],
       controllers: [HealthController, AuthController, CoursesController, AnswersController, InternalCallbacksController],
       providers: [
         RagService,

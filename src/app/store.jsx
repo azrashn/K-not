@@ -5,6 +5,7 @@ import { INITIAL_REVIEW, SUPPORT_SEED, TOPICS } from '../data/academic'
 export function parseHash(hash) {
   const parts = hash.replace(/^#\/?/, '').split('/').filter(Boolean)
   if (parts[0] === 'dersler') {
+    if (parts[1] && parts[2] === 'videolar') return { section: 'courses', view: 'videos', courseId: parts[1] }
     if (parts[1] && parts[2] === 'calisma') return { section: 'courses', view: 'workspace', courseId: parts[1] }
     if (parts[1]) return { section: 'courses', view: 'course', courseId: parts[1] }
     return { section: 'courses', view: 'list' }
