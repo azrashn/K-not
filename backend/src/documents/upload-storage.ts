@@ -6,6 +6,7 @@
 import { createHash } from 'node:crypto';
 import type { Request } from 'express';
 import type { StorageEngine } from 'multer';
+import { MulterError } from 'multer';
 
 import { Storage } from '../storage/storage';
 
@@ -32,8 +33,11 @@ export class HashingTempStorage implements StorageEngine {
         if (done) return;
         done = true;
         if (err) {
-          out.destroy();
-          this.storage.delete(key).finally(() => cb(err));
+          // Windows may keep the file handle open until `close`. Settle the
+          // storage callback after cleanup so Multer can drain pendingWrites.
+          const cleanup = () => { void this.storage.delete(key).then(() => cb(err), (cleanupError) => cb(cleanupError)); };
+          if (out.closed) cleanup();
+          else { out.once('close', cleanup); out.destroy(); }
         } else {
           cb(null, info as unknown as Partial<Express.Multer.File>);
         }
@@ -45,8 +49,7 @@ export class HashingTempStorage implements StorageEngine {
       });
       // Size limit hit: multer reports LIMIT_FILE_SIZE; make sure the partial file is removed.
       file.stream.on('limit', () => {
-        out.destroy();
-        void this.storage.delete(key);
+        finish(new MulterError('LIMIT_FILE_SIZE', file.fieldname));
       });
       file.stream.on('error', (e: unknown) => finish(e));
       out.on('error', (e) => finish(e));

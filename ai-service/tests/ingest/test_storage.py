@@ -1,6 +1,7 @@
 """T10 (storage_key safety) and atomic artifact writes."""
 
 import os
+import subprocess
 
 import pytest
 
@@ -27,7 +28,18 @@ def test_symlink_leaving_the_root_is_rejected(storage, tmp_path):
     outside = tmp_path / "secret"
     outside.mkdir()
     (outside / "x.pdf").write_bytes(b"%PDF-")
-    os.symlink(outside, storage.root / "documents")
+    link = storage.root / 'documents'
+    try:
+        os.symlink(outside, link)
+    except OSError as error:
+        if os.name != 'nt' or getattr(error, 'winerror', None) != 1314:
+            raise
+        # Junctions exercise the same real resolved-path boundary on Windows
+        # without changing Developer Mode, privileges, or the security check.
+        subprocess.run(['powershell.exe', '-NoProfile', '-NonInteractive', '-Command',
+            'New-Item -ItemType Junction -Path $env:KNOT_TEST_LINK -Target $env:KNOT_TEST_TARGET | Out-Null'],
+            env={**os.environ, 'KNOT_TEST_LINK': str(link), 'KNOT_TEST_TARGET': str(outside)},
+            capture_output=True, check=True, timeout=10)
     with pytest.raises(UnsafeStorageKey):
         storage.resolve("documents/x.pdf")
 
