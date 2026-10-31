@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, Param, ParseIntPipe, Post, Res, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Param, ParseIntPipe, Post, Res, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { IsString, Matches, MaxLength, MinLength } from 'class-validator';
 import type { Response } from 'express';
@@ -18,6 +18,8 @@ class VideoLink { @IsString() @MinLength(1) @MaxLength(2048) url!: string }
 export class VideosController {
   constructor(private readonly videos: VideosService) {}
   @Get() list(@CurrentUser() u: AuthUser, @Param() p: IdParam.Course) { return this.videos.list(u, p.courseId); }
+  @Delete(':videoId')
+  remove(@CurrentUser() u: AuthUser, @Param() p: VideoParam) { return this.videos.remove(u, p.courseId, p.videoId); }
   @Post('import-link') @UseGuards(UploadAccessGuard)
   importLink(@CurrentUser() u: AuthUser, @Param() p: IdParam.Course, @Body() b: VideoLink) {
     return this.videos.importLink(u, p.courseId, b.url);

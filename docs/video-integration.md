@@ -65,7 +65,41 @@ Ekleme migrasyonu yalnızca bu tabloyu ve ilişkileri oluşturur; eski belge ve
 indeks tablolarını sıfırlamaz. Aynı kullanıcı/ders/hash üçlüsü yeniden yüklemeyi
 tek kayda indirir. Motorun aynı fiziksel dosyayı paylaşması Knot yetkisi vermez.
 Knot'taki her okuma/sorgu ders üyeliği VE yükleyen kullanıcıyla sınırlandırılır.
-İlk sürümde ders genelinde paylaşım, silme veya iptal uçları sunulmaz.
+Ders genelinde paylaşım ve aktif işi iptal etme uçları henüz sunulmaz.
+
+## Kalıcı video kaldırma
+
+Kartın **Kaldır** düğmesi inline onay açar: **Kalıcı olarak sil** veya **Vazgeç**.
+`DELETE /courses/:courseId/videos/:videoId` ders üyeliği ve yükleyen sahipliğiyle
+korunur. Son referansta kaynak video, transkript, kareler, iki Qdrant indeksindeki
+kayıtlar, motor manifesti ve Knot kaydı temizlenir. Yükleme için seçilmiş orijinal
+bilgisayar dosyası kapsam dışıdır; uygulamanın sakladığı kopya kaldırılır.
+
+Aynı fiziksel dosyayı başka bir Knot kaydı veya motor oturumu kullanıyorsa yalnızca
+seçili Knot kaydı kaldırılır; diğer kaydın verisi korunur ve bu durum ekranda yazılır.
+Yükleme ve silme aynı hash için tek Nest sürecinde sıraya alınır. Bekleyen dosya da
+paylaşılır; ikinci upload'ın motor dedup aşamasında kopuk kayıt oluşturması önlenir.
+Çok Nest replikalı dağıtımdan önce bu kuyruk dağıtık kilit/outbox'a taşınmalıdır.
+
+Motor ingest/retry/silme arasında PostgreSQL advisory lock kullanır. Aktif işlemde
+motor sürümü `2e6b587` veya sonrası gerekir (API ve worker birlikte güncellenir).
+409 ve bekleme mesajı döner; işlem bittikten sonra yeniden kaldırılabilir. Bekleyen
+iş silinirse worker manifesti yeniden kontrol eder. Temizleme başarısızsa başarı
+mesajı verilmez ve Knot kaydı korunur. Motor silinip Knot kaydı kalırsa tekrar DELETE
+404'ü tamamlanmış motor temizliği kabul eder; UI bu kaydı kaldırılabilir biçimde listeler.
+Silinen seçimin oynatıcısı ve Blob URL'si temizlenir; eski poll kartı geri getiremez.
+
+Gerçek test: `node scripts/test-video-delete.cjs data/video-tests/deletion-test.mp4`.
+Yalnızca yeni, test için ayrılmış 18s integral kesiti kullanıldı. İki özel kullanıcı
+aynı dosyayı ekledi: 2 kare + 1 gerçek ASR transkript parçası, disk üzerinde 4 dosya.
+İlk silme ikinci kullanıcıyı korudu. Gerçek PG lease ile aktif iş testi 409 verdi.
+Son kullanıcı Edge'de onayı iptal etti, sonra onaylayarak sildi. Sonuç: MySQL kayıtları
+yok, motor manifesti yok, video dizini yok, dosya listesi boş, iki Qdrant sayacı da 0.
+Önceden var olan tüm Video kayıtları korundu; 390px mobilde taşma ve JS hatası yok.
+Kanıtlar Git dışı `data/video-tests/deletion-run.json`, `video-delete-confirm.png` ve
+`video-delete-complete.png`. İlk iki test aracı hatası (ayrı DB ortamı, aynı adlı
+kart seçicisi) düzeltildi; yalnızca bu denemelerin oluşturduğu kayıtlar temizlendi.
+Bu test yeni bir LLM yanıt kalitesi testi değildir. Başarı yalnızca son geçen turdan raporlanır.
 
 `POST /courses/:courseId/videos/import-link {url}`: JWT ve ders üyeliğiyle korunur.
 Sunucu YouTube/Drive video kimliğini ayıklar, izinli sabit HTTPS URL'si kurar;
@@ -131,7 +165,7 @@ transkript/kare/kaynak tıklaması ve soru-cevap test edildi. Transkript tıklam
 yatay taşma ve JavaScript hatası yok. Bu test akışın çalışmasını doğrular; model
 cevabının matematiksel doğruluğunu kanıtlamaz. Kanıt: `data/video-tests/browser-run.json`,
 `knot-video-desktop.png`, `knot-video-mobile.png`; tamamı yerel ve Git dışında.
-Ön yüz 66, backend unit 51 test geçti. Hedef lint'te iki state-in-effect uyarısı
+Ön yüz 69, backend unit 59 test geçti. Hedef lint'te iki state-in-effect uyarısı
 kalır; derlemeleri engellemez. Genel lint önceki skill/Quiz uyarılarını da içerir.
 
 31 Ekim bağlantı testi: `node scripts/test-video-links.cjs` gerçek Edge oturumunda

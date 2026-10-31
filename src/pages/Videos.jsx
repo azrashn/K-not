@@ -32,6 +32,10 @@ export default function Videos({ courseId }) {
   const [uploading, setUploading] = useState(false)
   const [link, setLink] = useState('')
   const [importing, setImporting] = useState(false)
+  const [confirmRemove, setConfirmRemove] = useState(null)
+  const [removing, setRemoving] = useState(null)
+  const [notice, setNotice] = useState('')
+  const listVersion = useRef(0)
   const linkAbort = useRef(null)
   const [fileUrl, setFileUrl] = useState(null)
   const [mediaLoading, setMediaLoading] = useState(false)
@@ -47,13 +51,14 @@ export default function Videos({ courseId }) {
   useEffect(() => () => linkAbort.current?.abort(), [courseId])
   const ready = active?.status === 'indexed'
   const refresh = useCallback(async (signal) => {
+    const version = listVersion.current
     try {
       const result = await api.videos(courseId, signal)
-      if (signal?.aborted) return
+      if (signal?.aborted || version !== listVersion.current) return
       setVideos(result.videos)
       setSelected(old => result.videos.some(v => v.id === old) ? old : result.videos[0]?.id ?? null)
       setLoadError('')
-    } catch (e) { if (e.name !== 'AbortError') setLoadError(errorText(e)) }
+    } catch (e) { if (e.name !== 'AbortError' && version === listVersion.current) setLoadError(errorText(e)) }
     finally { if (!signal?.aborted) setLoading(false) }
   }, [courseId])
   useEffect(() => {
@@ -115,6 +120,23 @@ export default function Videos({ courseId }) {
   async function retry(id) {
     try { await api.retryVideo(courseId, id); await refresh() } catch (e) { setError(errorText(e)) }
   }
+  async function removeVideo(video) {
+    if (removing) return
+    setRemoving(video.id); setError(''); setNotice('')
+    try {
+      const result = await api.removeVideo(courseId, video.id)
+      // Ignore any poll started before deletion. It must not restore the card.
+      listVersion.current += 1
+      setVideos(old => old.filter(v => v.id !== video.id))
+      if (selected === video.id) { askAbort.current?.abort(); setSelected(null) }
+      setConfirmRemove(null)
+      setNotice(result.shared_asset_retained
+        ? 'Video kaldırıldı. Aynı dosyanın başka bir kayıtta kullanılan kopyası korundu.'
+        : 'Video, transkript, kareler ve arama kayıtları kalıcı olarak silindi.')
+      await refresh()
+    } catch (e) { setError(errorText(e)) }
+    finally { setRemoving(null) }
+  }
   return <PageFrame max="max-w-[90rem]">
     <MobileBar />
     <header className="border-b border-hair py-7">
@@ -123,6 +145,7 @@ export default function Videos({ courseId }) {
       <p className="mt-2 text-sm text-ink-2">Videonu yükle, anlatımda ara, kaynak anına dön. Bu videolar yalnızca sana açıktır.</p>
     </header>
     {(error || loadError) && <div role="alert" className="mt-4 border border-hair p-4 text-sm text-kopuk">{error || loadError} <button onClick={() => { setError(''); refresh() }} className="ml-3 underline">Yenile</button></div>}
+    {notice && <p role="status" className="mt-4 border border-hair p-4 text-sm">{notice}</p>}
     <div className="grid gap-6 py-6 xl:grid-cols-[16rem_minmax(0,1fr)]">
       <aside aria-label="Ders video listesi" className="min-w-0">
         <h2 className="mb-3 text-sm font-medium">Video ekle</h2>
@@ -142,19 +165,27 @@ export default function Videos({ courseId }) {
         {loading && <p role="status">Videolar yükleniyor…</p>}
         {!loading && !videos.length && <p className="text-sm text-ink-2">Henüz video yok. İlk ders videonu yükle.</p>}
         <ul className="space-y-2">
-          {videos.map(v => <li key={v.id} className={`border p-3 ${selected === v.id ? 'border-accent' : 'border-hair'}`}>
+          {videos.map(v => <li key={v.id} data-video-id={v.id} className={`border p-3 ${selected === v.id ? 'border-accent' : 'border-hair'}`}>
             <button onClick={() => setSelected(v.id)} className="w-full text-left" aria-pressed={selected === v.id}>
               <span className="block break-words text-sm font-medium">{v.title}</span>
               <span className="mt-2 block font-mono text-xs text-ink-3">{STATES[v.status] || v.status} {v.frame_count > 0 ? `· ${v.frame_count} kare` : ''}</span>
             </button>
             {v.status === 'failed' && <button onClick={() => retry(v.id)} className="mt-2 text-sm text-accent">Yeniden dene</button>}
+            {confirmRemove === v.id ? <div role="group" aria-label={`${v.title} kaldırma onayı`} className="mt-3 border-t border-hair pt-3">
+              <p className="text-xs leading-relaxed text-ink-2">Video ve ona bağlı veriler kalıcı olarak silinsin mi? Başka kayıtlarda kullanılan aynı dosya korunur.</p>
+              <div className="mt-3 flex flex-wrap gap-3">
+                <button disabled={Boolean(removing)} onClick={() => removeVideo(v)} className="border border-hair px-3 py-2 text-xs text-kopuk disabled:opacity-50">{removing === v.id ? 'Siliniyor…' : 'Kalıcı olarak sil'}</button>
+                <button disabled={Boolean(removing)} onClick={() => setConfirmRemove(null)} className="px-2 py-2 text-xs text-ink-2">Vazgeç</button>
+              </div>
+            </div> : <button disabled={Boolean(removing)} onClick={() => setConfirmRemove(v.id)} aria-label={`${v.title} videosunu kaldır`}
+              className="mt-3 border border-hair px-3 py-2 text-xs text-ink-2 hover:border-ink-3 disabled:opacity-50">Kaldır</button>}
           </li>)}
         </ul>
       </aside>
       <main className="min-w-0 space-y-6">
         {active && !ready && <section role="status" className="border border-hair p-6">
           <h2 className="font-medium">{STATES[active.status] || 'Video hazırlanıyor'}</h2>
-          <p className="mt-2 text-sm text-ink-2">Ses, zaman damgalı transkript ve kareler hazırlanıyor. Sayfayı kapatsan da işlem devam eder.</p>
+          <p className="mt-2 text-sm text-ink-2">{active.status === 'failed' ? active.error || 'Video işlenemedi. Yeniden deneyebilir veya kaldırabilirsiniz.' : 'Ses, zaman damgalı transkript ve kareler hazırlanıyor. Sayfayı kapatsan da işlem devam eder.'}</p>
           {active.progress != null && active.status !== 'failed' && <progress aria-label="Video işleme aşaması" max="1" value={active.progress} className="mt-4 w-full accent-accent" />}
         </section>}
         {ready && <>

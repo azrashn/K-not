@@ -31,15 +31,18 @@ export class VideosService {
   private readonly limiter = new RateLimiter(12);
   private readonly base: string;
   private readonly importing = new Set<string>();
+  // This local profile runs one Nest process. Upload and deletion of identical
+  // bytes must not race the engine's physical file cleanup.
+  private readonly contentWrites = new Map<string, Promise<void>>();
   constructor(private readonly prisma: PrismaService, private readonly access: AccessService,
     @Inject(APP_CONFIG) config: AppConfig) {
     this.base = (config.videoServiceUrl || 'http://127.0.0.1:7862').replace(/\/+$/, '');
   }
 
-  private async upstream(path: string, init: RequestInit = {}, timeout = 20000): Promise<Response> {
+  private async upstream(path: string, init: RequestInit = {}, timeout = 20000, allowMissing = false): Promise<Response> {
     try {
       const r = await fetch(this.base + path, { ...init, redirect: 'error', signal: AbortSignal.timeout(timeout) });
-      if (!r.ok) throw new Error(`video service HTTP ${r.status}`);
+      if (!r.ok && !(allowMissing && r.status === 404)) throw new Error(`video service HTTP ${r.status}`);
       return r;
     } catch {
       throw new ApiError('AI_SERVICE_UNAVAILABLE', 'Video servisine ulaşılamadı. MomentSearch durumunu kontrol edin.', null, true);
@@ -58,7 +61,13 @@ export class VideosService {
     return row;
   }
   private async describe(row: { id: string; title: string; createdAt: Date; engineVideoId: string }) {
-    const v: EngineVideo = await this.json(`/api/videos/${row.engineVideoId}`);
+    const response = await this.upstream(`/api/videos/${row.engineVideoId}`, {}, 20000, true);
+    // An interruption after engine cleanup must leave the local row removable
+    // in the UI instead of making the entire course list fail.
+    if (response.status === 404) return { id: row.id, title: row.title, created_at: row.createdAt,
+      status: 'failed', frame_count: 0, progress: null, transcript_note: null,
+      error: 'Video verisi bulunamadı. Kaydı kaldırıp videoyu yeniden ekleyebilirsiniz.' };
+    const v = await response.json() as EngineVideo;
     if (v.id !== row.engineVideoId) throw new ApiError('INTERNAL_ERROR', 'Video servisi geçersiz kayıt döndürdü.');
     return { id: row.id, title: row.title, created_at: row.createdAt, status: v.status,
       frame_count: v.frame_count ?? 0, progress: v.progress ?? null,
@@ -74,12 +83,28 @@ export class VideosService {
     await this.access.requireMember(user, courseId);
     const file = validateVideo(input);
     const hash = createHash('sha256').update(file.buffer).digest('hex');
+    return this.withContentLock(hash, () => this.store(user, courseId, file, hash));
+  }
+  private async withContentLock<T>(hash: string, action: () => Promise<T>): Promise<T> {
+    const previous = this.contentWrites.get(hash) || Promise.resolve();
+    let release!: () => void;
+    const current = new Promise<void>(resolve => { release = resolve; });
+    this.contentWrites.set(hash, current);
+    await previous;
+    try { return await action(); }
+    finally { release(); if (this.contentWrites.get(hash) === current) this.contentWrites.delete(hash); }
+  }
+  private async store(user: AuthUser, courseId: string, file: Express.Multer.File, hash: string) {
     const existing = await this.prisma.video.findUnique({ where: { courseId_ownerId_contentSha256: {
       courseId, ownerId: user.id, contentSha256: hash,
     } } });
     if (existing) return this.describe(existing);
-    const p = await this.json('/api/videos/presign', { filename: file.originalname,
-      content_type: /\.webm$/i.test(file.originalname) ? 'video/webm' : 'video/mp4', size: file.size, sha256: hash });
+    // Reuse a pending asset too: the engine deduplicates only indexed files.
+    // Identical bytes never grant access to someone else's Knot record.
+    const reference = await this.prisma.video.findFirst({ where: { contentSha256: hash } });
+    const p = reference ? { mode: 'exists', video_id: reference.engineVideoId } :
+      await this.json('/api/videos/presign', { filename: file.originalname,
+        content_type: /\.webm$/i.test(file.originalname) ? 'video/webm' : 'video/mp4', size: file.size, sha256: hash });
     if (!ENGINE_ID.test(p.video_id) || !['exists', 'direct'].includes(p.mode)) {
       throw new ApiError('INTERNAL_ERROR', 'Video servisi yerel yükleme sözleşmesini karşılamıyor.');
     }
@@ -105,6 +130,35 @@ export class VideosService {
       row = await this.prisma.video.findUniqueOrThrow({ where: { courseId_ownerId_contentSha256: { courseId, ownerId: user.id, contentSha256: hash } } });
     }
     return this.describe(row);
+  }
+  async remove(user: AuthUser, courseId: string, id: string) {
+    const initial = await this.owned(user, courseId, id);
+    return this.withContentLock(initial.contentSha256, async () => {
+      const row = await this.owned(user, courseId, id);
+      const references = await this.prisma.video.count({ where: { engineVideoId: row.engineVideoId } });
+      let retained = references > 1;
+      if (!retained) {
+        let response: Response;
+        try {
+          response = await fetch(`${this.base}/api/videos/${row.engineVideoId}?preserve_sessions=true`, {
+            method: 'DELETE', redirect: 'error', signal: AbortSignal.timeout(60000),
+          });
+        } catch { throw new ApiError('AI_SERVICE_UNAVAILABLE', 'Video silinemedi. Video servisini kontrol edip yeniden deneyin.'); }
+        if (response.status === 409) throw new ApiError('JOB_ALREADY_RUNNING', 'Video şu anda işleniyor. İşlem tamamlandığında tekrar kaldırabilirsiniz.');
+        if (!response.ok && response.status !== 404) {
+          throw new ApiError('AI_SERVICE_UNAVAILABLE', 'Video tamamen silinemedi. Kayıt korundu; yeniden deneyin.');
+        }
+        // 404 supports retry after an interrupted deletion between the two stores.
+        if (response.ok) {
+          const result = await response.json();
+          if (!result || typeof result !== 'object' || !('ok' in result) || result.ok !== true ||
+            !('video_id' in result) || result.video_id !== row.engineVideoId) throw new ApiError('INTERNAL_ERROR', 'Video silme sonucu doğrulanamadı.');
+          retained = 'retained' in result && result.retained === true;
+        }
+      }
+      await this.prisma.video.delete({ where: { id: row.id } });
+      return { deleted: true, shared_asset_retained: retained };
+    });
   }
   async importLink(user: AuthUser, courseId: string, input: string) {
     await this.access.requireMember(user, courseId);

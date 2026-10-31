@@ -18,7 +18,7 @@ Kişi 2'nin yeni API sözleşmesiyle çalışır.
 
 Sahiplik: `backend/src/videos/`, Prisma video modeli/migrasyonları.
 Bellekte tek parça yükleme yerine parçalı yükleme; yetkili Range oynatma;
-kullanıcı onaylı silme/iptal; paylaşım yetkileri; motor dedup/refcount ve kopan
+aktif işi iptal; paylaşım yetkileri; çok replikada dağıtık dedup/refcount ve kopan
 kayıtların uzlaştırılması. İç servisi kimlik doğrulamayla koruma.
 Teslim: sürümlü API sözleşmesi, eklemeli migrasyon ve erişim testleri.
 Kabul: başka ders/öğrenci verisi sızmaz; paylaşılan fiziksel kayıt bir kullanıcı

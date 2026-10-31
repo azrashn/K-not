@@ -17,6 +17,7 @@ export const api = {
     return request('POST', `/courses/${enc(courseId)}/videos`, { form })
   },
   retryVideo: (courseId, videoId) => request('POST', `/courses/${enc(courseId)}/videos/${enc(videoId)}/retry`),
+  removeVideo: (courseId, videoId) => request('DELETE', `/courses/${enc(courseId)}/videos/${enc(videoId)}`),
   videoTranscript: (courseId, videoId, signal) => request('GET', `/courses/${enc(courseId)}/videos/${enc(videoId)}/transcript`, { signal }),
   videoFrames: (courseId, videoId, signal) => request('GET', `/courses/${enc(courseId)}/videos/${enc(videoId)}/frames`, { signal }),
   videoFile: (courseId, videoId, signal) => request('GET', `/courses/${enc(courseId)}/videos/${enc(videoId)}/file`, { as: 'blob', signal }),

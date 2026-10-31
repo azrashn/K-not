@@ -3,7 +3,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import Videos from '../../src/pages/Videos'
 import { validateVideoFile, videoTime, videoErrorText } from '../../src/lib/video'
 import { api } from '../../src/api/endpoints'
-vi.mock('../../src/api/endpoints', () => ({ api: { videos: vi.fn(), videoTranscript: vi.fn(), videoFrames: vi.fn(), videoFile: vi.fn(), videoFrame: vi.fn(), videoAnswer: vi.fn(), importVideoLink: vi.fn() } }))
+vi.mock('../../src/api/endpoints', () => ({ api: { videos: vi.fn(), videoTranscript: vi.fn(), videoFrames: vi.fn(), videoFile: vi.fn(), videoFrame: vi.fn(), videoAnswer: vi.fn(), importVideoLink: vi.fn(), removeVideo: vi.fn() } }))
 vi.mock('../../src/app/store', () => ({ useApp: () => ({ navigate: vi.fn() }) }))
 vi.mock('../../src/components/PageBits', () => ({ MobileBar: () => null }))
 beforeEach(() => {
@@ -47,4 +47,33 @@ test('link import shows progress, preserves errors and submits to the current co
   reject(new Error('Video indirilemedi'))
   await screen.findByRole('alert')
   expect(field).toHaveValue('https://youtu.be/BaW_jenozKc')
+})
+test('removal requires confirmation and cancel never sends DELETE', async () => {
+  render(<Videos courseId="course-1" />)
+  fireEvent.click(await screen.findByRole('button', { name: 'Lecture videosunu kaldır' }))
+  expect(api.removeVideo).not.toHaveBeenCalled()
+  fireEvent.click(screen.getByRole('button', { name: 'Vazgeç' }))
+  expect(screen.queryByRole('button', { name: 'Kalıcı olarak sil' })).not.toBeInTheDocument()
+  expect(api.removeVideo).not.toHaveBeenCalled()
+})
+test('successful deletion removes the selected video and revokes its blob', async () => {
+  api.removeVideo.mockResolvedValue({ deleted: true, shared_asset_retained: false })
+  render(<Videos courseId="course-1" />)
+  await waitFor(() => expect(screen.getByLabelText('Ders videosu')).toHaveAttribute('src', 'blob:authenticated-video'))
+  api.videos.mockResolvedValue({ videos: [] })
+  fireEvent.click(screen.getByRole('button', { name: 'Lecture videosunu kaldır' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Kalıcı olarak sil' }))
+  await screen.findByText('Video, transkript, kareler ve arama kayıtları kalıcı olarak silindi.')
+  expect(api.removeVideo).toHaveBeenCalledWith('course-1', 'video-1')
+  expect(screen.queryByLabelText('Ders videosu')).not.toBeInTheDocument()
+  expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:authenticated-video')
+})
+test('failed cleanup keeps the card and displays the retry message', async () => {
+  api.removeVideo.mockRejectedValue({ code: 'AI_SERVICE_UNAVAILABLE', message: 'Video tamamen silinemedi. Kayıt korundu; yeniden deneyin.' })
+  render(<Videos courseId="course-1" />)
+  fireEvent.click(await screen.findByRole('button', { name: 'Lecture videosunu kaldır' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Kalıcı olarak sil' }))
+  await screen.findByRole('alert')
+  expect(screen.getByText('Lecture')).toBeInTheDocument()
+  expect(screen.getByRole('alert')).toHaveTextContent('Kayıt korundu')
 })

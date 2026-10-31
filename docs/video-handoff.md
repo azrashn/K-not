@@ -4,6 +4,13 @@ Duraklatma sonrasında çalışma sürdürüldü; ilk çalışan video sürümü
 doğrulaması tamamlandı. Sonraki geliştirmeler aşağıdaki notlardan devam edebilir.
 Dal: `feature/video-integration`, başlangıç `2fdc005`.
 
+31 Ekim kalıcı kaldırma tamamlandı: her kartta Kaldır + onay/vazgeç. Son referans
+silinince video/transkript/kareler, iki arama indeksi ve kayıtlar temizleniyor.
+Paylaşılan dosya diğer kullanıcı/kayıt için korunur. Aktif iş 409 ile korunur;
+işlem bitince yeniden silinebilir. Gerçek test: `scripts/test-video-delete.cjs`,
+sonuç `data/video-tests/deletion-run.json` (Git dışı). Mevcut videolar silinmedi.
+Son durum: 69 frontend, 59 backend unit, 9 motor regresyon testi geçti.
+
 31 Ekim ek geliştirme: YouTube ve açık Drive dosya bağlantısıyla ekleme tamamlandı.
 Yeni alan Ders videoları ekranında. Gerçek Edge testi iki kaynağı da indirdi,
 indeksledi ve oynattı; 5 / 48 kare, özel erişim, hata mesajı ve 390px mobil kontrolü
@@ -41,7 +48,7 @@ Kurulum/erişim sınırları docs/video-integration.md içinde. Yeni büyük mod
 5. Beş kişilik sonraki işler: docs/video-team-tasks.md. Görevler öneridir, yapılmış insan katkıları değildir.
 
 Video kalitesi: küçük ASR matematiksel terimlerde ve 2B model yöntem/formüllerde hata yapıyor.
-Bu sınırlar çözülmüş sayılmıyor. PDF/video ortak sorgu, seçili bölge QA, paylaşım/silme ve büyük
+Bu sınırlar çözülmüş sayılmıyor. PDF/video ortak sorgu, seçili bölge QA, paylaşım ve büyük
 dosyalarda Range/parçalı yükleme henüz yok. Yeni büyük model indirme veya ücretli API yok.
 
 Motor ek bağımlılığı: `C:\Users\ASUS\Documents\Codex\MomentSearch` local/windows-dev dalında
