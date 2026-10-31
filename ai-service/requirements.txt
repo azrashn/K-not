@@ -4,3 +4,4 @@ chromadb>=1.0
 httpx>=0.27
 uvicorn>=0.30
 pypdf==6.17.0  # pinned: part of indexing_version c1
+Pillow==13.0.0  # bounded source image crops; already installed in local project venv

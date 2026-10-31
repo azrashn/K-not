@@ -1,22 +1,47 @@
-import { Injectable } from '@nestjs/common';
-import { randomUUID } from 'node:crypto';
-import { PrismaService } from '../prisma/prisma.service';
-import { notFound } from '../common/errors';
+import { Injectable } from "@nestjs/common";
+import { randomUUID } from "node:crypto";
+import { PrismaService } from "../prisma/prisma.service";
+import { notFound } from "../common/errors";
 
 @Injectable()
 export class LearningHistoryService {
   constructor(private readonly prisma: PrismaService) {}
+  private safeVisual(m: any) {
+    const p = m?.payload;
+    if (
+      p?.visual_analysis?.status === "IMAGE_PROVIDED" &&
+      !p.visual_analysis.quality_gate
+    ) {
+      const answer =
+        "Bu eski görsel test yanıtında bağlantılar ve sonuç sırası kalite kontrolünden geçmedi. Kesin sonuç yerine kaynağı açıp soruyu yeniden netleştirelim.";
+      return {
+        ...m,
+        content: answer,
+        payload: {
+          ...p,
+          answer,
+          status: "CLARIFICATION",
+          claims: [],
+          visual_analysis: {
+            ...p.visual_analysis,
+            status: "LEGACY_VISUAL_NOT_VALIDATED",
+          },
+        },
+      };
+    }
+    return m;
+  }
   async thread(
     userId: string,
     courseId: string,
     id?: string,
-    title = 'Yeni konuşma',
+    title = "Yeni konuşma",
   ) {
     if (id) {
       const row = await this.prisma.learningConversation.findFirst({
         where: { id, userId, courseId },
       });
-      if (!row) throw notFound('Conversation');
+      if (!row) throw notFound("Conversation");
       return row;
     }
     return this.prisma.learningConversation.create({
@@ -27,7 +52,7 @@ export class LearningHistoryService {
     return this.prisma.learningConversation.findMany({
       where: { userId, courseId },
       select: { id: true, title: true, updatedAt: true },
-      orderBy: { updatedAt: 'desc' },
+      orderBy: { updatedAt: "desc" },
       take: 50,
     });
   }
@@ -41,13 +66,13 @@ export class LearningHistoryService {
     const messages = await this.prisma.learningMessage.findMany({
       where: { conversationId: id },
       include: { sources: true },
-      orderBy: { createdAt: 'desc' },
+      orderBy: { createdAt: "desc" },
       take: 100,
     });
     if (allowed)
       for (const m of messages) {
         if (
-          m.role === 'assistant' &&
+          m.role === "assistant" &&
           !m.redacted &&
           m.sources.some(
             (s) =>
@@ -55,15 +80,15 @@ export class LearningHistoryService {
                 (a) =>
                   a.id === s.materialId &&
                   a.version === s.version &&
-                  a.status === 'READY',
+                  a.status === "READY",
               ),
           )
         ) {
           const data = {
             content:
-              'Bu mesajın kaynağı kaldırılmış veya değişmiş. Güncel kaynaklarla yeniden sor.',
+              "Bu mesajın kaynağı kaldırılmış veya değişmiş. Güncel kaynaklarla yeniden sor.",
             payload: {
-              status: 'SOURCE_REMOVED',
+              status: "SOURCE_REMOVED",
               evidence: [],
               video_learning: [],
               associations: [],
@@ -78,14 +103,33 @@ export class LearningHistoryService {
           Object.assign(m, data);
         }
       }
-    return { id, messages: messages.reverse() };
+    return { id, messages: messages.reverse().map((m) => this.safeVisual(m)) };
   }
   async last(userId: string, courseId: string, id: string) {
     await this.thread(userId, courseId, id);
-    return this.prisma.learningMessage.findFirst({
-      where: { conversationId: id, role: 'assistant', redacted: false },
-      orderBy: { createdAt: 'desc' },
+    const row = await this.prisma.learningMessage.findFirst({
+      where: { conversationId: id, role: "assistant", redacted: false },
+      orderBy: { createdAt: "desc" },
     });
+    return this.safeVisual(row);
+  }
+  async message(
+    userId: string,
+    courseId: string,
+    threadId: string,
+    id: string,
+  ) {
+    await this.thread(userId, courseId, threadId);
+    const row = await this.prisma.learningMessage.findFirst({
+      where: {
+        id,
+        conversationId: threadId,
+        role: "assistant",
+        redacted: false,
+      },
+    });
+    if (!row) throw notFound("Message");
+    return this.safeVisual(row);
   }
   async save(
     userId: string,
@@ -105,15 +149,15 @@ export class LearningHistoryService {
         ]),
       ).values(),
     ] as { materialId: string; version: string }[];
-    await this.prisma.$transaction(async (tx) => {
+    return this.prisma.$transaction(async (tx) => {
       await tx.learningMessage.create({
-        data: { conversationId: id, role: 'user', content: question },
+        data: { conversationId: id, role: "user", content: question },
       });
-      await tx.learningMessage.create({
+      const assistant = await tx.learningMessage.create({
         data: {
           conversationId: id,
-          role: 'assistant',
-          content: String(answer.answer || ''),
+          role: "assistant",
+          content: String(answer.answer || ""),
           payload,
           sources: { create: refs },
         },
@@ -127,6 +171,7 @@ export class LearningHistoryService {
         create: { userId, courseId, topic: question.slice(0, 160), events: 1 },
         update: { topic: question.slice(0, 160), events: { increment: 1 } },
       });
+      return assistant.id;
     });
   }
   async redact(materialId: string) {
@@ -134,14 +179,14 @@ export class LearningHistoryService {
       where: { sources: { some: { materialId } } },
       data: {
         content:
-          'Bu mesajın kaynağı kaldırıldı. Güncel materyallerle yeniden sor.',
+          "Bu mesajın kaynağı kaldırıldı. Güncel materyallerle yeniden sor.",
         payload: {
-          status: 'SOURCE_REMOVED',
+          status: "SOURCE_REMOVED",
           evidence: [],
           video_learning: [],
           associations: [],
           conflicts: [],
-          answer: 'Kaynak kaldırıldı.',
+          answer: "Kaynak kaldırıldı.",
         },
         redacted: true,
       },

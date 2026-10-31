@@ -1,58 +1,255 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, ParseIntPipe, Patch, Post, Res, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
-import type { Response } from 'express';
-import { FileInterceptor } from '@nestjs/platform-express';
-import { IsBoolean, IsIn, IsInt, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, MinLength } from 'class-validator';
-import { CurrentUser } from '../auth/auth.decorators';
-import { AuthUser } from '../common/request-context';
-import { IdParam } from '../common/validation';
-import { UploadAccessGuard } from '../documents/upload-access.guard';
-import { KnowledgeService } from './knowledge.service';
-import { LearningHistoryService } from '../learning/history.service';
-import { AccessService } from '../courses/access.service';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  Param,
+  ParseIntPipe,
+  Patch,
+  Post,
+  Res,
+  UploadedFile,
+  UseGuards,
+  UseInterceptors,
+} from "@nestjs/common";
+import type { Response } from "express";
+import { FileInterceptor } from "@nestjs/platform-express";
+import {
+  ArrayMaxSize,
+  ArrayUnique,
+  IsArray,
+  IsBoolean,
+  IsIn,
+  IsInt,
+  IsNumber,
+  IsOptional,
+  IsString,
+  IsUUID,
+  Matches,
+  Max,
+  MaxLength,
+  Min,
+  MinLength,
+  ValidateNested,
+} from "class-validator";
+import { Type } from "class-transformer";
+import { CurrentUser } from "../auth/auth.decorators";
+import { AuthUser } from "../common/request-context";
+import { IdParam } from "../common/validation";
+import { UploadAccessGuard } from "../documents/upload-access.guard";
+import { KnowledgeService } from "./knowledge.service";
+import { LearningHistoryService } from "../learning/history.service";
+import { AccessService } from "../courses/access.service";
 
+export class KnowledgeScope {
+  @IsIn(["course", "active", "selected"]) mode!:
+    | "course"
+    | "active"
+    | "selected";
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(20)
+  @ArrayUnique()
+  @Matches(/^(pdf|video|file)_[A-Za-z0-9_-]{1,80}$/, { each: true })
+  material_ids?: string[];
+}
+class Region {
+  @IsNumber() @Min(0) @Max(1) x!: number;
+  @IsNumber() @Min(0) @Max(1) y!: number;
+  @IsNumber() @Min(0.01) @Max(1) width!: number;
+  @IsNumber() @Min(0.01) @Max(1) height!: number;
+}
+class Viewport {
+  @IsIn(["page", "slide", "video"]) kind!: "page" | "slide" | "video";
+  @IsOptional() @IsInt() @Min(1) @Max(500) page?: number;
+  @IsOptional() @IsInt() @Min(1) @Max(300) slide?: number;
+  @IsOptional() @IsInt() @Min(0) @Max(604800000) timestamp_ms?: number;
+  @IsOptional() @IsString() @MaxLength(1500) selected_text?: string;
+  @IsOptional() @ValidateNested() @Type(() => Region) region?: Region;
+}
 class Question {
   @IsString() @MinLength(1) @MaxLength(2000) @Matches(/\S/) question!: string;
-  @IsOptional() @Matches(/^(pdf|video|file)_[A-Za-z0-9_-]{1,80}$/) active_material_id?: string;
+  @IsOptional()
+  @Matches(/^(pdf|video|file)_[A-Za-z0-9_-]{1,80}$/)
+  active_material_id?: string;
   @IsOptional() @IsInt() @Min(0) @Max(604800000) current_time_ms?: number;
   @IsOptional() @IsUUID() conversation_id?: string;
   @IsOptional() @IsUUID() chat_id?: string;
-  @IsOptional() @Matches(/^[a-f0-9]{64}$/) active_source_id?:string;
+  @IsOptional() @Matches(/^[A-Za-z0-9_-]{1,80}$/) parent_message_id?: string;
+  @IsOptional() @Matches(/^[a-f0-9]{64}$/) active_source_id?: string;
   @IsOptional() @IsBoolean() explain_now?: boolean;
-  @IsOptional() @IsIn(['single', 'unified', 'aligned']) strategy?: string;
+  @IsOptional() @IsIn(["single", "unified", "aligned"]) strategy?: string;
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => KnowledgeScope)
+  scope?: KnowledgeScope;
+  @IsOptional() @ValidateNested() @Type(() => Viewport) viewport?: Viewport;
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(8)
+  @ArrayUnique()
+  @Matches(/^[a-f0-9]{64}$/, { each: true })
+  explicit_source_ids?: string[];
+  @IsOptional()
+  @IsIn(["default", "short", "step_by_step", "detailed", "example"])
+  response_mode?: string;
+  @IsOptional()
+  @IsIn(["auto", "viewport", "conversation"])
+  reference_mode?: string;
+  @IsOptional() @IsBoolean() analyze_visual?: boolean;
 }
-class Practice { @IsUUID() conversation_id!: string }
-class PracticeAnswer { @IsString() @MaxLength(300) answer!: string }
-class MaterialTitle { @IsString() @MaxLength(300) @Matches(/\S/) title!:string }
-@Controller('courses/:courseId/knowledge')
+class Practice {
+  @IsUUID() conversation_id!: string;
+}
+class PracticeAnswer {
+  @IsString() @MaxLength(300) answer!: string;
+}
+class MaterialTitle {
+  @IsString() @MaxLength(300) @Matches(/\S/) title!: string;
+}
+@Controller("courses/:courseId/knowledge")
 export class KnowledgeController {
-  constructor(private readonly knowledge: KnowledgeService,private readonly history:LearningHistoryService,private readonly access:AccessService) {}
-  @Get('conversations') async threads(@CurrentUser() u:AuthUser,@Param() p:IdParam.Course){await this.access.requireMember(u,p.courseId);return this.history.list(u.id,p.courseId);}
-  @Get('conversations/:id') async thread(@CurrentUser() u:AuthUser,@Param('courseId') c:string,@Param('id') id:string){const allowed=await this.knowledge.materials(u,c);return this.history.read(u.id,c,id,allowed);}
-  @Get('materials') list(@CurrentUser() u: AuthUser, @Param() p: IdParam.Course) { return this.knowledge.list(u, p.courseId); }
-  @Post('materials') @UseGuards(UploadAccessGuard)
-  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 2 * 1024 * 1024, files: 1, fields: 0 }, defParamCharset: 'utf8' }))
-  upload(@CurrentUser() u: AuthUser, @Param() p: IdParam.Course, @UploadedFile() f?: Express.Multer.File) { return this.knowledge.upload(u, p.courseId, f); }
-  @Delete('materials/:materialId') remove(@CurrentUser() u: AuthUser, @Param('courseId') c: string, @Param('materialId') id: string) { return this.knowledge.remove(u, c, id); }
-  @Patch('materials/:materialId') rename(@CurrentUser() u:AuthUser,@Param('courseId') c:string,@Param('materialId') id:string,@Body() b:MaterialTitle){return this.knowledge.rename(u,c,id,b.title);}
-  @Get('materials/:materialId') preview(@CurrentUser() u: AuthUser, @Param('courseId') c: string, @Param('materialId') id: string) { return this.knowledge.preview(u, c, id); }
-  @Get('materials/:materialId/visual/:page') async visual(@CurrentUser() u:AuthUser,@Param('courseId') c:string,@Param('materialId') id:string,@Param('page',ParseIntPipe) page:number,@Res() res:Response){
-    const image=await this.knowledge.visual(u,c,id,page);res.setHeader('Content-Type','image/png');res.setHeader('Cache-Control','private, no-store');res.setHeader('X-Page-Count',String(image.count));res.setHeader('X-Content-Type-Options','nosniff');res.send(image.bytes);
+  constructor(
+    private readonly knowledge: KnowledgeService,
+    private readonly history: LearningHistoryService,
+    private readonly access: AccessService,
+  ) {}
+  @Get("conversations") async threads(
+    @CurrentUser() u: AuthUser,
+    @Param() p: IdParam.Course,
+  ) {
+    await this.access.requireMember(u, p.courseId);
+    return this.history.list(u.id, p.courseId);
   }
-  @Get('materials/:materialId/file')
-  async file(@CurrentUser() u: AuthUser, @Param('courseId') c: string, @Param('materialId') id: string, @Res() res: Response) {
+  @Get("conversations/:id") async thread(
+    @CurrentUser() u: AuthUser,
+    @Param("courseId") c: string,
+    @Param("id") id: string,
+  ) {
+    const allowed = await this.knowledge.materials(u, c);
+    return this.history.read(u.id, c, id, allowed);
+  }
+  @Get("materials") list(
+    @CurrentUser() u: AuthUser,
+    @Param() p: IdParam.Course,
+  ) {
+    return this.knowledge.list(u, p.courseId);
+  }
+  @Post("materials")
+  @UseGuards(UploadAccessGuard)
+  @UseInterceptors(
+    FileInterceptor("file", {
+      limits: { fileSize: 2 * 1024 * 1024, files: 1, fields: 0 },
+      defParamCharset: "utf8",
+    }),
+  )
+  upload(
+    @CurrentUser() u: AuthUser,
+    @Param() p: IdParam.Course,
+    @UploadedFile() f?: Express.Multer.File,
+  ) {
+    return this.knowledge.upload(u, p.courseId, f);
+  }
+  @Delete("materials/:materialId") remove(
+    @CurrentUser() u: AuthUser,
+    @Param("courseId") c: string,
+    @Param("materialId") id: string,
+  ) {
+    return this.knowledge.remove(u, c, id);
+  }
+  @Patch("materials/:materialId") rename(
+    @CurrentUser() u: AuthUser,
+    @Param("courseId") c: string,
+    @Param("materialId") id: string,
+    @Body() b: MaterialTitle,
+  ) {
+    return this.knowledge.rename(u, c, id, b.title);
+  }
+  @Get("materials/:materialId") preview(
+    @CurrentUser() u: AuthUser,
+    @Param("courseId") c: string,
+    @Param("materialId") id: string,
+  ) {
+    return this.knowledge.preview(u, c, id);
+  }
+  @Get("materials/:materialId/visual/:page") async visual(
+    @CurrentUser() u: AuthUser,
+    @Param("courseId") c: string,
+    @Param("materialId") id: string,
+    @Param("page", ParseIntPipe) page: number,
+    @Res() res: Response,
+  ) {
+    const image = await this.knowledge.visual(u, c, id, page);
+    res.setHeader("Content-Type", "image/png");
+    res.setHeader("Cache-Control", "private, no-store");
+    res.setHeader("X-Page-Count", String(image.count));
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.send(image.bytes);
+  }
+  @Get("materials/:materialId/file")
+  async file(
+    @CurrentUser() u: AuthUser,
+    @Param("courseId") c: string,
+    @Param("materialId") id: string,
+    @Res() res: Response,
+  ) {
     const f = await this.knowledge.file(u, c, id);
-    res.setHeader('Content-Type', f.mime); res.setHeader('X-Content-Type-Options', 'nosniff'); res.setHeader('Cache-Control', 'private, no-store');
-    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(f.filename)}`);
-    res.on('close', () => f.stream.destroy()); f.stream.on('error', () => res.destroy()); f.stream.pipe(res);
+    res.setHeader("Content-Type", f.mime);
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("Cache-Control", "private, no-store");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename*=UTF-8''${encodeURIComponent(f.filename)}`,
+    );
+    res.on("close", () => f.stream.destroy());
+    f.stream.on("error", () => res.destroy());
+    f.stream.pipe(res);
   }
-  @Get('materials/:materialId/sources/:segmentId')
-  source(@CurrentUser() u: AuthUser, @Param('courseId') c: string, @Param('materialId') m: string, @Param('segmentId') s: string) { return this.knowledge.source(u, c, m, s); }
-  @Post('answers') @HttpCode(200)
-  ask(@CurrentUser() u: AuthUser, @Param() p: IdParam.Course, @Body() body: Question) { return this.knowledge.ask(u, p.courseId, body); }
-  @Post('search') @HttpCode(200)
-  search(@CurrentUser() u: AuthUser, @Param() p: IdParam.Course, @Body() body: Question) { return this.knowledge.ask(u, p.courseId, { ...body, retrieve_only: true }); }
-  @Post('practice') @HttpCode(200)
-  practice(@CurrentUser() u: AuthUser, @Param() p: IdParam.Course, @Body() b: Practice) { return this.knowledge.practice(u, p.courseId, b.conversation_id); }
-  @Post('practice/:id/answers') @HttpCode(200)
-  grade(@CurrentUser() u: AuthUser, @Param('courseId') c: string, @Param('id') id: string, @Body() b: PracticeAnswer) { return this.knowledge.gradePractice(u, c, id, b.answer); }
+  @Get("materials/:materialId/sources/:segmentId")
+  source(
+    @CurrentUser() u: AuthUser,
+    @Param("courseId") c: string,
+    @Param("materialId") m: string,
+    @Param("segmentId") s: string,
+  ) {
+    return this.knowledge.source(u, c, m, s);
+  }
+  @Post("answers")
+  @HttpCode(200)
+  ask(
+    @CurrentUser() u: AuthUser,
+    @Param() p: IdParam.Course,
+    @Body() body: Question,
+  ) {
+    return this.knowledge.ask(u, p.courseId, body);
+  }
+  @Post("search")
+  @HttpCode(200)
+  search(
+    @CurrentUser() u: AuthUser,
+    @Param() p: IdParam.Course,
+    @Body() body: Question,
+  ) {
+    return this.knowledge.ask(u, p.courseId, { ...body, retrieve_only: true });
+  }
+  @Post("practice")
+  @HttpCode(200)
+  practice(
+    @CurrentUser() u: AuthUser,
+    @Param() p: IdParam.Course,
+    @Body() b: Practice,
+  ) {
+    return this.knowledge.practice(u, p.courseId, b.conversation_id);
+  }
+  @Post("practice/:id/answers")
+  @HttpCode(200)
+  grade(
+    @CurrentUser() u: AuthUser,
+    @Param("courseId") c: string,
+    @Param("id") id: string,
+    @Body() b: PracticeAnswer,
+  ) {
+    return this.knowledge.gradePractice(u, c, id, b.answer);
+  }
 }

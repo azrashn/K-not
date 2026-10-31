@@ -2,6 +2,36 @@
 
 Bu kayıt tamamlanmamış işleri çalışıyormuş gibi göstermemek içindir.
 
+## Bağlam/kalite düzeltmesi sonrası — 31 Ekim 2026
+
+- **PARTIAL — Vision doğruluğu:** gerçek page/region/video-frame girişi var;
+  bildirilen BFS/DFS grafiği güvenilir çözülemedi. CLARIFICATION, görsel çözüm
+  başarısı değildir. Yön/kenar/simge/başlangıç çıkarımı farklı belgelerle
+  ölçülmeli. Daha büyük model kullanıcı onayı olmadan indirilmemeli.
+- **PARTIAL — Quiz semantiği:** v2 kaynak/tek-şık/per-option kör audit çalışır;
+  gerçek MCQ ve feedback doğrulandı. Gerçek izlenmiş video span'ının MCQ'su
+  reddedildi. Farklı Türkçe derslerde öğretmen/rubrik değerlendirmesi gerekir;
+  aynı modelin ikinci geçişi tek doğru cevabın kanıtı değildir. Yeni literal
+  MCQ fallback yok; eski sorular silinmeden LEGACY_NOT_REVIEWED görünür.
+- **PARTIAL — Background gerçek tarayıcı:** hidden/suspended-gap politikası
+  unit testli; headless test masaüstü tab görünürlüğünü kanıtlamaz.
+- **MISSING — Offline outbox:** ağ hatası mounted session'da tutulur/retry
+  edilir. Hiç sunucuya ulaşmamış gözlemlerin offline refresh/close sonrasında
+  diskten garantili yeniden gönderimi yoktur. User/video izolasyonlu outbox,
+  sıra/revision ve logout cleanup ayrıca tasarlanmalı.
+- **MISSING — PDF text layer:** çıkarılmış gerçek kaynak metninden seçim ve
+  görüntüde region seçimi var; özgün canvas'ta karakter koordinatlı seçim yok.
+- **PARTIAL — Retrieval/ASR:** çeşitlilik ve tekrar eleme/debug var; text-first
+  E5/Chroma lexical guard recall'ı sınırlayabilir. Genel ASR düzeltmesi,
+  bağımsız görsel ANN indeksi ve alan benchmark'ı ayrı iş.
+- **IMPLEMENTED — P0:** typed viewport, authorized multi-scope/references,
+  mesajlık explanation, progress union/timeline/resume/retry, kaynak gezintisi
+  ve response_mode. Detaylar CONTEXT_QUALITY_TEST_REPORT.md,755otomatik test.
+- Sonraki oturum: `git status`, IMPLEMENTATION_STATUS ve
+  CONTEXT_QUALITY_TEST_REPORT; ardından `Start-KnotVideo.ps1`. Private kanıtlar
+  ignored data/context-tests altında. Başka uygulamaları veya ilerleme
+  kayıtlarını resetleyerek test tekrarlama.
+
 ## Ürün deneyimi sonrası öncelikler — 31 Ekim 2026
 
 - Yerinde dosya değiştirme/başarılı materyali yeniden işleme: atomik orijinal+
@@ -10,8 +40,9 @@ Bu kayıt tamamlanmamış işleri çalışıyormuş gibi göstermemek içindir.
   eski dosya sonra açık onayla kaldırılır. Başarısız PDF/video retry görünür.
 - Genel kavramsal quiz kalitesi ve rubrikli kısa/açık cevap değerlendirmesi.
   Beş soru türü ve kalıcı attempt çalışır; kaynak hatırlama/karşılaştırma ile
-  kavramsal öğrenme aynı şey değildir. Doğrulanamayan model MCQ'sunda açık
-  etiketli literal soru var. Açık uçlu yanıta otomatik puan verilmez.
+  kavramsal öğrenme aynı şey değildir. Eski literal MCQ yaklaşımı sonraki
+  context-quality düzeltmesinde kaldırıldı; kaliteyi geçmeyen yeni soru
+  yayınlanmaz. Açık uçlu yanıta otomatik puan verilmez.
 - Türkçe sesin telaffuz/doğallık/ilk-ses ölçümü. Yeni üstteki kontroller ve
   gerçek Edge start/pause/resume/stop/replay geçti; kalite artışı ölçülmedi.
   Piper Türkçe model kartının CC BY-NC-SA veri lisansı ile depo MIT etiketinin

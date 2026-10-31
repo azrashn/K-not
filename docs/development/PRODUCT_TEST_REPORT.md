@@ -1,5 +1,10 @@
 # Ürün deneyimi — test ve kabul raporu
 
+Sonraki bağlam/izleme/quiz düzeltmesi ve755testin raporu:
+[CONTEXT_QUALITY_TEST_REPORT.md](CONTEXT_QUALITY_TEST_REPORT.md).
+Aşağıdaki726/724 önceki aşamanın tarihsel sonuçlarıdır; yeni vision/quiz
+semantik doğruluğunun tamamlandığı anlamına gelmez.
+
 31 Ekim 2026. Başlangıç d2d6c3d, dal feature/video-integration.
 Son canlı kontrol: kullanıcı Docker'ı yeniden açtı;5174/3100/8110 HTTP200.
 Edge giriş/beş ekran ve kalıcılık testi yeniden PASS:8 kayıtlı mesaj,9 quiz,

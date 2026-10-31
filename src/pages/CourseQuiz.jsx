@@ -1,78 +1,87 @@
-import { useEffect, useRef, useState } from 'react'
-import { api } from '../api/endpoints'
-import { useResource } from '../hooks/useApi'
-import { useApp } from '../app/store'
-import { PageFrame, Btn } from '../components/ui'
-import { MobileBar } from '../components/PageBits'
-import { PageTitle, EmptyState } from '../components/ProductUI'
-import { videoErrorText } from '../lib/video'
+import { useEffect, useRef, useState } from "react";
+import { api } from "../api/endpoints";
+import { useResource } from "../hooks/useApi";
+import { useApp } from "../app/store";
+import { PageFrame, Btn } from "../components/ui";
+import { MobileBar } from "../components/PageBits";
+import { PageTitle, EmptyState } from "../components/ProductUI";
+import { videoErrorText } from "../lib/video";
 const labels = {
-  MULTIPLE_CHOICE: 'Çoktan seçmeli',
-  TRUE_FALSE: 'Kaynak doğrulama · doğru / yanlış',
-  CLOZE: 'Boşluk doldurma',
-  SHORT_ANSWER: 'Kısa yanıt',
-  OPEN: 'Açık uçlu yansıtma',
-}
+  MULTIPLE_CHOICE: "Çoktan seçmeli",
+  TRUE_FALSE: "Doğru / yanlış",
+  CLOZE: "Boşluk doldurma",
+  SHORT_ANSWER: "Kısa yanıt",
+  OPEN: "Açık uçlu yansıtma",
+};
 export default function CourseQuiz({ courseId }) {
   const { navigate, takeIntent } = useApp(),
-    courses = useResource((signal) => api.courses(signal), [])
-  const [course, setCourse] = useState(courseId || ''),
-    [topic, setTopic] = useState(''),
-    [kind, setKind] = useState('MULTIPLE_CHOICE'),
-    [material, setMaterial] = useState('')
+    courses = useResource((signal) => api.courses(signal), []);
+  const [course, setCourse] = useState(courseId || ""),
+    [topic, setTopic] = useState(""),
+    [kind, setKind] = useState("MULTIPLE_CHOICE"),
+    [material, setMaterial] = useState("");
   const [materials, setMaterials] = useState([]),
     [history, setHistory] = useState([]),
     [quiz, setQuiz] = useState(null),
-    [answer, setAnswer] = useState(''),
+    [answer, setAnswer] = useState(""),
     [result, setResult] = useState(null),
     [busy, setBusy] = useState(false),
-    [error, setError] = useState('')
-  const consumed = useRef(false)
+    [error, setError] = useState("");
+  const [scopeMode, setScopeMode] = useState("course"),
+    [selectedMaterials, setSelectedMaterials] = useState([]),
+    [watchedOnly, setWatchedOnly] = useState(false);
+  const consumed = useRef(false);
   useEffect(() => {
-    if (consumed.current) return
-    consumed.current = true
-    const intent = takeIntent?.()
-    if (intent?.topic) setTopic(intent.topic.slice(0, 200))
+    if (consumed.current) return;
+    consumed.current = true;
+    const intent = takeIntent?.();
+    if (intent?.topic) setTopic(intent.topic.slice(0, 200));
     if (intent?.quizId && courseId)
       api
         .quiz(courseId, intent.quizId)
         .then(setQuiz)
-        .catch((e) => setError(videoErrorText(e)))
-  }, [takeIntent, courseId])
+        .catch((e) => setError(videoErrorText(e)));
+  }, [takeIntent, courseId]);
   useEffect(() => {
-    if (!course) return
-    const abort = new AbortController()
+    if (!course) return;
+    const abort = new AbortController();
     Promise.all([
       api.knowledgeMaterials(course, abort.signal),
       api.quizzes(course, abort.signal),
     ])
       .then(([m, h]) => {
-        setMaterials(m.materials)
-        setHistory(h)
+        setMaterials(m.materials);
+        setHistory(h);
       })
       .catch((e) => {
-        if (e.name !== 'AbortError') setError(videoErrorText(e))
-      })
-    return () => abort.abort()
-  }, [course])
+        if (e.name !== "AbortError") setError(videoErrorText(e));
+      });
+    return () => abort.abort();
+  }, [course]);
   async function start(e) {
-    e.preventDefault()
-    setBusy(true)
-    setError('')
-    setResult(null)
-    setAnswer('')
+    e.preventDefault();
+    setBusy(true);
+    setError("");
+    setResult(null);
+    setAnswer("");
     try {
       const q = await api.createQuiz(course, {
         topic: topic.trim(),
         kind,
-        ...(material ? { material_id: material } : {}),
-      })
-      setQuiz(q)
-      setHistory(await api.quizzes(course))
+        scope:
+          scopeMode === "selected"
+            ? { mode: "selected", material_ids: selectedMaterials }
+            : scopeMode === "active"
+              ? { mode: "selected", material_ids: [material] }
+              : { mode: "course" },
+        watched_only: watchedOnly,
+      });
+      setQuiz(q);
+      setHistory(await api.quizzes(course));
     } catch (err) {
-      setError(videoErrorText(err))
+      setError(videoErrorText(err));
     } finally {
-      setBusy(false)
+      setBusy(false);
     }
   }
   return (
@@ -84,7 +93,7 @@ export default function CourseQuiz({ courseId }) {
         actions={
           <button
             className="product-link"
-            onClick={() => navigate('/analitik')}
+            onClick={() => navigate("/analitik")}
           >
             Sonuçlarım →
           </button>
@@ -103,10 +112,10 @@ export default function CourseQuiz({ courseId }) {
                 aria-label="Ders"
                 value={course}
                 onChange={(e) => {
-                  setCourse(e.target.value)
-                  setQuiz(null)
-                  setResult(null)
-                  setMaterial('')
+                  setCourse(e.target.value);
+                  setQuiz(null);
+                  setResult(null);
+                  setMaterial("");
                 }}
               >
                 <option value="">Ders seç</option>
@@ -131,19 +140,71 @@ export default function CourseQuiz({ courseId }) {
               Kaynak kapsamı
               <select
                 aria-label="Kaynak kapsamı"
-                value={material}
-                onChange={(e) => setMaterial(e.target.value)}
+                value={scopeMode}
+                onChange={(e) => setScopeMode(e.target.value)}
               >
-                <option value="">Dersin tüm hazır kaynakları</option>
-                {materials
-                  .filter((m) => m.status === 'READY')
-                  .map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.kind} · {m.title}
-                    </option>
-                  ))}
+                <option value="course">Tüm ders kaynakları</option>
+                <option value="active">Bir materyal</option>
+                <option value="selected">Birden fazla materyal seç</option>
               </select>
             </label>
+            {scopeMode === "active" && (
+              <label>
+                Materyal
+                <select
+                  aria-label="Quiz materyali"
+                  value={material}
+                  onChange={(e) => setMaterial(e.target.value)}
+                >
+                  <option value="">Materyal seç</option>
+                  {materials
+                    .filter((m) => m.status === "READY")
+                    .map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.kind} · {m.title}
+                      </option>
+                    ))}
+                </select>
+              </label>
+            )}
+            {scopeMode === "selected" && (
+              <fieldset>
+                <legend className="text-xs">Seçili kaynaklar</legend>
+                {materials
+                  .filter((m) => m.status === "READY")
+                  .map((m) => (
+                    <label className="reference-check" key={m.id}>
+                      <input
+                        type="checkbox"
+                        aria-label={`${m.title} quiz kapsamına ekle`}
+                        checked={selectedMaterials.includes(m.id)}
+                        onChange={(e) =>
+                          setSelectedMaterials((ids) =>
+                            e.target.checked
+                              ? [...ids, m.id]
+                              : ids.filter((id) => id !== m.id),
+                          )
+                        }
+                      />
+                      {m.kind} · {m.title}
+                    </label>
+                  ))}
+              </fieldset>
+            )}
+            <label className="reference-check">
+              <input
+                type="checkbox"
+                checked={watchedOnly}
+                onChange={(e) => setWatchedOnly(e.target.checked)}
+              />
+              Yalnız izlediğim video bölümleri
+            </label>
+            {watchedOnly && (
+              <p className="product-note">
+                Yalnız tamamı izlenmiş gerçek video aralıkları kullanılır. İleri
+                sarılan veya izleme kaydı olmayan bölüm dahil edilmez.
+              </p>
+            )}
             <label>
               Soru türü
               <select
@@ -159,14 +220,21 @@ export default function CourseQuiz({ courseId }) {
               </select>
             </label>
             <p className="product-note">
-              Çoktan seçmeli model soruları deneyseldir. Doğrulanamazsa açıkça
-              etiketlenen, kaynak sözcüklerine dayalı bir hatırlama sorusu
-              hazırlanır. Kaynak doğrulama ve boşluk doldurma, metne dayalı
-              hatırlama pratiğidir. Açık uçlu yanıtlar kaydedilir; otomatik
-              başarı puanı verilmez.
+              Sorular kaynak, konu, açıklık ve cevap/şık kontrolünden geçmeden
+              sunulmaz. Yerel model denetimi doğruluk garantisi değildir. Açık
+              uçlu cevaplar otomatik doğru/yanlış puanı almaz.
             </p>
-            <Btn type="submit" disabled={busy || !course || !topic.trim()}>
-              {busy ? 'Kaynaklı soru hazırlanıyor…' : 'Alıştırma hazırla'}
+            <Btn
+              type="submit"
+              disabled={
+                busy ||
+                !course ||
+                !topic.trim() ||
+                (scopeMode === "active" && !material) ||
+                (scopeMode === "selected" && !selectedMaterials.length)
+              }
+            >
+              {busy ? "Kaynaklı soru hazırlanıyor…" : "Alıştırma hazırla"}
             </Btn>
           </form>
           <div className="section-heading mt-6">
@@ -178,22 +246,22 @@ export default function CourseQuiz({ courseId }) {
               className="resume-row"
               onClick={async () => {
                 try {
-                  setQuiz(await api.quiz(course, q.id))
-                  setResult(null)
-                  setAnswer('')
+                  setQuiz(await api.quiz(course, q.id));
+                  setResult(null);
+                  setAnswer("");
                 } catch (e) {
-                  setError(videoErrorText(e))
+                  setError(videoErrorText(e));
                 }
               }}
             >
               <strong>{q.topic}</strong>
               <small>
-                {labels[q.kind]} ·{' '}
-                {q.attempts?.[0]?.outcome === 'CORRECT'
-                  ? 'Eşleşen yanıt'
+                {labels[q.kind]} ·{" "}
+                {q.attempts?.[0]?.outcome === "CORRECT"
+                  ? "Eşleşen yanıt"
                   : q.attempts?.length
-                    ? 'Yanıtlandı'
-                    : 'Yanıt bekliyor'}
+                    ? "Yanıtlandı"
+                    : "Yanıt bekliyor"}
               </small>
             </button>
           ))}
@@ -212,20 +280,28 @@ export default function CourseQuiz({ courseId }) {
           ) : (
             <article className="quiz-question product-panel">
               <span className="source-badge">{labels[quiz.kind]}</span>
+              {quiz.objective && (
+                <p className="product-note">Öğrenme hedefi: {quiz.objective}</p>
+              )}
+              {quiz.quality_state === "LEGACY_NOT_REVIEWED" && (
+                <p className="product-note">
+                  Bu eski alıştırma yeni kalite kontrolünden geçmemiştir.
+                </p>
+              )}
               <h2>{quiz.question}</h2>
               {quiz.note && <p className="product-note mb-5">{quiz.note}</p>}
               <form
                 className="product-form"
                 onSubmit={async (e) => {
-                  e.preventDefault()
-                  setBusy(true)
+                  e.preventDefault();
+                  setBusy(true);
                   try {
-                    setResult(await api.answerQuiz(course, quiz.id, answer))
-                    setHistory(await api.quizzes(course))
+                    setResult(await api.answerQuiz(course, quiz.id, answer));
+                    setHistory(await api.quizzes(course));
                   } catch (err) {
-                    setError(videoErrorText(err))
+                    setError(videoErrorText(err));
                   } finally {
-                    setBusy(false)
+                    setBusy(false);
                   }
                 }}
               >
@@ -235,7 +311,7 @@ export default function CourseQuiz({ courseId }) {
                     {quiz.options.map((option, i) => (
                       <label
                         key={i}
-                        className={`quiz-option ${answer === String(i) ? 'selected' : ''}`}
+                        className={`quiz-option ${answer === String(i) ? "selected" : ""}`}
                       >
                         <input
                           type="radio"
@@ -260,7 +336,7 @@ export default function CourseQuiz({ courseId }) {
                   </label>
                 )}
                 <Btn type="submit" disabled={busy || !answer.trim()}>
-                  {busy ? 'Yanıt kaydediliyor…' : 'Yanıtı değerlendir'}
+                  {busy ? "Yanıt kaydediliyor…" : "Yanıtı değerlendir"}
                 </Btn>
               </form>
               {result && (
@@ -270,15 +346,19 @@ export default function CourseQuiz({ courseId }) {
                 >
                   <span className="source-badge">
                     {result.score === 1
-                      ? 'Cevap anahtarıyla eşleşti'
+                      ? "Cevap anahtarıyla eşleşti"
                       : result.score === 0
-                        ? 'Kaynağı tekrar incele'
-                        : 'Yanıtın kaydedildi'}
+                        ? "Kaynağı tekrar incele"
+                        : "Yanıtın kaydedildi"}
                   </span>
                   <p>{result.message}</p>
+                  {result.explanation && <p>{result.explanation}</p>}
+                  {result.selected_option_feedback && (
+                    <p>Seçtiğin yanıt: {result.selected_option_feedback}</p>
+                  )}
                   {result.expected && (
                     <p>
-                      <strong>Kaynakla eşleştirilen yanıt:</strong>{' '}
+                      <strong>Kaynakla eşleştirilen yanıt:</strong>{" "}
                       {result.expected}
                     </p>
                   )}
@@ -296,15 +376,15 @@ export default function CourseQuiz({ courseId }) {
                     <button
                       className="product-link"
                       onClick={() => {
-                        setResult(null)
-                        setAnswer('')
+                        setResult(null);
+                        setAnswer("");
                       }}
                     >
                       Tekrar dene
                     </button>
                     <button
                       className="product-link"
-                      onClick={() => navigate('/analitik')}
+                      onClick={() => navigate("/analitik")}
                     >
                       Çalışmalarımı incele
                     </button>
@@ -316,5 +396,5 @@ export default function CourseQuiz({ courseId }) {
         </section>
       </div>
     </PageFrame>
-  )
+  );
 }

@@ -252,7 +252,7 @@
   flex: 1;
   min-width: 120px;
 }
-.product-toolbar input:not([type='checkbox']),
+.product-toolbar input:not([type="checkbox"]),
 .product-toolbar select,
 .product-form input,
 .product-form textarea,
@@ -536,7 +536,7 @@
   padding: 8px 0;
   border-bottom: 2px solid transparent;
 }
-.upload-tabs button[aria-pressed='true'] {
+.upload-tabs button[aria-pressed="true"] {
   color: var(--color-accent);
   border-bottom-color: var(--color-accent);
 }
@@ -1214,5 +1214,141 @@
   .continue-panel,
   .recommendation {
     padding: 20px;
+  }
+}
+
+/* Real context and media observations; controls are wired to the existing APIs. */
+.scope-control {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--color-ink-3);
+}
+.scope-control select {
+  width: 100%;
+  border: 1px solid var(--color-line);
+  padding: 8px 5px;
+  background: white;
+  border-radius: 4px;
+  font-size: 11px;
+}
+.material-choice {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  min-width: 0;
+}
+.material-choice > input {
+  margin-top: 15px;
+  accent-color: var(--color-accent);
+}
+.material-choice > .material-item {
+  flex: 1;
+  min-width: 0;
+}
+.reference-check {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  font-size: 10px;
+  color: var(--color-ink-3);
+  padding: 0 2px 5px;
+}
+.reference-check input {
+  accent-color: var(--color-accent);
+}
+.image-region-stage {
+  position: relative;
+  margin: auto;
+  max-width: none;
+  touch-action: pan-y;
+}
+.image-region-stage.selecting {
+  cursor: crosshair;
+  touch-action: none;
+  user-select: none;
+}
+.image-region-box {
+  position: absolute;
+  pointer-events: none;
+  border: 2px solid var(--color-accent);
+  background: #244fc418;
+}
+.video-progress-panel {
+  padding-top: 18px;
+}
+.video-progress-panel h3 {
+  font-size: 14px;
+  font-weight: 600;
+}
+.video-progress-metrics {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+}
+.video-progress-metrics > div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--color-ink-3);
+}
+.video-progress-metrics > div:last-child {
+  text-align: right;
+}
+.video-progress-metrics strong {
+  font-size: 18px;
+  font-weight: 550;
+  color: var(--color-ink);
+}
+.video-progress-metrics small {
+  font-size: 10px;
+}
+.watched-timeline {
+  height: 10px;
+  position: relative;
+  background: var(--color-desk);
+  margin: 16px 0 5px;
+  overflow: hidden;
+  border: 1px solid var(--color-hair);
+  border-radius: 3px;
+}
+.watched-range {
+  position: absolute;
+  height: 100%;
+  background: var(--color-accent);
+}
+.playback-marker {
+  position: absolute;
+  height: 100%;
+  width: 2px;
+  background: var(--color-ink);
+  top: 0;
+}
+.timeline-labels {
+  display: flex;
+  justify-content: space-between;
+  font: 10px var(--font-mono);
+  color: var(--color-ink-3);
+}
+.resume-video {
+  width: 100%;
+  border: 1px solid var(--color-line);
+  padding: 11px;
+  margin-top: 12px;
+  border-radius: 5px;
+  font-size: 12px;
+  background: var(--color-accent-tint);
+  color: var(--color-accent);
+}
+@media (max-width: 640px) {
+  .material-choice {
+    min-width: 190px;
+    max-width: 230px;
+    flex-shrink: 0;
+  }
+  .material-choice > .material-item {
+    min-width: 160px;
   }
 }

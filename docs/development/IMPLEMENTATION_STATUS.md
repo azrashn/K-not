@@ -1,5 +1,30 @@
 # K-NOT geliştirme ilerlemesi
 
+## Güncel — bağlam / ilerleme / quiz düzeltmesi (31 Ekim 2026)
+
+Başlangıç `cfb4a81`, dal `feature/video-integration`. Aktif page/slide/time/
+seçili text/region, ayrı retrieval scope ve pinned references, kayıtlı mesaj
+üzerinden gerçek response modes, video izleme rehberliği ve gerçek interval
+timeline/resume uygulanmıştır. Mevcut özel Qwen3-VL2B gerçek kaynak görüntüsü
+alır. Quiz kalite reddi ve per-option v2 audit eklendi; literal MCQ fallback
+ve cevap öncesi source.text/answer-key sızıntısı kaldırıldı.
+
+**755 benzersiz otomatik test**: frontend92 + Nest unit94 + API121 + Python447
++ gerçek Python/MySQL1. Son küçük değişikliklerin ilgili altkümeleri ayrıca
+geçti; tekrar toplama eklenmedi. Gerçek Edge/yerel model ile çoklu kaynak,
+viewport/region, native video progress, ağ/retry, refresh/resume/video switch,
+quiz feedback/kalıcılık/kaynağa dönüş testleri geçti. Veriler resetlenmedi.
+
+**Tamamlanmış sayılmayanlar:** gerçek grafik BFS/DFS çözümü mevcut modelde
+güvenilir değil (PARTIAL, CLARIFICATION); izlenmiş gerçek video span'ından
+quiz kalite kontrolünden geçmedi (PARTIAL, yayınlanmadı). Genel quiz anlamsal
+kalitesi insan değerlendirmesi bekler. Gerçek background desktop tab testi,
+garantili offline outbox ve PDF canvas native text-layer tamamlanmadı.
+
+Kök nedenler/sözleşmeler/dosyalar/35senaryo: [CONTEXT_QUALITY_TEST_REPORT.md](CONTEXT_QUALITY_TEST_REPORT.md).
+Devam kaydı: [CONTEXT_QUALITY_FIX.md](CONTEXT_QUALITY_FIX.md).
+Aşağıdaki726/724 sonuçları önceki aşamaların tarihsel kayıtlarıdır.
+
 Son güncelleme: 31 Ekim 2026. Dal: feature/video-integration.
 **Son çalışma durumu:** Docker kullanıcı tarafından yeniden açıldı; motor
 29.7.2 hazır. K-NOT UI5174, backend3100 ve AI8110 HTTP200 ile doğrulandı.

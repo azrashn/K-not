@@ -17,6 +17,10 @@ class LLMRequest:
     top_p: float | None = None
     presence_penalty: float | None = None
     frequency_penalty: float | None = None
+    images: tuple[
+        str, ...
+    ] = ()  # Internal, bounded data URLs; no remote image fetches.
+    response_schema: dict | None = None
 
 
 @dataclass(frozen=True)
