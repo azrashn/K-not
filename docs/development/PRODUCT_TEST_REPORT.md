@@ -1,10 +1,10 @@
 # Ürün deneyimi — test ve kabul raporu
 
 31 Ekim 2026. Başlangıç d2d6c3d, dal feature/video-integration.
-Sonraki canlı kontrol notu: Docker Desktop açılış hatası nedeniyle şu an
-servisler kapalı. DOCKER_STARTUP_BLOCKER.md, önceki başarılı testler ile mevcut
-çalışma engelini ayrı belgeler. Test geçmesi, son anda Docker'ın açık olduğu
-anlamına gelmez.
+Son canlı kontrol: kullanıcı Docker'ı yeniden açtı;5174/3100/8110 HTTP200.
+Edge giriş/beş ekran ve kalıcılık testi yeniden PASS:8 kayıtlı mesaj,9 quiz,
+6 kaynaklı takip cevabı. Önceki Docker açılış hatası tarihsel kayıt olarak
+DOCKER_STARTUP_BLOCKER.md içinde korunur.
 Makine üzerinde gerçek kod değişikliği ve test yapıldı. Önceki724 sayısı bu
 aşamanın sonucu olarak tekrar kullanılmadı. Hiçbir model double'ı gerçek AI
 cevabı olarak raporlanmaz.

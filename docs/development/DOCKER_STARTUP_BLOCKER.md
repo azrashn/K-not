@@ -1,4 +1,10 @@
-# Son durum: ortak Docker Desktop açılışı engelli
+# Önceki Docker Desktop açılış engeli — tarihsel kayıt
+
+**Güncel kontrol: ENGEL KALKTI.** Kullanıcı Docker Desktop'ı açtıktan sonra
+Docker29.7.2 yanıt verdi. Start-KnotVideo.ps1 tamamlandı;5174/3100/8110 HTTP200.
+Edge giriş ve beş ekran kontrolü, SQL sohbet/quiz ve kaynaklı takip testi PASS.
+Kullanıcı verileri veya volume'lar sıfırlanmadı. Aşağıdaki bulgular önceki
+açılış hatasının tarihsel kaydıdır.
 
 31 Ekim 2026, son kullanıcı devam mesajından sonraki kontrol.
 K-NOT ürün kodu `91e29c8` + `fdbbbe7` commit'lerinde, feature/video-integration
