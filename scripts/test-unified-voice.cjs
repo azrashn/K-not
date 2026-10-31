@@ -15,16 +15,21 @@ async function main() {
       await page.getByLabel(label, { exact: true }).click(); await page.getByLabel(label, { exact: true }).fill(value);
     }
     await page.getByRole('button', { name: 'Giriş yap', exact: true }).click();
+    await page.getByRole('button', { name: '+ Yeni konuşma', exact: true }).click();
     await page.getByLabel('Ders kaynaklarına sorun').fill('İntegralde değişken değiştirme nedir?');
     const response = page.waitForResponse(r => r.url().endsWith('/knowledge/answers'));
-    await page.getByRole('button', { name: 'Derse sor', exact: true }).click();
+    await page.getByRole('button', { name: 'Gönder ↑', exact: true }).click();
     const data = await (await response).json(); report.generation_status = data.status;
     const speak = page.getByRole('button', { name: 'Açıklamayı seslendir', exact: true });
     await speak.waitFor({ timeout: 10000 }); await speak.click();
     await page.getByRole('button', { name: 'Seslendirmeyi duraklat', exact: true }).waitFor({ timeout: 15000 });
     await page.getByRole('button', { name: 'Seslendirmeyi duraklat', exact: true }).click();
     await page.getByRole('button', { name: 'Seslendirmeye devam et', exact: true }).click();
-    report.status = 'STARTED_PAUSED_RESUMED';
+    await page.getByLabel('Seslendirme hızı',{exact:true}).selectOption('1.2');
+    await page.getByRole('button',{name:'Durdur',exact:true}).click();
+    await page.getByRole('button',{name:'Baştan dinle',exact:true}).click();
+    await page.getByRole('button',{name:'Seslendirmeyi duraklat',exact:true}).waitFor({timeout:15000});
+    report.status = 'STARTED_PAUSED_RESUMED_STOPPED_REPLAYED';
     report.local_turkish_voices = await page.evaluate(() => speechSynthesis.getVoices().filter(v => v.localService && v.lang.startsWith('tr')).length);
     await page.evaluate(() => speechSynthesis.cancel());
   } finally { await browser.close(); }

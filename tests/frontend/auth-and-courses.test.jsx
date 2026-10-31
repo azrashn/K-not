@@ -77,7 +77,7 @@ describe('courses', () => {
     window.location.hash = '#/dersler'
     render(<App />)
     expect(await screen.findByText('Veri Yapıları')).toBeInTheDocument()
-    expect(screen.getByText('1 materyal hazırlanıyor')).toBeInTheDocument()
+    expect(screen.getByText('Materyallerle çalışmaya hazır')).toBeInTheDocument()
     expect(screen.getByText('Henüz materyal yok')).toBeInTheDocument()
     expect(screen.getByText(/Öğretim üyesi/)).toBeInTheDocument()
     expect(screen.queryByText(/Örnek ip|Vize · 6 gün/)).not.toBeInTheDocument() // no mock fields on real cards
@@ -88,7 +88,7 @@ describe('courses', () => {
     signIn()
     window.location.hash = '#/dersler'
     const { unmount } = render(<App />)
-    expect(await screen.findByText(/Henüz bir derse kayıtlı değilsin/)).toBeInTheDocument()
+    expect(await screen.findByText(/Henüz bir dersin yok/)).toBeInTheDocument()
     unmount()
     let n = 0
     fakeApi({ 'GET /courses': () => (++n === 1 ? new TypeError('down') : { body: [COURSE] }) })

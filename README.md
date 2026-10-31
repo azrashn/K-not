@@ -10,6 +10,13 @@ CLAIM → KNOT → SOURCE        ASK → PRACTICE → ANSWER → FEEDBACK → RE
 
 ### Video geliştirme dalı
 
+Güncel ürün deneyimi: **Ana Sayfa → Ders oluştur → ortak çalışma alanı →
+Alıştırmalar → Öğrenme Analizi → ilgili kaynağa dön**. Video, PDF, sunum ve
+metin aynı çalışma ekranındadır; özgün PDF/PPTX görüntüsü ve kalıcı sohbet
+eklendi. [Yerel kullanım](docs/development/PRODUCT_LOCAL_SETUP.md),
+[gerçek testler ve sınırlar](docs/development/PRODUCT_TEST_REPORT.md).
+Model cevabı deneysel, kaynak görüntüsü ise özgün dosyadan render edilir.
+
 `feature/video-integration` dalında ders içinden **Ders videoları** ekranı eklendi.
 Yerel video profili `scripts/Start-KnotVideo.ps1` ile açılır:
 http://127.0.0.1:5174/#/dersler. Bu profil backend için 3100, AI için 8110 kullanır;

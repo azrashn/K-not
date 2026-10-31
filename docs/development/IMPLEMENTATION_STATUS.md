@@ -1,10 +1,27 @@
 # K-NOT geliştirme ilerlemesi
 
 Son güncelleme: 31 Ekim 2026. Dal: feature/video-integration.
+Altyapı commit: 91e29c8.
+Yeni ürün deneyimi aşaması (d2d6c3d sonrası): öncelikli öğrenme döngüsü
+uygulandı ve gerçek Edge/yerel model/SQL testi geçti. Kişisel ders CRUD/arşiv,
+kalıcı sohbet/alıştırma/etkinlik, gerçek Home/Quiz/Analytics; özgün PDF/PPTX
+görüntüsü, görünür yerel ses kontrolleri, materyal adı/retry ve link sekmeleri.
+Course.description koşullu migrasyonla korundu; reset/demo temizliği yok.
+Sonuç: frontend 88 + Nest unit 91 + API 114 + Python 432 + gerçek Python/MySQL 1
+=726 kontrol; son Python değişikliğinin ilgili 30 testi tekrar geçti (ek sayılmaz).
+Gerçek 4 materyalli model cevabı, yenileme ve servis restart sonrası sohbet,
+quiz→analiz→kaynak, PDF 10 / PPTX 5, onaylı silme ve yerel ses kontrolleri geçti.
+Model cevabı GENERATED_UNVERIFIED; anlamsal doğruluk onaylanmış değildir.
+
+Giriş: http://127.0.0.1:5174/ → Ders oluştur → ortak çalışma alanı.
+Kurulum/komutlar: PRODUCT_LOCAL_SETUP.md. Ayrıntılı kanıt/başarısız turlar:
+PRODUCT_TEST_REPORT.md. Ses alternatifleri: VOICE_TECHNICAL_ASSESSMENT.md.
+Kalan işler: REMAINING_WORK.md. Öğretim tahtası planı:
+../architecture/FUTURE_TEACHING_BOARD.md. Aşağıdaki 724 önceki aşamaya aittir.
 Başlangıç commit'i: 6401c29. Ana talep: video merkezli, bağlam ve öğrenme
 durumu farkında akademik asistan. Bu dosya sonraki oturumun giriş noktasıdır.
 
-## Güncel aşama — Unified course workspace (4843afa sonrası)
+## Önceki aşama — Unified course workspace (d2d6c3d durum kaydı)
 
 Birleşik ders çekirdeği gerçek kodda eklendi ve yerel kabul/regresyon testleri
 geçti. Giriş: ders sayfası → Çalışma alanını aç → /ogrenme.

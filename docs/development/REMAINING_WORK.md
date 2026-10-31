@@ -2,6 +2,31 @@
 
 Bu kayıt tamamlanmamış işleri çalışıyormuş gibi göstermemek içindir.
 
+## Ürün deneyimi sonrası öncelikler — 31 Ekim 2026
+
+- Yerinde dosya değiştirme/başarılı materyali yeniden işleme: atomik orijinal+
+  indexrevision değişimi, eski kaynak/chat/quiz geçersizleştirme ve başarısız
+  işlemde geri dönüş tasarlanmalı. Şimdilik yeni dosya ayrı eklenip doğrulanır,
+  eski dosya sonra açık onayla kaldırılır. Başarısız PDF/video retry görünür.
+- Genel kavramsal quiz kalitesi ve rubrikli kısa/açık cevap değerlendirmesi.
+  Beş soru türü ve kalıcı attempt çalışır; kaynak hatırlama/karşılaştırma ile
+  kavramsal öğrenme aynı şey değildir. Doğrulanamayan model MCQ'sunda açık
+  etiketli literal soru var. Açık uçlu yanıta otomatik puan verilmez.
+- Türkçe sesin telaffuz/doğallık/ilk-ses ölçümü. Yeni üstteki kontroller ve
+  gerçek Edge start/pause/resume/stop/replay geçti; kalite artışı ölçülmedi.
+  Piper Türkçe model kartının CC BY-NC-SA veri lisansı ile depo MIT etiketinin
+  farkı çözülmeden koşulsuz ürün bileşeni sayılmamalı. Araştırma ayrı raporda.
+- Öğretim tahtası: ayrı gelecek aşama, mimarisi FUTURE_TEACHING_BOARD.md.
+- Streaming/iptal, giriş paketi code-splitting, fontparitesi/uzunPDF/görsel
+  sunum kabul seti, büyük ders profili performans testi ve işlem kilitlerinin
+  çoklu süreçte kalıcı/dağıtık karşılığı.
+- Yeni ürün ekranında gerçek YouTube/Drive ağ indirme turu ayrıca yapılmalı;
+  link akışı ve önceki adaptör güvenlik/regresyonları korunmuştur.
+
+Tamamlanan ve artık aşağıdaki eski listede kalanlar: özgünPDF/PPTXrender,
+kalıcısohbet, kalıcıquiz/attempt, gerçekHome/Analytics, kaynaklıtekrardöngüsü.
+Aşağıdaki liste önceki unified aşamasının daha geniş araştırma kapsamıdır.
+
 ## İlk öncelik
 
 - Yeni birleşik yolu demo materyalleri dışında etiketli gerçek ders setleriyle

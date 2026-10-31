@@ -115,23 +115,23 @@ export default function CourseDetail({ courseId }) {
       <MobileBar />
       <div className="pt-4 lg:pt-12">
         <button type="button" onClick={() => navigate('/dersler')} className="press -ml-2 rounded-md px-2 py-1 text-[13.5px] text-ink-3 hover:bg-ink/[0.05] hover:text-ink">← Dersler</button>
-        <h1 className="display m-0 mt-3 text-[40px] text-ink sm:text-[52px]">{c.name}</h1>
+        <h1 className="m-0 mt-3 text-[36px] font-semibold tracking-tight text-ink">{c.name}</h1>
         <p className="m-0 mt-2 text-[14px] text-ink-3"><span className="font-mono text-[12.5px]">{c.code}</span>{c.instructor_name ? ` · ${c.instructor_name}` : ''} · {c.term}</p>
 
         <p className="m-0 mt-6 flex items-center gap-2.5 text-[15.5px] text-ink" role="status" aria-live="polite">
           <span aria-hidden className={`size-2 rounded-full ${r.tone === 'ready' ? 'bg-siki' : r.tone === 'error' ? 'bg-kopuk' : 'bg-accent breathe'}`} />
           <span className="font-medium">{r.text}</span>
-          <span className="text-ink-3"><span className="num">{r.ready}</span> / <span className="num">{r.total}</span> materyal hazır</span>
+          <span className="text-ink-3"><span className="num">{r.ready}</span> / <span className="num">{r.total}</span> PDF hazır</span>
         </p>
-        <p className="m-0 mt-2 max-w-[36rem] text-[14.5px] leading-relaxed text-ink-3">Çalışma alanı yalnızca bu materyallere dayanır. Hazır olmayan materyal yanıtlarda kullanılmaz.</p>
+        <p className="m-0 mt-2 max-w-[36rem] text-[14.5px] leading-relaxed text-ink-3">PDF yönetimi. Video, sunum ve metin dosyalarını ortak çalışma alanından ekleyip inceleyebilirsin.</p>
 
         <div className="mt-6 flex flex-wrap items-center gap-3">
           <Btn arrow className="group" onClick={() => navigate(`/dersler/${c.id}/ogrenme`)}>Çalışma alanını aç</Btn>
-          <Btn variant="soft" disabled title="Alıştırma üretimi henüz bağlı değil (WBS-6)">Alıştırma başlat</Btn>
+          <Btn variant="soft" onClick={()=>navigate(`/dersler/${c.id}/quiz`)}>Alıştırma başlat</Btn>
           <Btn variant="quiet" onClick={() => setUploader((u) => !u)} aria-expanded={uploader}><UploadSimple size={16} /> Materyal ekle</Btn>
           <Btn variant="soft" onClick={() => navigate(`/dersler/${c.id}/videolar`)}>Ders videoları</Btn>
         </div>
-        {r.ready === 0 && <p className="m-0 mt-3 text-[13px] text-ink-3">Çalışma alanı, en az bir materyal hazır olduğunda açılır.</p>}
+        {r.ready === 0 && <p className="m-0 mt-3 text-[13px] text-ink-3">Çalışma alanına girerek PDF, sunum, metin veya video ekleyebilirsin.</p>}
       </div>
 
       <AnimatePresence initial={false}>

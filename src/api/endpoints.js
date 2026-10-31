@@ -7,7 +7,20 @@ export const api = {
   login: (email, password) => request('POST', '/auth/login', { body: { email, password }, auth: false }),
   me: (signal) => request('GET', '/auth/me', { signal }),
 
-  courses: (signal) => request('GET', '/courses', { signal }),
+  courses: (signal, archived = false) => request('GET', '/courses' + (archived ? '?archived=1' : ''), { signal }),
+  createCourse: (body) => request('POST','/courses',{body}),
+  updateCourse: (id,body) => request('PATCH',`/courses/${enc(id)}`,{body}),
+  archiveCourse: (id,archived) => request('POST',`/courses/${enc(id)}/archive`,{body:{archived}}),
+  deleteCourse: (id,name) => request('DELETE',`/courses/${enc(id)}`,{body:{confirm_name:name}}),
+  learningOverview: (signal) => request('GET','/learning/overview',{signal}),
+  activity: (course,body) => request('POST',`/courses/${enc(course)}/activity`,{body}),
+  conversations: (course,signal) => request('GET',`/courses/${enc(course)}/knowledge/conversations`,{signal}),
+  conversation: (course,id,signal) => request('GET',`/courses/${enc(course)}/knowledge/conversations/${enc(id)}`,{signal}),
+  quizzes: (course,signal) => request('GET',`/courses/${enc(course)}/quizzes`,{signal}),
+  createQuiz: (course,body) => request('POST',`/courses/${enc(course)}/quizzes`,{body}),
+  quiz: (course,id) => request('GET',`/courses/${enc(course)}/quizzes/${enc(id)}`),
+  answerQuiz: (course,id,response) => request('POST',`/courses/${enc(course)}/quizzes/${enc(id)}/answers`,{body:{response}}),
+  knowledgeVisual: (course,id,page,signal) => request('GET',`/courses/${enc(course)}/knowledge/materials/${enc(id)}/visual/${page}`,{as:'blob',signal}),
   course: (courseId, signal) => request('GET', `/courses/${enc(courseId)}`, { signal }),
   knowledgeMaterials: (courseId, signal) => request('GET', `/courses/${enc(courseId)}/knowledge/materials`, { signal }),
   knowledgePreview: (courseId, id, signal) => request('GET', `/courses/${enc(courseId)}/knowledge/materials/${enc(id)}`, { signal }),
@@ -17,6 +30,7 @@ export const api = {
   knowledgePractice: (courseId, conversation) => request('POST', `/courses/${enc(courseId)}/knowledge/practice`, { body: { conversation_id: conversation } }),
   knowledgeGrade: (courseId, id, answer) => request('POST', `/courses/${enc(courseId)}/knowledge/practice/${enc(id)}/answers`, { body: { answer } }),
   knowledgeRemove: (courseId, id) => request('DELETE', `/courses/${enc(courseId)}/knowledge/materials/${enc(id)}`),
+  knowledgeRename: (course,id,title) => request('PATCH',`/courses/${enc(course)}/knowledge/materials/${enc(id)}`,{body:{title}}),
   knowledgeUpload: (courseId, file) => {
     const form = new FormData(); form.append('file', file, file.name)
     return request('POST', `/courses/${enc(courseId)}/knowledge/materials`, { form })

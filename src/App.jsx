@@ -7,12 +7,12 @@ import NavRail, { NAV, NavButton, KnotMark, UserBadge } from './components/NavRa
 import { AuthProvider, useAuth } from './app/auth'
 import Login from './pages/Login'
 import { EASE_DRAWER, EASE_OUT } from './lib/motion'
-import Home from './pages/Home'
+import Home from './pages/HomeDashboard'
 import Courses from './pages/Courses'
 import CourseDetail from './pages/CourseDetail'
 import Workspace from './pages/Workspace'
-import Quiz from './pages/Quiz'
-import Analytics from './pages/Analytics'
+import Quiz from './pages/CourseQuiz'
+import Analytics from './pages/LearningAnalytics'
 import Videos from './pages/Videos'
 import LearningWorkspace from './pages/LearningWorkspace'
 
@@ -25,7 +25,7 @@ function Page({ route }) {
     case 'workspace': return <Workspace courseId={courseId} />
     case 'learning': return <LearningWorkspace key={courseId} courseId={courseId} />
     case 'videos': return <Videos courseId={courseId} />
-    case 'quiz': return <Quiz />
+    case 'quiz': return <Quiz courseId={courseId} />
     case 'analytics': return <Analytics />
     default: return <Home />
   }

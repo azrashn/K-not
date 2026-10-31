@@ -26,9 +26,9 @@ export function TextLink({ className = '', children, ...rest }) {
 }
 
 // Sayfa iskeleti: kaydırma kabı + okunur genişlik
-export function PageFrame({ children, max = 'max-w-[68rem]' }) {
+export function PageFrame({ children, max = 'max-w-[68rem]', className = '' }) {
   return (
-    <div className="scroll-quiet h-full overflow-y-auto" data-scroll>
+    <div className={`scroll-quiet h-full overflow-y-auto ${className}`} data-scroll>
       <div className={`mx-auto w-full ${max} px-5 pb-24 sm:px-10`}>{children}</div>
     </div>
   )
