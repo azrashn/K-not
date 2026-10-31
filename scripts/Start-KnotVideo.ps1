@@ -35,6 +35,12 @@ function Wait-Ready([string]$Url) {
 # Compose starts only Knot's own DB, preserving its named volume.
 docker compose --env-file .env.docker up -d --wait db
 if ($LASTEXITCODE -ne 0) { throw 'Knot database did not start.' }
+# A small one-shot tool, never a persistent Office service or another app's container.
+$null = docker image inspect knot-office-renderer:local-v1 2>$null
+if ($LASTEXITCODE -ne 0) {
+    docker build -t knot-office-renderer:local-v1 -f tools/office-renderer/Dockerfile tools/office-renderer
+    if ($LASTEXITCODE -ne 0) { throw 'Knot Office renderer build failed. No existing service was stopped.' }
+}
 Push-Location -LiteralPath (Join-Path $root 'backend')
 try {
     & node node_modules/prisma/build/index.js generate
@@ -56,6 +62,13 @@ $env:NESTJS_INTERNAL_URL = 'http://127.0.0.1:3100'
 $env:VITE_API_PROXY_TARGET = 'http://127.0.0.1:3100'
 $env:PYTHONUTF8 = '1'
 $env:PYTHONUNBUFFERED = '1'
+$pdfRenderer=Get-Command pdftoppm -ErrorAction SilentlyContinue
+if ($pdfRenderer) { $env:PDFTOPPM_PATH=$pdfRenderer.Source }
+else {
+    $bundledPoppler=Join-Path $env:USERPROFILE '.cache\codex-runtimes\codex-primary-runtime\dependencies\native\poppler\Library\bin\pdftoppm.exe'
+    if (Test-Path -LiteralPath $bundledPoppler) { $env:PDFTOPPM_PATH=$bundledPoppler }
+    else { Write-Warning 'pdftoppm is missing. Original visual previews need Poppler; text retrieval remains available. See PRODUCT_LOCAL_SETUP.md.' }
+}
 # Reuse only the already installed, isolated 2B Instruct model. No download,
 # shared Ollama change or paid endpoint; absent model leaves honest excerpts.
 $env:UNIFIED_LLM_BASE_URL = ''

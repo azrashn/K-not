@@ -7,7 +7,8 @@
  *  L5  READY is written only by a SUCCEEDED event of the document's active job.
  *  L6  deleted documents leave every scope immediately; chunks and files are purged later.
  */
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
+import { LearningHistoryService } from '../learning/history.service';
 
 import { AiServiceClient, aiErrorCode } from '../ai/ai-client';
 import { embeddingConfiguration, IndexVersionService } from '../ai/index-versions';
@@ -56,6 +57,7 @@ export class JobsService {
     private readonly indexVersions: IndexVersionService,
     private readonly storage: Storage,
     @Inject(APP_CONFIG) private readonly config: AppConfig,
+    @Optional() private readonly history?:LearningHistoryService,
   ) {}
 
   // ---- §3.1 creation ----------------------------------------------------------------------
@@ -341,6 +343,7 @@ export class JobsService {
       });
     }));
     this.log.log({ event: 'document.deleted', document_id: documentId });
+    await this.history?.redact('pdf_'+documentId);
   }
 
   /** Steps 2–4: chunks in every non-dropped collection, then files, then `purgedAt`.

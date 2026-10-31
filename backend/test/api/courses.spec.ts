@@ -7,8 +7,8 @@ beforeEach(() => h.reset());
 
 test('GET /courses lists only courses with a membership, with my role and visible counts', async () => {
   const mehmet = await h.http().get('/courses').set(await h.as('mehmet')).expect(200);
-  expect(mehmet.body.map((c: { code: string }) => c.code)).toEqual(['BIL 211', 'BIL 304']);
-  expect(mehmet.body[0]).toMatchObject({ name: 'Veri Yapıları', instructor_name: 'Doç. Dr. M. Aydın', term: 'Güz 2026', my_role: 'STUDENT',
+  expect(mehmet.body.map((c: { code: string }) => c.code).sort()).toEqual(['BIL 211', 'BIL 304']);
+  expect(mehmet.body.find((c:any)=>c.code==='BIL 211')).toMatchObject({ name: 'Veri Yapıları', instructor_name: 'Doç. Dr. M. Aydın', term: 'Güz 2026', my_role: 'STUDENT',
     documents: { total: 0, ready: 0, processing: 0, failed: 0 } });
   const ayse = await h.http().get('/courses').set(await h.as('ayse')).expect(200);
   expect(ayse.body.map((c: { code: string }) => c.code)).toEqual(['BIL 211']);

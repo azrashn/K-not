@@ -21,24 +21,24 @@ export interface DocumentAccess {
 export class AccessService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async membership(userId: string, courseId: string): Promise<MembershipRole | null> {
-    const m = await this.prisma.courseMembership.findUnique({ where: { userId_courseId: { userId, courseId } } });
-    return m?.role ?? null;
+  async membership(userId: string, courseId: string, allowDeleting = false): Promise<MembershipRole | null> {
+    const m = await this.prisma.courseMembership.findUnique({ where: { userId_courseId: { userId, courseId } },include:{course:{select:{lifecycle:true}}} });
+    return m && (!m.course?.lifecycle || m.course.lifecycle === 'ACTIVE' || (allowDeleting && m.course.lifecycle === 'DELETING')) ? m.role : null;
   }
 
   /** Members see a course; admins see every course. Otherwise 404. */
   async requireCourse(user: AuthUser, courseId: string): Promise<MembershipRole | null> {
     const role = await this.membership(user.id, courseId);
     if (role) return role;
-    if (user.role === 'ADMIN' && (await this.prisma.course.findUnique({ where: { id: courseId }, select: { id: true } }))) {
+    if (user.role === 'ADMIN' && (await this.prisma.course.findFirst({ where: { id: courseId,lifecycle:'ACTIVE' }, select: { id: true } }))) {
       return null;
     }
     throw notFound('Course');
   }
 
   /** Membership is required (not just admin) wherever course material is consumed. */
-  async requireMember(user: AuthUser, courseId: string): Promise<MembershipRole> {
-    const role = await this.membership(user.id, courseId);
+  async requireMember(user: AuthUser, courseId: string, allowDeleting = false): Promise<MembershipRole> {
+    const role = await this.membership(user.id, courseId, allowDeleting);
     if (!role) throw notFound('Course');
     return role;
   }

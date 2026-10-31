@@ -23,6 +23,10 @@ import { AnswersController } from './rag/answers.controller';
 import { RagService } from './rag/rag.service';
 import { KnowledgeService } from './knowledge/knowledge.service';
 import { KnowledgeController } from './knowledge/knowledge.controller';
+import { LearningHistoryService } from './learning/history.service';
+import { CourseLifecycleService } from './courses/course-lifecycle.service';
+import { LearningService } from './learning/learning.service';
+import { LearningController } from './learning/learning.controller';
 import { UploadAccessGuard } from './documents/upload-access.guard';
 import { LocalStorage, Storage } from './storage/storage';
 
@@ -39,6 +43,7 @@ class CoreModule {
       AccessService,
       JobsService,
       AuthService,
+      LearningHistoryService,
     ];
     return {
       module: CoreModule,
@@ -55,10 +60,12 @@ export class AppModule implements NestModule {
     return {
       module: AppModule,
       imports: [CoreModule.forRoot(config), DocumentsModule, VideosModule],
-      controllers: [HealthController, AuthController, CoursesController, AnswersController, InternalCallbacksController, KnowledgeController],
+      controllers: [HealthController, AuthController, CoursesController, AnswersController, InternalCallbacksController, KnowledgeController,LearningController],
       providers: [
         RagService,
         KnowledgeService,
+        CourseLifecycleService,
+        LearningService,
         UploadAccessGuard,
         SchedulerService,
         { provide: APP_GUARD, useClass: JwtAuthGuard },

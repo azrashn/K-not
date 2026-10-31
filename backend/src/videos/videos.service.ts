@@ -1,6 +1,7 @@
 /** Authenticated, course-scoped bridge. Engine IDs/URLs never define authorization. */
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import { AiServiceClient } from '../ai/ai-client';
+import { LearningHistoryService } from '../learning/history.service';
 import { createHash } from 'node:crypto';
 import { ApiError, notFound } from '../common/errors';
 import { newId } from '../common/ids';
@@ -36,7 +37,7 @@ export class VideosService {
   // bytes must not race the engine's physical file cleanup.
   private readonly contentWrites = new Map<string, Promise<void>>();
   constructor(private readonly prisma: PrismaService, private readonly access: AccessService,
-    @Inject(APP_CONFIG) config: AppConfig, @Optional() private readonly ai?: AiServiceClient) {
+    @Inject(APP_CONFIG) config: AppConfig, @Optional() private readonly ai?: AiServiceClient, @Optional() private readonly history?: LearningHistoryService) {
     this.base = (config.videoServiceUrl || 'http://127.0.0.1:7862').replace(/\/+$/, '');
   }
 
@@ -55,8 +56,8 @@ export class VideosService {
     }, timeout);
     return r.json();
   }
-  private async owned(user: AuthUser, courseId: string, id: string) {
-    await this.access.requireMember(user, courseId);
+  private async owned(user: AuthUser, courseId: string, id: string, allowDeleting = false) {
+    await this.access.requireMember(user, courseId, allowDeleting);
     const row = await this.prisma.video.findFirst({ where: { id, courseId, ownerId: user.id } });
     if (!row || !ENGINE_ID.test(row.engineVideoId)) throw notFound('Video');
     return row;
@@ -132,10 +133,10 @@ export class VideosService {
     }
     return this.describe(row);
   }
-  async remove(user: AuthUser, courseId: string, id: string) {
-    const initial = await this.owned(user, courseId, id);
+  async remove(user: AuthUser, courseId: string, id: string, allowDeleting = false) {
+    const initial = await this.owned(user, courseId, id, allowDeleting);
     return this.withContentLock(initial.contentSha256, async () => {
-      const row = await this.owned(user, courseId, id);
+      const row = await this.owned(user, courseId, id, allowDeleting);
       if (this.ai) {
         const cleanup = await this.ai.call('DELETE', `/api/v1/knowledge/${encodeURIComponent(courseId)}/video_${encodeURIComponent(id)}`, { timeoutMs: 60000 });
         if (cleanup.kind !== 'response' || cleanup.status !== 200) throw new ApiError('AI_SERVICE_UNAVAILABLE', 'Ortak video kaynakları temizlenemedi. Kayıt korundu; yeniden deneyin.');
@@ -162,6 +163,7 @@ export class VideosService {
         }
       }
       await this.prisma.video.delete({ where: { id: row.id } });
+      await this.history?.redact('video_'+row.id);
       return { deleted: true, shared_asset_retained: retained };
     });
   }

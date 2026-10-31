@@ -10,6 +10,7 @@ import { newId } from '../common/ids';
 import { VideosService } from '../videos/videos.service';
 import { classifyLearning } from '../videos/learning-state';
 import { RateLimiter } from '../common/rate-limit';
+import { LearningHistoryService } from '../learning/history.service';
 
 const hash = (value: string) => createHash('sha256').update(value).digest('hex');
 interface Material { id: string; kind: string; title: string; version: string; source_id: string; status: string; row: any }
@@ -22,7 +23,8 @@ export class KnowledgeService {
   private readonly synchronizing = new Map<string, Promise<void>>();
   private readonly practices = new Map<string, { user: string; course: string; material: string; source: string; expected: string; expires: number }>();
   constructor(private readonly prisma: PrismaService, private readonly access: AccessService,
-    private readonly ai: AiServiceClient, private readonly storage: Storage, private readonly videos: VideosService) {}
+    private readonly ai: AiServiceClient, private readonly storage: Storage, private readonly videos: VideosService,
+    private readonly history: LearningHistoryService) {}
 
   private async call(method: 'POST' | 'DELETE', path: string, body?: unknown): Promise<any> {
     const r = await this.ai.call(method, '/api/v1/knowledge' + path, { body, timeoutMs: 120000 });
@@ -55,7 +57,15 @@ export class KnowledgeService {
     return result;
   }
   async list(user: AuthUser, course: string) {
-    return { materials: (await this.materials(user, course)).map(({ row, ...m }) => m) };
+    return { materials: (await this.materials(user, course)).map(({ row, ...m }) => ({...m,can_manage:row.ownerId===user.id,filename:row.originalFilename||row.filename,retryable:m.kind==='PDF'?row.status==='FAILED'&&row.errorRetryable:m.kind==='VIDEO'&&m.status==='failed',page_count:m.kind==='PDF'?row.pageCount:m.kind==='PPTX'?Math.max(1,...(row.segments as any[]).map(s=>s.location?.slide||1)):null})) };
+  }
+  async rename(user:AuthUser,course:string,id:string,title:string){
+    const m=(await this.materials(user,course)).find(m=>m.id===id&&m.row.ownerId===user.id);if(!m)throw notFound('Material');
+    const data={title:title.trim()};
+    if(m.kind==='PDF')await this.prisma.document.update({where:{id:m.source_id},data});
+    else if(m.kind==='VIDEO')await this.prisma.video.update({where:{id:m.source_id},data});
+    else await this.prisma.studyMaterial.update({where:{id:m.source_id},data});
+    return {id,title:data.title};
   }
   private manifest(course: string, materials: Material[]) {
     return { course_id: course, materials: materials.filter(m => m.status === 'READY').map(({ id, version, kind, title }) => ({ id, version, kind, title })) };
@@ -134,6 +144,7 @@ export class KnowledgeService {
     if (m.row.storageKey) await this.storage.delete(m.row.storageKey);
     await this.prisma.studyMaterial.delete({ where: { id: m.source_id } });
     this.invalidate(id);
+    await this.history.redact(id);
     return { deleted: true };
   }
   private invalidate(material: string) {
@@ -164,6 +175,15 @@ export class KnowledgeService {
     const m = (await this.materials(user, course)).find(m => m.id === materialId && m.status === 'READY');
     if (!m) throw notFound('Material');
     return { material: { id: m.id, kind: m.kind, title: m.title, source_id: m.source_id }, segments: await this.segments(user, course, m) };
+  }
+  async visual(user:AuthUser,course:string,id:string,page:number){
+    const m=(await this.materials(user,course)).find(x=>x.id===id&&x.status==='READY'&&['PDF','PPTX'].includes(x.kind));
+    if(!m?.row.storageKey)throw notFound('Original material');
+    const r=await this.call('POST','/render',{course_id:course,material_id:id,version:m.version,storage_key:m.row.storageKey,page});
+    if(r.material_id!==id||r.version!==m.version||r.page!==page||!Number.isSafeInteger(r.page_count)||typeof r.image!=='string')throw new ApiError('INTERNAL_ERROR','Sayfa görüntüsü doğrulanamadı.');
+    if(!(await this.materials(user,course)).some(x=>x.id===id&&x.version===m.version))throw notFound('Source revision');
+    const bytes=Buffer.from(r.image,'base64');if(!bytes.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10])))throw new ApiError('INTERNAL_ERROR','Geçersiz sayfa görüntüsü.');
+    return {bytes,count:r.page_count};
   }
   async file(user: AuthUser, course: string, materialId: string) {
     const m = (await this.materials(user, course)).find(m => m.id === materialId && m.id.startsWith('file_'));
@@ -205,6 +225,26 @@ export class KnowledgeService {
     let materials = await this.materials(user, course);
     for (const [id, r] of this.receipts) if (r.expires < Date.now()) this.receipts.delete(id);
     let question = body.question, prior: Receipt | undefined;
+    const thread = !body.retrieve_only ? await this.history.thread(user.id,course,body.chat_id,body.question) : null;
+    if (body.chat_id && !this.receipts.has(body.conversation_id)) {
+      const saved = await this.history.last(user.id,course,body.chat_id);
+      const p = saved?.payload as any;
+      if (p?.evidence?.length) {
+        // MySQL normalizes JSON key order. Rehydrate authoritative source locations
+        // instead of re-hashing a JSON payload that may have a different key order.
+        const restored=[];
+        for(const e of p.evidence){
+          const m=materials.find(m=>m.id===e.material_id&&m.version===e.version&&m.status==='READY');
+          if(!m)throw new ApiError('NOT_RETRYABLE','Konuşmanın kaynağı değişmiş. Yeni konuşma başlatın.');
+          const actual=(await this.segments(user,course,m)).find(s=>s.id===e.id);
+          if(!actual)throw notFound('Source revision');
+          restored.push({...e,...actual,material_id:m.id,kind:m.kind,version:m.version});
+        }
+        const restoredId=randomUUID();
+        this.receipts.set(restoredId,{user:user.id,course,question:p.question,resolved:p.resolved_question||p.question,answer:p.answer,evidence:restored,relations:p.associations||[],conflicts:p.conflicts||[],expires:Date.now()+600000});
+        body={...body,conversation_id:restoredId};
+      }
+    }
     if (body.conversation_id) {
       prior = this.receipts.get(body.conversation_id);
       if (!prior || prior.user !== user.id || prior.course !== course) throw notFound('Conversation');
@@ -213,7 +253,7 @@ export class KnowledgeService {
       }
       this.ensureEvidence(prior.evidence, materials);
       const normalized = question.replace(/İ/g, 'i').replace(/ı/g, 'i').toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '');
-      if (/\b(onceki|ikinci|birinci|bunu|bu konu|bu adim|ornegi|ayrinti|previous|second)\b/.test(normalized)) {
+      if (/\b(onceki|ikinci|birinci|bunu|bunun|bu konu\w*|bu adim\w*|ornek\w*|goster|devam|basit|adim|ayrinti|previous|second)\b/.test(normalized)) {
         question = (prior.resolved.slice(0, 900) + '\nTakip sorusu: ' + question).slice(-2000);
       }
     }
@@ -226,6 +266,7 @@ export class KnowledgeService {
       indexed = await this.sync(user, course, materials);
       const found = await this.call('POST', '/search', { ...this.manifest(course, materials), question,
         active_material_id: body.active_material_id, current_time_ms: body.current_time_ms,
+        active_source_id:body.active_source_id,
         strategy: body.strategy || 'aligned' });
       evidence = found.evidence; relations = found.associations || []; conflicts = found.conflicts || [];
     }
@@ -260,9 +301,13 @@ export class KnowledgeService {
     while (this.receipts.size >= 128) this.receipts.delete(this.receipts.keys().next().value!);
     this.receipts.set(receipt, { user: user.id, course, question: body.question, resolved: question,
       evidence, relations, conflicts, answer: String(generated.answer || '').slice(0, 3000), expires: Date.now() + 600000 });
-    return { ...generated, question: body.question, resolved_question: question, conversation_id: receipt,
-      evidence: evidence.map((e, i) => ({ ...e, n: i + 1, source_id: materials.find(m => m.id === e.material_id)!.source_id })),
+    const result = { ...generated, question: body.question, resolved_question: question, conversation_id: receipt,chat_id:thread?.id || null,
+      evidence: evidence.map((e, i) => ({ ...e, title:materials.find(m => m.id===e.material_id)!.title,n: i + 1, source_id: materials.find(m => m.id === e.material_id)!.source_id })),
       video_learning: learning, associations: relations, conflicts, indexed_materials: indexed,
+      retrieval:{course_id:course,searched:materials.filter(m=>m.status==='READY').map(m=>({id:m.id,kind:m.kind,title:m.title})),found_source_ids:evidence.map(e=>e.id),
+        used_source_ids:Array.isArray(generated.claims)?[...new Set(generated.claims.flatMap((c:any)=>c.sources).map((n:number)=>evidence[n-1]?.id).filter(Boolean))]:[],mode:generated.status},
       support_confirmed: false, note: 'Kaynaklar otomatik çıkarılmış olabilir. Alıntı, açıklamanın doğruluğunu kanıtlamaz. İzleme konu hâkimiyeti değildir.' };
+    if(thread) await this.history.save(user.id,course,thread.id,body.explain_now?'Şimdi açıkla: '+body.question:body.question,result);
+    return result;
   }
 }

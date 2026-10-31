@@ -65,7 +65,7 @@ beforeAll(async () => {
     INGEST_CALLBACK_TOKEN: CALLBACK_TOKEN, INGEST_HEARTBEAT_SECONDS: '5', LOG_LEVEL: 'WARNING',
   };
   const out = openSync(logFile, 'w');
-  py = spawn('python', ['-m', 'uvicorn', 'knot_rag.main:app', '--host', '127.0.0.1', '--port', String(port)], { cwd: AI_DIR, env, stdio: ['ignore', out, out] });
+  py = spawn(process.env.PYTHON || 'python', ['-m', 'uvicorn', 'knot_rag.main:app', '--host', '127.0.0.1', '--port', String(port)], { cwd: AI_DIR, env, stdio: ['ignore', out, out] });
   await waitFor('ai-service /health', async () => (await fetch(`${aiUrl}/health`)).ok, 120_000);
   // The first /ready loads the embedding model (e5-small: tens of seconds on CPU). Until then the
   // backend guard reports `unavailable` and answers are 503 AI_SERVICE_UNAVAILABLE, by design.

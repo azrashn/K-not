@@ -72,6 +72,11 @@ model User {
   videos       Video[]
   videoProgress VideoProgress[]
   studyMaterials StudyMaterial[]
+  ownedCourses Course[] @relation("PersonalCourses")
+  conversations LearningConversation[]
+  activities LearningActivity[]
+  quizzes LearningQuiz[]
+  attempts LearningQuizAttempt[]
 }
 
 model Course {
@@ -81,6 +86,15 @@ model Course {
   instructorName String?            @db.VarChar(200)
   term           String             @db.VarChar(32)
   createdAt      DateTime           @default(now())
+  ownerId        String?
+  description    String? @db.VarChar(2000)
+  category       String? @db.VarChar(80)
+  lifecycle      String @default("ACTIVE") @db.VarChar(16)
+  deletionError  String? @db.VarChar(300)
+  owner          User? @relation("PersonalCourses", fields: [ownerId], references: [id])
+  conversations  LearningConversation[]
+  activities     LearningActivity[]
+  quizzes        LearningQuiz[]
   memberships    CourseMembership[]
   documents      Document[]
   videos         Video[]
@@ -129,11 +143,93 @@ model CourseMembership {
   courseId  String
   role      MembershipRole
   createdAt DateTime       @default(now())
+  archivedAt DateTime?
   user      User           @relation(fields: [userId], references: [id])
   course    Course         @relation(fields: [courseId], references: [id])
 
   @@id([userId, courseId])
   @@index([courseId])
+}
+
+model LearningConversation {
+  id String @id
+  courseId String
+  userId String
+  title String @db.VarChar(160)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  course Course @relation(fields: [courseId], references: [id])
+  user User @relation(fields: [userId], references: [id])
+  messages LearningMessage[]
+  @@index([userId, courseId, updatedAt])
+}
+
+model LearningMessage {
+  id String @id @default(cuid())
+  conversationId String
+  role String @db.VarChar(12)
+  content String @db.LongText
+  payload Json?
+  redacted Boolean @default(false)
+  createdAt DateTime @default(now())
+  conversation LearningConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sources LearningMessageSource[]
+  @@index([conversationId, createdAt])
+}
+
+model LearningMessageSource {
+  messageId String
+  materialId String @db.VarChar(100)
+  version String @db.VarChar(64)
+  message LearningMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  @@id([messageId, materialId])
+  @@index([materialId])
+}
+
+model LearningActivity {
+  userId String
+  courseId String
+  materialId String? @db.VarChar(100)
+  segmentId String? @db.VarChar(64)
+  topic String? @db.VarChar(160)
+  events Int @default(0)
+  updatedAt DateTime @updatedAt
+  user User @relation(fields: [userId], references: [id])
+  course Course @relation(fields: [courseId], references: [id])
+  @@id([userId, courseId])
+}
+
+model LearningQuiz {
+  id String @id
+  userId String
+  courseId String
+  topic String @db.VarChar(200)
+  kind String @db.VarChar(24)
+  materialId String @db.VarChar(100)
+  segmentId String @db.VarChar(64)
+  version String @db.VarChar(64)
+  data Json
+  redacted Boolean @default(false)
+  createdAt DateTime @default(now())
+  user User @relation(fields: [userId], references: [id])
+  course Course @relation(fields: [courseId], references: [id])
+  attempts LearningQuizAttempt[]
+  @@index([userId, courseId, createdAt])
+  @@index([materialId])
+}
+
+model LearningQuizAttempt {
+  id String @id @default(cuid())
+  quizId String
+  userId String
+  response String @db.VarChar(2000)
+  outcome String @db.VarChar(32)
+  feedback Json
+  score Float?
+  createdAt DateTime @default(now())
+  quiz LearningQuiz @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id])
+  @@index([userId, createdAt])
 }
 
 // Additive typed-text materials; existing PDF/Video remain authoritative.

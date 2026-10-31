@@ -22,6 +22,70 @@ beforeEach(async () => {
 });
 const route = () => `/courses/${h.world.courses.vy}/knowledge`;
 
+test('persistent chat survives expired transient receipt, retains follow-up and isolates users',async()=>{
+ const first=await h.http().post(route()+'/answers').set(await h.as('ayse')).send({question:'Evaporation'}).expect(200);
+ const chat=first.body.chat_id;expect(chat).toMatch(/^[a-f0-9-]{36}$/);
+ const list=await h.http().get(route()+'/conversations').set(await h.as('ayse')).expect(200);expect(list.body[0].id).toBe(chat);
+ const saved=await h.http().get(route()+'/conversations/'+chat).set(await h.as('ayse')).expect(200);expect(saved.body.messages).toHaveLength(2);
+ expect(saved.body.messages[1].payload.conversation_id).toBeUndefined();
+ await h.http().get(route()+'/conversations/'+chat).set(await h.as('mehmet')).expect(404);
+ const follow=await h.http().post(route()+'/answers').set(await h.as('ayse')).send({question:'Bir örnek göster',chat_id:chat}).expect(200);
+ expect(follow.body.resolved_question).toContain('Evaporation');expect(follow.body.chat_id).toBe(chat);
+ expect(await h.prisma.learningMessage.count()).toBe(4);
+ await h.http().delete(route()+'/materials/file_water-notes').set(await h.as('ayse')).expect(200);
+ const gone=await h.http().get(route()+'/conversations/'+chat).set(await h.as('ayse')).expect(200);
+ expect(gone.body.messages.filter((m:any)=>m.role==='assistant').every((m:any)=>m.redacted&&m.payload.evidence.length===0)).toBe(true);
+});
+test('changed material versions redact stored message text when reopening history',async()=>{
+ const first=await h.http().post(route()+'/answers').set(await h.as('ayse')).send({question:'Evaporation'}).expect(200);
+ await h.prisma.studyMaterial.update({where:{id:'water-notes'},data:{sha256:'b'.repeat(64)}});
+ const saved=await h.http().get(route()+'/conversations/'+first.body.chat_id).set(await h.as('ayse')).expect(200);
+ expect(saved.body.messages[1].redacted).toBe(true);expect(saved.body.messages[1].payload.evidence).toEqual([]);
+});
+test('durable chat rehydrates page/slide location after MySQL JSON key normalization',async()=>{
+ const pdf=await h.uploadOk('ayse',h.world.courses.vy,{name:'water.pdf'});
+ const text='Evaporation changes liquid water to vapour.';
+ await h.makeReady(pdf.id,[text]);
+ h.ai.on('POST','/api/v1/knowledge/search',r=>{
+  const m=r.body.materials.find((m:any)=>m.kind==='PDF'),location={kind:'page',page:1,char_start:0,char_end:text.length};
+  return {status:200,body:{evidence:[{id:createHash('sha256').update(m.id+m.version+JSON.stringify(location)+text).digest('hex'),text,location,material_id:m.id,version:m.version,kind:m.kind}]}};
+ });
+ const first=await h.http().post(route()+'/answers').set(await h.as('ayse')).send({question:'Evaporation'}).expect(200);
+ const saved=await h.http().get(route()+'/conversations/'+first.body.chat_id).set(await h.as('ayse')).expect(200);
+ expect(Object.keys(saved.body.messages[1].payload.evidence[0].location)).not.toEqual(Object.keys(first.body.evidence[0].location));
+ const follow=await h.http().post(route()+'/answers').set(await h.as('ayse')).send({question:'Bir örnek göster',chat_id:first.body.chat_id}).expect(200);
+ expect(follow.body.evidence[0].location.page).toBe(1);
+});
+test('material rename is owner scoped and leaves original bytes/content unchanged',async()=>{
+ await h.http().patch(route()+'/materials/file_water-notes').set(await h.as('mehmet')).send({title:'hijack'}).expect(404);
+ await h.http().patch(route()+'/materials/file_water-notes').set(await h.as('ayse')).send({title:'Renamed physics'}).expect(200);
+ const m=await h.prisma.studyMaterial.findUniqueOrThrow({where:{id:'water-notes'}});expect(m.title).toBe('Renamed physics');expect(m.sha256).toBe('a'.repeat(64));expect(m.filename).toBe('physics.txt');
+ const r=await h.http().post(route()+'/answers').set(await h.as('ayse')).send({question:'Evaporation'}).expect(200);expect(r.body.evidence[0].title).toBe('Renamed physics');
+});
+test('unprocessed PDF cannot bypass ingestion validation through the visual endpoint',async()=>{
+ const pdf=await h.uploadOk('ayse',h.world.courses.vy,{name:'not-ready.pdf'});
+ await h.http().get(route()+`/materials/pdf_${pdf.id}/visual/1`).set(await h.as('ayse')).expect(404);
+ expect(h.ai.calls('POST','/api/v1/knowledge/render')).toHaveLength(0);
+});
+test('quiz answers persist, wrong-source recommendation clears after correction, open response has no invented grade',async()=>{
+ h.ai.on('POST','/api/v1/knowledge/quiz',r=>({status:200,body:{kind:r.body.kind,question:'Complete: _____ changes liquid water to vapour.',options:[],expected:r.body.kind==='OPEN'?'':'Evaporation',quote:r.body.evidence[0].text}}));
+ const base=`/courses/${h.world.courses.vy}/quizzes`;
+ const q=await h.http().post(base).set(await h.as('ayse')).send({topic:'Evaporation',kind:'CLOZE'}).expect(201);
+ expect(q.body.expected).toBeUndefined();
+ await h.http().get(base+'/'+q.body.id).set(await h.as('mehmet')).expect(404);
+ const answer=base+'/'+q.body.id+'/answers';
+ await h.http().post(answer).set(await h.as('ayse')).send({response:'wrong'}).expect(200).expect(r=>expect(r.body.score).toBe(0));
+ let overview=await h.http().get('/learning/overview').set(await h.as('ayse')).expect(200);expect(overview.body.recommendation.source.material_id).toBe('file_water-notes');
+ await h.http().post(answer).set(await h.as('ayse')).send({response:'Evaporation'}).expect(200);
+ overview=await h.http().get('/learning/overview').set(await h.as('ayse')).expect(200);expect(overview.body.recommendation).toBeNull();expect(overview.body.correct_count).toBe(1);expect(overview.body.mastery_estimated).toBe(false);
+ const open=await h.http().post(base).set(await h.as('ayse')).send({topic:'Evaporation',kind:'OPEN'}).expect(201);
+ await h.http().post(base+'/'+open.body.id+'/answers').set(await h.as('ayse')).send({response:'My reflection'}).expect(200).expect(r=>expect(r.body.score).toBeNull());
+ await h.http().delete(route()+'/materials/file_water-notes').set(await h.as('ayse')).expect(200);
+ await h.http().get(base+'/'+q.body.id).set(await h.as('ayse')).expect(404);
+ expect((await h.http().get('/learning/overview').set(await h.as('ayse'))).body.attempts).toEqual([]);
+ expect((await h.prisma.learningQuizAttempt.findMany()).every(a=>(a.feedback as any).source_removed)).toBe(true);
+});
+
 test('typed material source and scoped manifest reach retrieval, no invented mastery', async () => {
   const r = await h.http().post(route() + '/answers').set(await h.as('ayse')).send({ question: 'What is evaporation?' }).expect(200);
   expect(r.body.status).toBe('SOURCE_EXCERPTS'); expect(r.body.support_confirmed).toBe(false); expect(r.body.video_learning).toEqual([]);

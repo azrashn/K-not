@@ -111,6 +111,15 @@ def test_active_video_context_uses_real_span_or_abstains(index):
     assert not index.search(Search(course_id='course-a', materials=[a], question='Burada ne anlatılıyor?', active_material_id=a.id, current_time_ms=1000))['evidence']
 
 
+def test_selected_page_context_is_bound_to_authorized_material_version(index):
+ a=put(index,'pdf_selected','Pressure changes with depth in water.')
+ b=put(index,'pdf_other','Evaporation converts liquid water to vapour.')
+ sid=hashlib.sha256(('course-a'+a.id+'a').encode()).hexdigest()
+ query=dict(course_id='course-a',materials=[a,b],question='Bu bölümü adım adım açıkla',active_material_id=a.id,active_source_id=sid)
+ r=index.search(Search(**query));assert r['evidence'][0]['id']==sid
+ assert not index.search(Search(**{**query,'active_material_id':b.id}))['evidence']
+
+
 def test_possible_conflict_is_not_a_truth_verdict():
     a = {'id': 'a', 'material_id': 'x', 'text': 'Metals conduct electricity under normal conditions.'}
     b = {'id': 'b', 'material_id': 'y', 'text': 'Metals do not conduct electricity under normal conditions.'}

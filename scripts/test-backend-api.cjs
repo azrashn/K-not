@@ -31,6 +31,7 @@ const child = spawn(process.execPath, args, {
   cwd: e2e ? root : path.join(root, 'backend'), windowsHide: true,
   env: { ...process.env, TEST_DATABASE_PRECREATED: 'true', TEST_DATABASE_RUN_ID: tag,
     TEST_DATABASE_SERVER_URL: url.toString().replace(/\/$/, ''),
+    ...(integration ? {PYTHON:path.join(root,process.platform==='win32'?'ai-service/.venv/Scripts/python.exe':'ai-service/.venv/bin/python')} : {}),
     ...(e2e ? { E2E_DATABASE_URL: url.toString().replace(/\/$/, '') + '/' + schema,
       PYTHON: path.join(root, 'ai-service/.venv/Scripts/python.exe'),
       CHROMIUM_PATH: 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe' } : {}) }, stdio: ['ignore', 'pipe', 'pipe'] });
