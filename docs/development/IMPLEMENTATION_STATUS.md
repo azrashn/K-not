@@ -1,6 +1,11 @@
 # K-NOT geliştirme ilerlemesi
 
 Son güncelleme: 31 Ekim 2026. Dal: feature/video-integration.
+**Son çalışma durumu:** kod ve testler kaydedildi (`91e29c8`, `fdbbbe7`). Daha
+sonraki kontrolde Docker Desktop kendi sailor-ingest.sock açılış hatasında
+kaldı; motor ve K-NOT5174/3100/8110 şu anda erişilemiyor. Veri resetlenmedi.
+Devam için önce DOCKER_STARTUP_BLOCKER.md okunmalı. Aşağıdaki test sonuçları
+Docker'ın sağlıklı olduğu önceki çalışma oturumunda ölçülmüştür.
 Altyapı commit: 91e29c8.
 Yeni ürün deneyimi aşaması (d2d6c3d sonrası): öncelikli öğrenme döngüsü
 uygulandı ve gerçek Edge/yerel model/SQL testi geçti. Kişisel ders CRUD/arşiv,
