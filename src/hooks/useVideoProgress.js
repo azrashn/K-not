@@ -42,14 +42,16 @@ export function useVideoProgress(courseId, videoId, ready, player) {
       current.dirty = false; current.sending = true
       update({ saving: true })
       try {
-        const result = await api.saveVideoProgress(courseId, videoId, { position_ms: position, intervals: batch }, undefined, keepalive)
+        const request = api.saveVideoProgress(courseId, videoId, { position_ms: position, intervals: batch }, keepalive ? undefined : AbortSignal.timeout(15000), keepalive)
+        current.flight = request
+        const result = await request
         current.progress = result; current.failed = false
         update({ progress: result, error: '' })
       } catch (error) {
         current.pending = mergeObserved([...batch, ...current.pending]); current.dirty = true; current.failed = true
         update({ error: videoErrorText(error) })
       } finally {
-        current.sending = false; update({ saving: false })
+        current.sending = false; current.flight = null; update({ saving: false })
         // Flush the final event if unmounted during an in-flight write. Avoid a
         // retry loop on failure; the visible tab retries on its next tick.
         if (!current.active && !current.failed && (current.dirty || current.pending.length)) void flush(true)
@@ -84,5 +86,17 @@ export function useVideoProgress(courseId, videoId, ready, player) {
   const flush = useCallback(() => { session.current?.sample(); return session.current?.flush() }, [])
   const seeked = useCallback(() => { session.current?.tracker.reset(); session.current?.sample(true); void session.current?.flush() }, [])
   const retry = useCallback(() => session.current?.retry(), [])
-  return { ...state, observe, reset, flush, seeked, retry }
+  const flushForQuestion = useCallback(async () => {
+    const current = session.current
+    if (!current?.progress) return false
+    current.sample()
+    if (current.flight) await current.flight.catch(() => {})
+    if (!current.active) return false
+    // Establish an explicit empty observation when a never-played video is
+    // queried. A missing/unreadable progress record remains UNKNOWN server-side.
+    if (current.progress.revision === 0) current.dirty = true
+    await current.flush()
+    return !current.failed
+  }, [])
+  return { ...state, observe, reset, flush, seeked, retry, flushForQuestion }
 }

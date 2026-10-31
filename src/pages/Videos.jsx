@@ -47,7 +47,7 @@ export default function Videos({ courseId }) {
   const [answer, setAnswer] = useState(null)
   const [asking, setAsking] = useState(false)
   const [time, setTime] = useState(0)
-  const input = useRef(null), player = useRef(null), askAbort = useRef(null)
+  const input = useRef(null), player = useRef(null), askAbort = useRef(null), pendingSeek = useRef(null)
   const active = videos.find(v => v.id === selected)
   useEffect(() => () => linkAbort.current?.abort(), [courseId])
   const ready = active?.status === 'indexed'
@@ -70,6 +70,7 @@ export default function Videos({ courseId }) {
     return () => { controller.abort(); clearInterval(timer) }
   }, [refresh])
   useEffect(() => {
+    if (pendingSeek.current?.videoId !== selected) pendingSeek.current = null
     setAnswer(null); setChunks([]); setFrames([]); setFileUrl(null); setQuestion(''); setShowAll(false)
     askAbort.current?.abort(); setAsking(false)
     if (!ready) return
@@ -80,7 +81,7 @@ export default function Videos({ courseId }) {
       .then(([t, f]) => { if (!controller.signal.aborted) { setChunks(t.chunks); setFrames(f.frames) } })
       .catch(e => { if (e.name !== 'AbortError') setError(errorText(e)) })
     api.videoFile(courseId, selected, controller.signal).then(blob => {
-      if (!controller.signal.aborted) { url = URL.createObjectURL(blob); setFileUrl(url) }
+      if (!controller.signal.aborted) { url = URL.createObjectURL(blob); setFileUrl({ videoId: selected, url }) }
     }).catch(e => { if (e.name !== 'AbortError') setError(errorText(e)) })
       .finally(() => { if (!controller.signal.aborted) setMediaLoading(false) })
     return () => { controller.abort(); askAbort.current?.abort(); if (url) URL.revokeObjectURL(url) }
@@ -93,14 +94,25 @@ export default function Videos({ courseId }) {
     catch (e) { setError(errorText(e)) }
     finally { setUploading(false) }
   }
-  async function ask(e) {
-    e.preventDefault()
-    if (!question.trim() || !ready || asking) return
-    askAbort.current = new AbortController()
-    setAsking(true); setError(''); setAnswer(null)
-    try { const a = await api.videoAnswer(courseId, selected, question.trim(), askAbort.current.signal); setAnswer(a) }
+  async function ask(e, explainNow = false) {
+    e?.preventDefault()
+    const text = explainNow ? answer?.question : question.trim()
+    const evidenceId = answer?.evidence_id
+    if (!text || !ready || asking) return
+    const controller = new AbortController()
+    askAbort.current = controller
+    const position = Math.max(0, Math.round((player.current?.currentTime || 0) * 1000))
+    setAsking(true); setError(''); if (!explainNow) setAnswer(null)
+    try {
+      await watch.flushForQuestion()
+      if (controller.signal.aborted) return
+      const a = await api.videoAnswer(courseId, selected, text, controller.signal, {
+        current_time_ms: position, ...(explainNow ? { explain_now: true, evidence_id: evidenceId } : {}),
+      })
+      if (!controller.signal.aborted) setAnswer(a)
+    }
     catch (e) { if (e.name !== 'AbortError') setError(errorText(e)) }
-    finally { setAsking(false) }
+    finally { if (askAbort.current === controller) setAsking(false) }
   }
   async function importLink(e) {
     e.preventDefault()
@@ -114,8 +126,10 @@ export default function Videos({ courseId }) {
     finally { setImporting(false) }
   }
   function seek(seconds) {
-    if (player.current) {
+    pendingSeek.current = { videoId: selected, seconds }
+    if (fileUrl?.videoId === selected && player.current?.readyState >= 1) {
       player.current.currentTime = seconds; setTime(seconds)
+      pendingSeek.current = null
       player.current.scrollIntoView?.({ block: 'center', behavior: 'auto' })
     }
   }
@@ -195,7 +209,8 @@ export default function Videos({ courseId }) {
           <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
             <section className="min-w-0 border border-hair p-3" aria-label="Video oynatıcı">
               {mediaLoading && <p role="status" className="p-4 text-sm">Video açılıyor…</p>}
-              {fileUrl && <video ref={player} controls preload="metadata" src={fileUrl} className="aspect-video w-full bg-black"
+              {fileUrl?.videoId === selected && <video key={selected} ref={player} controls preload="metadata" src={fileUrl.url} className="aspect-video w-full bg-black"
+                onLoadedMetadata={() => { if (pendingSeek.current?.videoId === selected) seek(pendingSeek.current.seconds) }}
                 onTimeUpdate={e => { setTime(e.currentTarget.currentTime); watch.observe() }}
                 onPlay={watch.observe} onPlaying={watch.observe} onPause={watch.flush} onEnded={watch.flush}
                 onSeeking={watch.reset} onSeeked={watch.seeked}
@@ -235,9 +250,33 @@ export default function Videos({ courseId }) {
                 placeholder="Bu bölümde ne anlatılıyor?" className="min-w-0 flex-1 border border-hair bg-paper px-3 py-2 text-sm" />
               <Btn type="submit" disabled={asking || !question.trim()}>{asking ? 'Kaynaklar inceleniyor…' : 'Sor'}</Btn>
             </form>
-            {asking && <p role="status" className="mt-3 text-sm">İlgili transkript ve kareler aranıyor. Yanıt hazırlanıyor.</p>}
+            {asking && <p role="status" className="mt-3 text-sm">Kaynak bölümü ve kayıtlı izleme aralıkları kontrol ediliyor.</p>}
             {answer && <div aria-label="Video yanıtı" className="mt-5 space-y-3">
+              {answer.learning_state && <p className="font-mono text-xs text-accent" aria-label="İlgili bölümün izlenme durumu">
+                {{ WATCHED: 'İlgili bölüm izlendi', PARTIALLY_WATCHED: 'İlgili bölüm kısmen izlendi', UNWATCHED: 'İlgili bölüm henüz izlenmedi', UNKNOWN: 'İzlenme durumu belirsiz' }[answer.learning_state]}
+              </p>}
+              {answer.question && <p className="text-sm text-ink-2">Soru: {answer.question}</p>}
               <p className="whitespace-pre-wrap text-sm leading-relaxed">{answer.answer}</p>
+              <p className="text-xs text-ink-3" aria-label="Açıklamanın üretim durumu">
+                {answer.status === 'GUIDANCE' ? 'Kaynak bulundu; açıklama henüz üretilmedi.'
+                  : answer.generation_status === 'SOURCE_CONFLICT' ? 'Kaynak tutarsızlığı nedeniyle model çağrılmadı.'
+                  : answer.generation_status === 'REJECTED_CONCEPT_CONFLICT' ? 'Tutarlılık kontrolünü geçemeyen model açıklaması gösterilmedi.'
+                  : answer.llm_used ? 'Yerel model kullanıldı; anlamsal doğruluk henüz onaylanmış değildir.'
+                  : 'Bu sonuç model açıklaması değildir.'}
+              </p>
+              {answer.relevant_segment && <div className="flex flex-wrap items-center gap-3 border border-hair p-3 text-sm">
+                <span className="min-w-0 break-words">{answer.relevant_segment.title} · {videoTime(answer.relevant_segment.start_ms / 1000)}–{videoTime(answer.relevant_segment.end_ms / 1000)}</span>
+                <button type="button" onClick={() => seek(answer.relevant_segment.start_ms / 1000)} className="border border-hair px-3 py-2 text-accent">İlgili bölüme git</button>
+                {answer.status === 'GUIDANCE' && <Btn type="button" disabled={asking} onClick={() => ask(null, true)}>Şimdi açıkla</Btn>}
+              </div>}
+              {answer.source_warnings?.map((warning, i) => <p key={i} role="alert" className="border border-hair p-3 text-sm text-kopuk">{warning.message}</p>)}
+              {answer.background_references?.length > 0 && <section aria-label="Videodan ayrı doğrulanmış başvuru bilgisi" className="border border-hair p-3">
+                <h3 className="text-sm font-medium">Doğrulanmış başvuru bilgisi · video alıntısı değildir</h3>
+                {answer.background_references.map(reference => <div key={reference.url} className="mt-2 text-sm">
+                  <p>{reference.statement}</p>
+                  <a href={reference.url} target="_blank" rel="noreferrer noopener" className="mt-1 inline-block text-xs text-accent underline">{reference.source} — {reference.concept}</a>
+                </div>)}
+              </section>}
               <p className="text-xs text-ink-3">{answer.note}</p>
               <div className="grid gap-2 sm:grid-cols-2">
                 {answer.citations.map(c => <button key={c.n} onClick={() => seek(c.timestamp_ms / 1000)} className="border border-hair p-3 text-left hover:border-accent">

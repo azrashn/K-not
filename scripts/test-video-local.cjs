@@ -95,7 +95,12 @@ async function main() {
     const qstart=Date.now();
     const answer = await call('POST',`${route}/${v.id}/answers`,tokens[0],{question:'Videoda hangi konu anlatılıyor? Türkçe kısa cevapla.'});
     assert.equal(answer.status,200,await answer.clone().text());
-    const a = await answer.json();
+    let a = await answer.json();
+    if (a.status === 'GUIDANCE') {
+      record('learning-guidance-before-generation', { learning_state: a.learning_state, llm_used: a.llm_used });
+      const explanation = await call('POST',`${route}/${v.id}/answers`,tokens[0],{question:a.question,explain_now:true,evidence_id:a.evidence_id});
+      assert.equal(explanation.status,200); a = await explanation.json();
+    }
     assert.equal(a.experimental,true); assert.equal(a.support_confirmed,false);
     assert.equal(a.llm_used,true); assert.ok(a.citations.length>0);
     assert.ok(a.citations.every(c=>c.video_id===v.id && c.timestamp_ms>=0));

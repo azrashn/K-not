@@ -14,7 +14,7 @@ export function validateVideoFile(file) {
 // (30 MB / PDF only) do not apply to this workspace.
 export function videoErrorText(error) {
   const videoCodes = ['VALIDATION_ERROR', 'PAYLOAD_TOO_LARGE', 'UNSUPPORTED_MEDIA_TYPE',
-    'JOB_ALREADY_RUNNING', 'PROVIDER_TIMEOUT', 'RATE_LIMITED', 'AI_SERVICE_UNAVAILABLE']
+    'JOB_ALREADY_RUNNING', 'NOT_RETRYABLE', 'PROVIDER_TIMEOUT', 'RATE_LIMITED', 'AI_SERVICE_UNAVAILABLE']
   return videoCodes.includes(error?.code) && typeof error.message === 'string'
     ? error.message : errorText(error)
 }

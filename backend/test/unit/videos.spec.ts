@@ -1,6 +1,7 @@
 import { VideosService, validateVideo } from '../../src/videos/videos.service';
 import type { AppConfig } from '../../src/config/config';
 import { canonicalVideoLink } from '../../src/videos/video-link';
+import { VideoLearningService } from '../../src/videos/video-learning.service';
 
 const user = { id: 'student-a', role: 'USER' as const, email: 'a@example.test' };
 const engine = 'up_0123456789';
@@ -141,18 +142,20 @@ test('private video lookup requires both uploader and course', async () => {
   expect(fetch).not.toHaveBeenCalled();
 });
 test('upstream citation leakage fails closed', async () => {
-  const { service } = fixture();
-  jest.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ answer: 'do not show',
+  const { prisma, access } = fixture();
+  const service = new VideoLearningService(prisma as any, access as any, {} as AppConfig);
+  jest.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ video_id: engine, duration_ms: 100000,
     citations: [{ video_id: 'up_aaaaaaaaaa', n: 1, ms: 1000, t_start: 1, t_end: 2 }] }), { status: 200 }));
   await expect(service.ask(user, 'course-a', row.id, 'question')).rejects.toMatchObject({ code: 'INTERNAL_ERROR' });
 });
 test('valid citations map to local IDs without exposing engine URLs or upgrading support', async () => {
-  const { service } = fixture();
-  const fetch = jest.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ answer: 'experimental', llm_used: true,
+  const { prisma, access } = fixture();
+  const service = new VideoLearningService({ ...prisma, videoProgress: { findUnique: jest.fn().mockResolvedValue({ intervals: [] }) } } as any, access as any, {} as AppConfig);
+  const fetch = jest.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ video_id: engine, duration_ms: 100000, selection_id: 'a'.repeat(32),
     citations: [{ video_id: engine, n: 1, idx: 2, ms: 10000, t_start: 9, t_end: 12,
       transcript: 'quote', media_url: 'http://internal.example/video', owner: 'local' }] }), { status: 200 }));
   const result = await service.ask(user, 'course-a', row.id, 'question');
-  expect(JSON.parse(fetch.mock.calls[0][1]!.body as string).video_ids).toEqual([engine]);
+  expect(JSON.parse(fetch.mock.calls[0][1]!.body as string).video_id).toBe(engine);
   expect(result.support_confirmed).toBe(false);
   expect(result.citations[0]).toMatchObject({ video_id: row.id, timestamp_ms: 10000, frame_index: 2 });
   expect(JSON.stringify(result)).not.toContain('internal.example');

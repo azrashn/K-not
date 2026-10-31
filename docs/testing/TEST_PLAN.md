@@ -40,6 +40,19 @@ API harness'in AI servisi fake'tir; bu testler gerçek AI sonucu olarak sunulmaz
 
 ## Sonraki kalite testleri
 
+Kritik QA regresyonu: `node scripts/test-learning-video.cjs`; gerçek private
+video fixture'ları gerekir, ayrı test referansları/izleme fixture'ları oluşturur.
+İstenen dört sınıf, eksik kaynak, explicit explain, gerçek jump ve kullanıcı
+ayrımı kontrol edilir. Sonuçlar EVALUATION_RESULTS.md'dedir.
+
+Eski Python/MySQL entegrasyonu: komut ortamında ai-service/.venv/Scripts PATH'e
+eklenerek `node scripts/test-backend-api.cjs --integration`. Hashing/extractive
+profil; gerçek üretken model değildir. Mevcut PDF Edge E2E:
+`node scripts/test-backend-api.cjs --e2e`. Her biri yeni boş, sadece test
+hesabına açık şema oluşturur. --e2e yerel Python/Edge'i seçer ve geçici portları
+kullanır. Windows test komutları doğrudan yerel Node CLI üzerinden yürür.
+Test şemaları incelemeye bırakılır; uygulama veritabanı test hedefi olmaz.
+
 Gerçek etiketli sorularla context localization, watched/unwatched kuralı, ortak
 evidence, groundedness, TTS ve quiz geri bildirimi ayrı senaryolarla ölçülecek.
 Şimdiki birim test oranı öğrenme veya AI başarı oranı değildir.

@@ -183,6 +183,19 @@ Bu test yeni bir konuşma/LLM kalite testi değildir; önceki integral testi ayr
 Motor regresyonları yerel FFmpeg PATH profiliyle 5/5 geçti; ilk profilsiz deneme
 FFmpeg bulunamadığı için başarısızdı. Global bir bağımlılık değiştirilmedi.
 
+## İzleme farkında soru-cevap düzeltmesi — 31 Ekim 2026
+
+Motorun hazırlanmış commit'i **7abba5b** gerekir. Soru artık aktif zamanı taşır;
+backend kendi MySQL izleme aralıklarını gerçek kaynak span'ıyla karşılaştırır.
+İzlenmemiş/kısmi/bilinmeyende önce yönlendirme, ardından “İlgili bölüme git” ve
+“Şimdi açıkla” vardır. Kaynak seçimi kullanıcıya bağlıdır; timestamp yoksa
+uydurulmaz. Prim/Dijkstra kaynak çelişkileri dar regresyon kontrolüyle belirtilir;
+doğrulanmış dış bilgi video alıntısından ayrı gösterilir. Genel doğruluk çözülmedi.
+Erken kaynak tıklaması metadata hazır olunca uygulanır; eski video Blob'u yeni
+seçimde oynatılmaz. Yeni model/ücretli API/migrasyon yok. Güncel 692 otomatik
+test, PDF E2E 16/16 adım ve üç gerçek video testi için docs/testing/EVALUATION_RESULTS.md;
+kök neden/fonksiyonlar için docs/development/CONTEXT_VIDEO_RAG_FIX.md.
+
 ## Kalite sınırları
 
 Bu bir çalışan entegrasyon MVP'sidir. Küçük Türkçe ASR matematik terimlerini

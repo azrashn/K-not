@@ -232,21 +232,4 @@ export class VideosService {
     return this.upstream(index === undefined ? `/api/video/${row.engineVideoId}?u=local` :
       `/api/frame/${row.engineVideoId}/${String(index).padStart(6, '0')}.jpg?u=local`, {}, 120000);
   }
-  async ask(user: AuthUser, courseId: string, id: string, question: string) {
-    const row = await this.owned(user, courseId, id);
-    if (!this.limiter.take(user.id)) throw new ApiError('RATE_LIMITED', 'Biraz bekleyip tekrar deneyin.');
-    const result = await this.json('/api/ask', { question, video_ids: [row.engineVideoId] }, 190000);
-    const cites: EngineCitation[] = result.citations || [];
-    if (!Array.isArray(cites) || cites.some(c => c.video_id !== row.engineVideoId ||
-      !Number.isFinite(c.ms) || c.ms < 0 || !Number.isFinite(c.t_start) || !Number.isFinite(c.t_end) || c.t_end < c.t_start ||
-      (c.idx != null && (!Number.isInteger(c.idx) || c.idx < 0 || c.idx > 10000)))) {
-      throw new ApiError('INTERNAL_ERROR', 'Video kaynağı yetkili kapsamın dışında.');
-    }
-    return { answer: String(result.answer || ''), llm_used: Boolean(result.llm_used),
-      support_confirmed: false, experimental: true,
-      note: 'Deneysel video yanıtı: transkript ve formül okuma hataları olabilir. Kaynağı kontrol edin.',
-      citations: cites.map(c => ({ n: c.n, video_id: id, timestamp_ms: c.ms,
-        start_seconds: c.t_start, end_seconds: c.t_end, frame_index: c.idx ?? null,
-        transcript: c.transcript ?? null })) };
-  }
 }

@@ -5,6 +5,10 @@ const path = require('node:path');
 const { spawn, spawnSync } = require('node:child_process');
 const { randomBytes } = require('node:crypto');
 const root = path.resolve(__dirname, '..');
+const integration = process.argv.includes('--integration');
+const e2e = process.argv.includes('--e2e');
+if (integration && e2e) throw new Error('Choose one isolated test suite.');
+const extraArgs = process.argv.slice(2).filter(arg => !['--integration', '--e2e'].includes(arg));
 const tag = Date.now().toString(36);
 const schema = 'knot_test_w1_' + tag;
 const url = new URL('mysql://127.0.0.1:3306');
@@ -21,13 +25,17 @@ const setup = spawnSync('docker', ['exec', '-i', 'knot_mysql', 'sh', '-c', 'MYSQ
   input: `CREATE DATABASE ${schema} CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;\nCREATE USER '${url.username}'@'%' IDENTIFIED BY '${url.password}';\nGRANT ALL PRIVILEGES ON ${schema}.* TO '${url.username}'@'%';\n`,
   encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] });
 if (setup.status !== 0) throw new Error('Isolated API test setup failed; connection details are not printed.');
-const child = spawn(process.execPath, ['node_modules/jest/bin/jest.js', '--config', 'jest.config.js',
-  '--selectProjects', 'api', '--runInBand', '--forceExit', ...process.argv.slice(2)], {
-  cwd: path.join(root, 'backend'), windowsHide: true,
+const args = e2e ? ['tests/e2e/run-e2e.mjs'] : ['node_modules/jest/bin/jest.js', '--config', 'jest.config.js',
+  '--selectProjects', integration ? 'integration' : 'api', '--runInBand', '--forceExit', ...extraArgs];
+const child = spawn(process.execPath, args, {
+  cwd: e2e ? root : path.join(root, 'backend'), windowsHide: true,
   env: { ...process.env, TEST_DATABASE_PRECREATED: 'true', TEST_DATABASE_RUN_ID: tag,
-    TEST_DATABASE_SERVER_URL: url.toString().replace(/\/$/, '') }, stdio: ['ignore', 'pipe', 'pipe'] });
+    TEST_DATABASE_SERVER_URL: url.toString().replace(/\/$/, ''),
+    ...(e2e ? { E2E_DATABASE_URL: url.toString().replace(/\/$/, '') + '/' + schema,
+      PYTHON: path.join(root, 'ai-service/.venv/Scripts/python.exe'),
+      CHROMIUM_PATH: 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe' } : {}) }, stdio: ['ignore', 'pipe', 'pipe'] });
 fs.mkdirSync(path.join(root, 'logs'), { recursive: true });
-const log = path.join(root, 'logs/backend-api-tests.log'); fs.writeFileSync(log, '');
+const log = path.join(root, e2e ? 'logs/pdf-e2e-tests.log' : integration ? 'logs/backend-integration-tests.log' : 'logs/backend-api-tests.log'); fs.writeFileSync(log, '');
 let output = '', pending = '';
 function consume(data) {
   pending += data.toString(); const end = pending.lastIndexOf('\n'); if (end < 0) return;
@@ -39,7 +47,7 @@ child.stdout.on('data', consume); child.stderr.on('data', consume);
 child.on('error', () => { console.error('API test runner could not start.'); process.exitCode = 1; });
 child.on('close', code => {
   consume('\n');
-  console.log(output.split('\n').filter(line => /^(PASS |FAIL |Test Suites:|Tests:|Time:|Ran all)/.test(line)).join('\n'));
+  console.log(output.split('\n').filter(line => /^(PASS |FAIL |Test Suites:|Tests:|Time:|Ran all|\s+[✓✗])/.test(line)).join('\n'));
   console.log('Synthetic test schema retained for inspection:', schema);
   process.exitCode = code ?? 1;
 });

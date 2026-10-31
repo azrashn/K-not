@@ -24,7 +24,7 @@ export const api = {
   videoFrames: (courseId, videoId, signal) => request('GET', `/courses/${enc(courseId)}/videos/${enc(videoId)}/frames`, { signal }),
   videoFile: (courseId, videoId, signal) => request('GET', `/courses/${enc(courseId)}/videos/${enc(videoId)}/file`, { as: 'blob', signal }),
   videoFrame: (courseId, videoId, index, signal) => request('GET', `/courses/${enc(courseId)}/videos/${enc(videoId)}/frames/${enc(index)}`, { as: 'blob', signal }),
-  videoAnswer: (courseId, videoId, question, signal) => request('POST', `/courses/${enc(courseId)}/videos/${enc(videoId)}/answers`, { body: { question }, signal }),
+  videoAnswer: (courseId, videoId, question, signal, context = {}) => request('POST', `/courses/${enc(courseId)}/videos/${enc(videoId)}/answers`, { body: { question, ...context }, signal }),
 
   documents: (courseId, signal) => request('GET', `/courses/${enc(courseId)}/documents`, { signal }),
   document: (documentId, signal) => request('GET', `/documents/${enc(documentId)}`, { signal }),

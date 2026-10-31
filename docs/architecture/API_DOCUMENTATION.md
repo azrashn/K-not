@@ -25,6 +25,35 @@ Yanıt GET ile aynı; revision artırılır. Çoklu yazmada optimistic retry var
 çözülemeyen yarış 409, girdi hatası 422, süre servisi erişim hatası 503.
 İzleme verisi bir erişim izni veya sınav/konu puanı üretmez.
 
+## POST /courses/:courseId/videos/:videoId/answers
+
+Gövde: `{question, current_time_ms?, explain_now?, evidence_id?}`. question-only
+istemci de aynı server kontrolünden geçer. current_time_ms tamsayı ve gerçek
+video süresi içinde olmalıdır; kullanıcı/izleme aralıkları/yüzdesi kabul edilmez.
+JWT ve sahiplik iki aşamada yeniden kontrol edilir.
+
+İlk çağrı model üretmeden kanıtı bulur, ana transcript span'ını MySQL progress
+union'ıyla karşılaştırır. Yanıt: question, learning_state (WATCHED,
+PARTIALLY_WATCHED, UNWATCHED, UNKNOWN), observed_coverage, progress_revision,
+learning_basis=PRIMARY_RETRIEVED_TRANSCRIPT_SPAN, relevant_segment
+({start_ms,end_ms,video_id,title} veya null), citations, context_resolution,
+source_warnings, background_references, evidence_id, answer, status, llm_used.
+Video kimlikleri Knot'a aittir; motorun özel seçim kimliği açığa çıkmaz.
+
+İzlenmemiş/kısmi/bilinmeyende status=GUIDANCE ve llm_used=false. Güvenilir
+zaman yoksa NO_RELIABLE_EVIDENCE, UNKNOWN, relevant_segment=null. WATCHED
+otomatik EXPLANATION yoluna geçer. Açık açıklama için aynı question ve alınmış
+evidence_id ile explain_now=true gönderilir; fresh progress yeniden okunur.
+Seçim kullanıcı/ders/video/soruya bağlı, 10 dakika, RAM'de en çok 128'dir.
+Restart/expiry/kaynak değişimi sonrası NOT_RETRYABLE ile soru yeniden istenir.
+
+EXPLANATION generation_status: GENERATED_UNVERIFIED, SOURCE_CONFLICT,
+REJECTED_CONCEPT_CONFLICT, MODEL_UNAVAILABLE veya INSUFFICIENT_SUPPORT.
+Çelişkili kaynağı açıklamak için model çağrılmaz. Video dışı başvuru
+VERIFIED_BACKGROUND/is_video_evidence=false olarak ayrı taşınır.
+support_confirmed=false ve experimental=true korunur; alıntı doğruluk kanıtı değildir.
+Sınır: kullanıcı başına dakikada 12 çağrı. İzleme sınıfı erişimi engellemez.
+
 ## Diğer video uçları
 
 Liste/yükleme/link/retry/transkript/kare/cevap/silme sözleşmeleri için

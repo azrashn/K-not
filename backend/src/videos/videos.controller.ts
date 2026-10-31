@@ -1,6 +1,6 @@
 import { Body, Controller, Delete, Get, HttpCode, Param, ParseIntPipe, Post, Res, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { IsString, Matches, MaxLength, MinLength } from 'class-validator';
+import { IsBoolean, IsInt, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, MinLength } from 'class-validator';
 import type { Response } from 'express';
 import { Readable } from 'node:stream';
 import { CurrentUser } from '../auth/auth.decorators';
@@ -8,15 +8,21 @@ import type { AuthUser } from '../common/request-context';
 import { IDENTIFIER, IdParam } from '../common/validation';
 import { UploadAccessGuard } from '../documents/upload-access.guard';
 import { VIDEO_MAX_BYTES, VideosService } from './videos.service';
+import { VideoLearningService } from './video-learning.service';
 
 class VideoParam extends IdParam.Course { @Matches(IDENTIFIER) videoId!: string }
 class FrameParam extends VideoParam { @Matches(/^\d{1,5}$/) index!: string }
-class Question { @IsString() @MinLength(1) @MaxLength(2000) @Matches(/\S/) question!: string }
+class Question {
+  @IsString() @MinLength(1) @MaxLength(2000) @Matches(/\S/) question!: string;
+  @IsOptional() @IsInt() @Min(0) @Max(604800000) current_time_ms?: number;
+  @IsOptional() @IsBoolean() explain_now?: boolean;
+  @IsOptional() @IsUUID() evidence_id?: string;
+}
 class VideoLink { @IsString() @MinLength(1) @MaxLength(2048) url!: string }
 
 @Controller('courses/:courseId/videos')
 export class VideosController {
-  constructor(private readonly videos: VideosService) {}
+  constructor(private readonly videos: VideosService, private readonly learning: VideoLearningService) {}
   @Get() list(@CurrentUser() u: AuthUser, @Param() p: IdParam.Course) { return this.videos.list(u, p.courseId); }
   @Delete(':videoId')
   remove(@CurrentUser() u: AuthUser, @Param() p: VideoParam) { return this.videos.remove(u, p.courseId, p.videoId); }
@@ -32,7 +38,7 @@ export class VideosController {
   @Get(':videoId/transcript') transcript(@CurrentUser() u: AuthUser, @Param() p: VideoParam) { return this.videos.transcript(u, p.courseId, p.videoId); }
   @Get(':videoId/frames') frames(@CurrentUser() u: AuthUser, @Param() p: VideoParam) { return this.videos.frames(u, p.courseId, p.videoId); }
   @Post(':videoId/answers') @HttpCode(200)
-  ask(@CurrentUser() u: AuthUser, @Param() p: VideoParam, @Body() b: Question) { return this.videos.ask(u, p.courseId, p.videoId, b.question.trim()); }
+  ask(@CurrentUser() u: AuthUser, @Param() p: VideoParam, @Body() b: Question) { return this.learning.ask(u, p.courseId, p.videoId, b.question.trim(), b); }
   @Get(':videoId/file')
   async file(@CurrentUser() u: AuthUser, @Param() p: VideoParam, @Res() res: Response) {
     return this.stream(await this.videos.media(u, p.courseId, p.videoId), res);

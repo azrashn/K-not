@@ -67,13 +67,19 @@ async function main() {
     await page.getByRole('button', { name: 'Sor', exact: true }).click();
     const response = await answerResponse;
     assert.equal(response.status(), 200);
-    const answer = await response.json();
+    let answer = await response.json();
+    if (answer.status === 'GUIDANCE') {
+      record('learning-guidance-before-explanation', { learning_state: answer.learning_state, llm_used: answer.llm_used });
+      const explained = page.waitForResponse(r => /\/answers$/.test(r.url()) && r.request().method() === 'POST', { timeout: 200000 });
+      await page.getByRole('button', { name: 'Şimdi açıkla', exact: true }).click();
+      const generated = await explained; assert.equal(generated.status(), 200); answer = await generated.json();
+    }
     assert.equal(answer.llm_used, true);
     assert.equal(answer.support_confirmed, false);
     assert.ok(answer.citations.length);
     const answerPanel = page.getByLabel('Video yanıtı', { exact: true });
     await answerPanel.waitFor({ state: 'visible' });
-    await answerPanel.getByRole('button').first().click();
+    await answerPanel.getByRole('button', { name: /^\[1\]/ }).click();
     const target = answer.citations[0].timestamp_ms / 1000;
     await page.waitForFunction(t => {
       const v = document.querySelector('video');

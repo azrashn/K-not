@@ -16,10 +16,13 @@ PARTIAL = yalnızca belirtilen alt kapsam; MISSING = ürün davranışı yok.
   frontend watch-tracker/videos, scripts/test-video-progress.cjs.
   Kanıt: data/video-tests/progress-run.json, gerçek MySQL, reload/seek/replay.
   Öğrenme hâkimiyeti ve anti-cheat kapsam dışıdır.
-- FR-04 / P0 / MISSING: soru kaynağı ile izleme aralıklarının karşılaştırılması
-  henüz yok. FR-03 bunun veri temelidir; soru sorarken bilgi erişimi engellenmez.
-- FR-05 / P0 / MISSING: mevcut soru API'si question kabul eder; oynatıcı
-  zamanı/history anlam çözümüne bağlanmadı. Sonraki somut geliştirme budur.
+- FR-04 / P0 / IMPLEMENTED (ana kaynak span'ı): VideoLearningService,
+  classifyLearning ve gerçek MySQL progress; dört sınıf, guidance/explicit explain,
+  owner-bound evidence. learning-video unit/API, engine ve gerçek Edge testleri.
+  Toplam yüzde/son konum kullanılmaz; sınıf konu hâkimiyeti değildir.
+- FR-05 / P0 / PARTIAL: current_time_ms taşınır; “burada/az önce” gerçek
+  transcript span'ına çözülür. Zaman/kanıt yoksa UNKNOWN. Sohbet geçmişiyle
+  çok turlu anlam çözümü yok. CONTEXT_VIDEO_RAG_FIX.md kanıtları açıklar.
 - FR-06 / P0 / IMPLEMENTED (kaynağa atlama): transkript/kare/citation →
   player.currentTime. Gerçek browser-run ve progress-run kaynak konumu kanıtı.
   Retrieval'ın her soruyu doğru bulduğu anlamına gelmez.
@@ -34,6 +37,6 @@ PARTIAL = yalnızca belirtilen alt kapsam; MISSING = ürün davranışı yok.
   testler, secret/file taraması. Çok kullanıcılı motor servisi auth'ı üretim işi.
 - NFR performans / PARTIAL: sıcak progress GET P50/P95 ölçüldü; LLM/ASR ve
   bütün uygulamanın dağılım ölçümleri tamamlanmadı. PERFORMANCE_BENCHMARK.md.
-- INN-01..05 / PLANNED: izleme verisi dışında learning-aware RAG, kavram
-  alignment, öğrenme açığı, semantik groundedness ve seçili görsel bölge
-  davranışları uygulanmış gibi gösterilmez.
+- INN-01..05 / PARTIAL/PLANNED: ana kaynak izleme farkındalığı ve dar
+  Prim/Dijkstra çelişki kontrolü var. Genel kavram alignment, öğrenme açığı,
+  semantik groundedness ve seçili görsel bölge davranışları eksiktir.

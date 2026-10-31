@@ -13,7 +13,7 @@
  * The answer provider is the extractive baseline (not an LLM).
  */
 import { spawn, spawnSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, openSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, openSync, readFileSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
@@ -90,7 +90,7 @@ async function main() {
   console.log(`work dir: ${work}`)
   // 1) Database: migrate + admin seed (seed-only accounts, U1). Never resets data.
   const dbEnv = { ...process.env, DATABASE_URL: DB }
-  run('npx', ['prisma', 'migrate', 'deploy'], { cwd: BACKEND, env: dbEnv })
+  run(process.execPath, ['node_modules/prisma/build/index.js', 'migrate', 'deploy'], { cwd: BACKEND, env: dbEnv })
   const conn = await createRequire(path.join(BACKEND, 'package.json'))('mariadb').createConnection(DB.replace(/^mysql:/, 'mariadb:'))
   const [{ n }] = await conn.query('SELECT COUNT(*) AS n FROM Document')
   await conn.end()
@@ -110,7 +110,7 @@ async function main() {
       embedding: { backend: 'hashing', model: 'knot-hashing-v1', revision: null, dimension: 512, query_prefix: '', document_prefix: '', normalize: true, distance: 'cosine' },
     },
   }))
-  run('npx', ['ts-node', 'scripts/seed.ts', seedFile], { cwd: BACKEND, env: dbEnv })
+  run(process.execPath, ['node_modules/ts-node/dist/bin.js', 'scripts/seed.ts', seedFile], { cwd: BACKEND, env: dbEnv })
 
   // 2) Python ai-service (WBS-2 ingestion + WBS-3 RAG). Internal tokens stay server-side.
   start('ai-service', PYTHON, ['-m', 'uvicorn', 'knot_rag.main:app', '--host', '127.0.0.1', '--port', String(aiPort)], {
@@ -137,7 +137,7 @@ async function main() {
   await waitFor('backend', async () => (await fetch(`${apiUrl}/courses`)).status === 401)
 
   // 4) Built frontend served by `vite preview`, /api proxied to the backend (browser never sees ai-service).
-  start('web', 'npx', ['vite', 'preview', '--host', '127.0.0.1', '--port', String(webPort), '--strictPort'], {
+  start('web', process.execPath, ['node_modules/vite/bin/vite.js', 'preview', '--host', '127.0.0.1', '--port', String(webPort), '--strictPort'], {
     cwd: ROOT, env: { ...process.env, VITE_API_PROXY_TARGET: apiUrl },
   })
   await waitFor('vite preview', async () => (await fetch(web)).ok)
@@ -210,7 +210,7 @@ async function main() {
       ])
       const file = path.join(work, 'download.pdf')
       await dl.saveAs(file)
-      const head = spawnSync('head', ['-c', '5', file]).stdout.toString()
+      const head = readFileSync(file).subarray(0, 5).toString()
       check(head === '%PDF-', `downloaded file is not a PDF (${head})`)
     })
 
