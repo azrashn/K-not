@@ -1,5 +1,6 @@
 /** Authenticated, course-scoped bridge. Engine IDs/URLs never define authorization. */
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
+import { AiServiceClient } from '../ai/ai-client';
 import { createHash } from 'node:crypto';
 import { ApiError, notFound } from '../common/errors';
 import { newId } from '../common/ids';
@@ -35,7 +36,7 @@ export class VideosService {
   // bytes must not race the engine's physical file cleanup.
   private readonly contentWrites = new Map<string, Promise<void>>();
   constructor(private readonly prisma: PrismaService, private readonly access: AccessService,
-    @Inject(APP_CONFIG) config: AppConfig) {
+    @Inject(APP_CONFIG) config: AppConfig, @Optional() private readonly ai?: AiServiceClient) {
     this.base = (config.videoServiceUrl || 'http://127.0.0.1:7862').replace(/\/+$/, '');
   }
 
@@ -135,6 +136,10 @@ export class VideosService {
     const initial = await this.owned(user, courseId, id);
     return this.withContentLock(initial.contentSha256, async () => {
       const row = await this.owned(user, courseId, id);
+      if (this.ai) {
+        const cleanup = await this.ai.call('DELETE', `/api/v1/knowledge/${encodeURIComponent(courseId)}/video_${encodeURIComponent(id)}`, { timeoutMs: 60000 });
+        if (cleanup.kind !== 'response' || cleanup.status !== 200) throw new ApiError('AI_SERVICE_UNAVAILABLE', 'Ortak video kaynakları temizlenemedi. Kayıt korundu; yeniden deneyin.');
+      }
       const references = await this.prisma.video.count({ where: { engineVideoId: row.engineVideoId } });
       let retained = references > 1;
       if (!retained) {

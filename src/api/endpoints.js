@@ -9,6 +9,18 @@ export const api = {
 
   courses: (signal) => request('GET', '/courses', { signal }),
   course: (courseId, signal) => request('GET', `/courses/${enc(courseId)}`, { signal }),
+  knowledgeMaterials: (courseId, signal) => request('GET', `/courses/${enc(courseId)}/knowledge/materials`, { signal }),
+  knowledgePreview: (courseId, id, signal) => request('GET', `/courses/${enc(courseId)}/knowledge/materials/${enc(id)}`, { signal }),
+  knowledgeFile: (courseId, id) => request('GET', `/courses/${enc(courseId)}/knowledge/materials/${enc(id)}/file`, { as: 'blob' }),
+  knowledgeSource: (courseId, id, segment, signal) => request('GET', `/courses/${enc(courseId)}/knowledge/materials/${enc(id)}/sources/${enc(segment)}`, { signal }),
+  knowledgeAnswer: (courseId, body, signal) => request('POST', `/courses/${enc(courseId)}/knowledge/answers`, { body, signal }),
+  knowledgePractice: (courseId, conversation) => request('POST', `/courses/${enc(courseId)}/knowledge/practice`, { body: { conversation_id: conversation } }),
+  knowledgeGrade: (courseId, id, answer) => request('POST', `/courses/${enc(courseId)}/knowledge/practice/${enc(id)}/answers`, { body: { answer } }),
+  knowledgeRemove: (courseId, id) => request('DELETE', `/courses/${enc(courseId)}/knowledge/materials/${enc(id)}`),
+  knowledgeUpload: (courseId, file) => {
+    const form = new FormData(); form.append('file', file, file.name)
+    return request('POST', `/courses/${enc(courseId)}/knowledge/materials`, { form })
+  },
   videos: (courseId, signal) => request('GET', `/courses/${enc(courseId)}/videos`, { signal }),
   importVideoLink: (courseId, url, signal) => request('POST', `/courses/${enc(courseId)}/videos/import-link`, { body: { url }, signal }),
   uploadVideo: (courseId, file) => {

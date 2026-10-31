@@ -14,6 +14,9 @@ class LLMRequest:
     max_output_tokens: int = 1200
     json_mode: bool = True
     timeout_seconds: float = 30.0
+    top_p: float | None = None
+    presence_penalty: float | None = None
+    frequency_penalty: float | None = None
 
 
 @dataclass(frozen=True)

@@ -21,6 +21,9 @@ import { SchedulerService } from './jobs/scheduler.service';
 import { PrismaService } from './prisma/prisma.service';
 import { AnswersController } from './rag/answers.controller';
 import { RagService } from './rag/rag.service';
+import { KnowledgeService } from './knowledge/knowledge.service';
+import { KnowledgeController } from './knowledge/knowledge.controller';
+import { UploadAccessGuard } from './documents/upload-access.guard';
 import { LocalStorage, Storage } from './storage/storage';
 
 @Global()
@@ -52,9 +55,11 @@ export class AppModule implements NestModule {
     return {
       module: AppModule,
       imports: [CoreModule.forRoot(config), DocumentsModule, VideosModule],
-      controllers: [HealthController, AuthController, CoursesController, AnswersController, InternalCallbacksController],
+      controllers: [HealthController, AuthController, CoursesController, AnswersController, InternalCallbacksController, KnowledgeController],
       providers: [
         RagService,
+        KnowledgeService,
+        UploadAccessGuard,
         SchedulerService,
         { provide: APP_GUARD, useClass: JwtAuthGuard },
         { provide: APP_FILTER, useClass: ApiExceptionFilter },

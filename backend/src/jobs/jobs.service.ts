@@ -359,6 +359,9 @@ export class JobsService {
         return false;
       }
     }
+    const unified = await this.ai.call('DELETE', `/api/v1/knowledge/${encodeURIComponent(doc.courseId)}/pdf_${encodeURIComponent(documentId)}`,
+      { timeoutMs: this.config.ingestionTimeoutMs });
+    if (unified.kind !== 'response' || unified.status !== 200) return false;
     try {
       await this.storage.deletePrefix(documentPrefix(documentId));
     } catch (e) {

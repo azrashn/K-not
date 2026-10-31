@@ -56,7 +56,20 @@ $env:NESTJS_INTERNAL_URL = 'http://127.0.0.1:3100'
 $env:VITE_API_PROXY_TARGET = 'http://127.0.0.1:3100'
 $env:PYTHONUTF8 = '1'
 $env:PYTHONUNBUFFERED = '1'
+# Reuse only the already installed, isolated 2B Instruct model. No download,
+# shared Ollama change or paid endpoint; absent model leaves honest excerpts.
+$env:UNIFIED_LLM_BASE_URL = ''
+$env:UNIFIED_LLM_MODEL = ''
+try {
+    $models = (Invoke-RestMethod -Uri 'http://127.0.0.1:11436/api/tags' -TimeoutSec 3).models
+    $localModel = $models | Where-Object { $_.name -match '2b' -and $_.name -match 'instruct' } | Select-Object -First 1
+    if ($localModel) {
+        $env:UNIFIED_LLM_BASE_URL = 'http://127.0.0.1:11436/v1'
+        $env:UNIFIED_LLM_MODEL = $localModel.name
+    }
+} catch { Write-Host 'Unified explanation model unavailable; source excerpts remain usable.' }
 Start-Local 'ai' 8110 (Join-Path $root 'ai-service\.venv\Scripts\python.exe') @('-m','uvicorn','knot_rag.main:app','--host','127.0.0.1','--port','8110','--env-file','.env') (Join-Path $root 'ai-service')
+Wait-Ready 'http://127.0.0.1:8110/health'
 Start-Local 'backend' 3100 (Get-Command node).Source @((Join-Path $root 'scripts\video-backend.cjs')) $root
 Start-Local 'frontend' 5174 (Get-Command node).Source @((Join-Path $root 'node_modules\vite\bin\vite.js'),'--host','127.0.0.1','--port','5174','--strictPort') $root
 Wait-Ready 'http://127.0.0.1:3100/health'

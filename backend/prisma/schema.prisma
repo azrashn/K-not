@@ -71,6 +71,7 @@ model User {
   documents    Document[]
   videos       Video[]
   videoProgress VideoProgress[]
+  studyMaterials StudyMaterial[]
 }
 
 model Course {
@@ -83,6 +84,7 @@ model Course {
   memberships    CourseMembership[]
   documents      Document[]
   videos         Video[]
+  studyMaterials StudyMaterial[]
 
   @@unique([code, term])
 }
@@ -132,6 +134,25 @@ model CourseMembership {
 
   @@id([userId, courseId])
   @@index([courseId])
+}
+
+// Additive typed-text materials; existing PDF/Video remain authoritative.
+model StudyMaterial {
+  id        String   @id
+  courseId  String
+  ownerId   String
+  kind      String   @db.VarChar(8)
+  title     String   @db.VarChar(300)
+  filename  String   @db.VarChar(255)
+  sha256    String   @db.Char(64)
+  storageKey String? @db.VarChar(255)
+  segments  Json
+  createdAt DateTime @default(now())
+  course    Course   @relation(fields: [courseId], references: [id])
+  owner     User     @relation(fields: [ownerId], references: [id])
+
+  @@unique([courseId, ownerId, sha256])
+  @@index([courseId, ownerId])
 }
 
 model Document {

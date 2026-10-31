@@ -4,7 +4,64 @@ Son güncelleme: 31 Ekim 2026. Dal: feature/video-integration.
 Başlangıç commit'i: 6401c29. Ana talep: video merkezli, bağlam ve öğrenme
 durumu farkında akademik asistan. Bu dosya sonraki oturumun giriş noktasıdır.
 
-## Son tamamlanan düzeltme — bağlama ve izlemeye bağlı video QA
+## Güncel aşama — Unified course workspace (4843afa sonrası)
+
+Birleşik ders çekirdeği gerçek kodda eklendi ve yerel kabul/regresyon testleri
+geçti. Giriş: ders sayfası → Çalışma alanını aç → /ogrenme.
+Video/PDF'nin mevcut SQL/işleme altyapısı korunur. PPTX/TXT için StudyMaterial,
+özgün dosya saklama, slayt bazlı metin/not çıkarma ve iki eklemeli migrasyon var.
+Yeni servis/model/paket indirilmedi. Önceki video motoru commit'i 7abba5b kalır.
+
+Ortak KnowledgeService/unified.py: taze kullanıcı/ders manifest'i, sürümlü
+Chroma text projection, gerçek E5 dense+lexical retrieval, tahmini konu
+ilişkileri, video span başına mevcut dört izleme sınıfı, bounded takip sorusu,
+aynı ekranda gerçek page/slide/video source navigation. PDF/PPTX bulunması
+izlenmeyen videonun bütün açıklamayı engellemesini önler. Algoritma adına özel
+kural veya sabit kavram bilgisi bu ortak yolda yoktur.
+
+Üretim: yerel 2B Instruct, en çok üç çeşitli kanıt ve yapılandırılmış claim/source
+JSON. Kaynak numaraları server'da doğrulanır; anlamsal doğruluk hâlâ deneysel.
+Kesilmiş/bozuk üretim gösterilmez; gerçek kaynak metinlerine dönülür.
+Konuşma ve pratik seçimleri kullanıcı/ders bağlı, 10 dakika, en çok 128 RAM kaydı.
+Kaynak değişimi/silme eski seçimleri reddeder. İçeriksiz kalıcı silme marker'ı
+geç index isteğinin silinen kaynağı diriltmesini engeller.
+
+Kaynaklı literal boşluk doldurma ve gerçek kaynağa bağlı geri bildirim eklendi;
+kavramsal quiz/rubrik veya kalıcı attempt değildir. Yerel browser Türkçe sesi
+varsa play/pause/resume çalışır; son Edge turunda STARTED/pause/resume
+doğrulandı. Fiziksel ses kalitesi ölçülmedi.
+PPTX görünümü çıkarılmış metindir; özgün sunum indirilebilir, görsel render/OCR yok.
+
+İlk gerçek üç materyal testinde 6 kaynak gerçek source endpoint'inden açıldı;
+takipte indexed_materials=0, diğer dersin biyoloji kaynağı karışmadı, özel video
+ilerlemesi aynı kaldı. 390px taşma/JS hatası yok. İlk off-topic false-positive
+testi ve Türkçe İ takip testi başarısız oldu; kök nedenler giderilip regresyon
+eklendi. İlk model üretimleri kesildi/kaynak numarası hatalıydı; yapılandırılmış
+çıktıyla gerçek üç materyal cevabı 1.258s ve 1.366s turlarda başarılı oldu.
+Bunlar doğruluk veya genel gecikme garantisi değildir.
+
+Son regresyon toplamı: frontend83 + Nest unit91 + API105 + Python418 + motor26
++ gerçek Python/MySQL integration1 = **724**. Ayrıca eski PDF Edge16/16 adım,
+yeni ortak Edge/source/practice/progress/voice testi ve kalıcılık/benchmark geçti.
+Yeni ekranda gerçek 3.2s oynatma 3135ms olarak SQL'e kaydoldu; eski asıl
+video ilerlemesi aynı kaldı. Son birleşik üretim 5.776s; önceki 1.258–2.378s
+örnekleri de var (doğruluk/hız garantisi değil). Sıcak ortak retrieval P50
+79.30ms, aligned112.66ms (her profilde n=3). Gerçek UNWATCHED + PDF cevabı
+engellenmedi; gerçek oynatma sonrası ilgili video span'ı PARTIALLY_WATCHED oldu.
+Python restart sonrası yeniden materyal embedding'i yok; soğuk model yükleme
+ilk istekte 8.99s. Ayrıntı ve tüm sınırlamalar AI_EVALUATION_RESULTS.md'de.
+Son ayrı yerel ses kontrolü STARTED_PAUSED_RESUMED; hiç başlamama durumunda
+12s timeout ve metin fallback'i var. Anlık GPU gözlemi:
+RTX5060Laptop8151MiB, used3340MiB, free4560MiB;
+bu tepe tüketim değildir. Yeni paket/model veya ücretli API kullanılmadı.
+
+Belgeler: UNIFIED_MULTIMODAL_ARCHITECTURE.md, MATERIAL_DATA_MODEL.md,
+CROSS_MATERIAL_RETRIEVAL.md, LEARNING_CONTEXT_MODEL.md, MULTIMODAL_TEST_PLAN.md,
+AI_EVALUATION_RESULTS.md ve REMAINING_WORK.md. İleri özellikler tamamlanmış sayılmaz.
+Eski PDF/video özel QA uçları geriye uyumluluk için korunur; yeni varsayılan ders
+çalışma alanı birleşiktir. Sıradaki iş kalan belgede önceliklendirilir.
+
+## Önceki tamamlanan düzeltme — bağlama ve izlemeye bağlı video QA
 
 31 Ekim kritik hata talebi, 769941a üzerine uygulandı. Ayrıntılı kök neden,
 dosya/fonksiyonlar, istenen 10 senaryo ve sınırlar:

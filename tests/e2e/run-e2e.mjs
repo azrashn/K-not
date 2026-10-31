@@ -218,6 +218,9 @@ async function main() {
     let cite = null
     await step('QUESTION → ANSWER (extractive baseline, server support label)', async () => {
       await page.getByRole('button', { name: /Çalışma alanını aç/ }).click()
+      // This regression covers the retained PDF claim/highlight contract.
+      // The new cross-material workspace has a separate real-browser test.
+      await page.goto(`${web}/${courseHash}/calisma`)
       const box = page.getByLabel('Materyallerine bir soru sor')
       await box.fill(QUESTION)
       const answered = page.waitForResponse((r) => r.url().endsWith('/answers'))

@@ -14,6 +14,7 @@ import Workspace from './pages/Workspace'
 import Quiz from './pages/Quiz'
 import Analytics from './pages/Analytics'
 import Videos from './pages/Videos'
+import LearningWorkspace from './pages/LearningWorkspace'
 
 // Rota prop olarak donar: çıkış animasyonundaki eski sayfa yeni rotayı okuyup erken oluşmaz.
 function Page({ route }) {
@@ -22,6 +23,7 @@ function Page({ route }) {
     case 'list': return <Courses />
     case 'course': return <CourseDetail courseId={courseId} />
     case 'workspace': return <Workspace courseId={courseId} />
+    case 'learning': return <LearningWorkspace key={courseId} courseId={courseId} />
     case 'videos': return <Videos courseId={courseId} />
     case 'quiz': return <Quiz />
     case 'analytics': return <Analytics />

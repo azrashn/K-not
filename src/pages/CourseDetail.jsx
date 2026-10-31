@@ -126,7 +126,7 @@ export default function CourseDetail({ courseId }) {
         <p className="m-0 mt-2 max-w-[36rem] text-[14.5px] leading-relaxed text-ink-3">Çalışma alanı yalnızca bu materyallere dayanır. Hazır olmayan materyal yanıtlarda kullanılmaz.</p>
 
         <div className="mt-6 flex flex-wrap items-center gap-3">
-          <Btn arrow className="group" disabled={r.ready === 0} onClick={() => navigate(`/dersler/${c.id}/calisma`)}>Çalışma alanını aç</Btn>
+          <Btn arrow className="group" onClick={() => navigate(`/dersler/${c.id}/ogrenme`)}>Çalışma alanını aç</Btn>
           <Btn variant="soft" disabled title="Alıştırma üretimi henüz bağlı değil (WBS-6)">Alıştırma başlat</Btn>
           <Btn variant="quiet" onClick={() => setUploader((u) => !u)} aria-expanded={uploader}><UploadSimple size={16} /> Materyal ekle</Btn>
           <Btn variant="soft" onClick={() => navigate(`/dersler/${c.id}/videolar`)}>Ders videoları</Btn>

@@ -50,6 +50,7 @@ export class FakeAiService {
         let out: Reply;
         if (route) out = route[2](rec);
         else if (rec.method === 'GET' && rec.path === '/ready') out = { status: 200, body: { status: 'ready', checks: {}, index: this.readyIndex } };
+        else if (rec.method === 'DELETE' && rec.path.startsWith('/api/v1/knowledge/')) out = { status: 200, body: { deleted: true } };
         else out = { status: 404, body: { error: { code: 'NOT_FOUND' } } };
         if (out === 'hang') return; // never answers (client timeout)
         if (out === 'drop') { req.socket.destroy(); return; }

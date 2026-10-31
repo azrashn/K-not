@@ -196,6 +196,22 @@ seçimde oynatılmaz. Yeni model/ücretli API/migrasyon yok. Güncel 692 otomati
 test, PDF E2E 16/16 adım ve üç gerçek video testi için docs/testing/EVALUATION_RESULTS.md;
 kök neden/fonksiyonlar için docs/development/CONTEXT_VIDEO_RAG_FIX.md.
 
+## Ortak ders çalışma alanı — 4843afa sonrası
+
+Ders içindeki ana Çalışma alanını aç düğmesi artık /ogrenme rotasını açar.
+PDF/video işleme korunur; PPTX/TXT metin ve notlarıyla aynı derste aranır.
+Kaynaklar gerçek sayfa/slayt/zamana açılır. Özgün PPTX/TXT dosyası ayrıca saklanır.
+Start script iki eklemeli StudyMaterial migrasyonunu uygular; reset gerekmez.
+Yerel özel 2B Instruct model zaten yüklüyse ortak açıklamada yeniden kullanılır;
+paylaşılan Ollama ayarı değiştirilmez. Yoksa gerçek kaynak alıntıları gösterilir.
+
+Yeni genel akışta algoritma isimli sabit bilgi/guard kullanılmaz. Eski özel
+uçlar uyumluluk için kalır. Konuşma 10 dakika RAM'dedir; servis restart sonrası
+Yeni konuşma seçilmelidir. Birleşik kaynak, sınırlar ve testler:
+docs/architecture/UNIFIED_MULTIMODAL_ARCHITECTURE.md ve
+docs/testing/AI_EVALUATION_RESULTS.md. Tam görsel slayt render/OCR ve bölge QA,
+kalıcı kavramsal quiz/öğrenme değerlendirmesi tamamlanmış sayılmaz.
+
 ## Kalite sınırları
 
 Bu bir çalışan entegrasyon MVP'sidir. Küçük Türkçe ASR matematik terimlerini

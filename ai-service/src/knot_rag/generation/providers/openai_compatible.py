@@ -47,6 +47,12 @@ class OpenAICompatibleProvider:
         }
         if request.json_mode:
             body["response_format"] = {"type": "json_object"}
+        if request.top_p is not None:
+            body['top_p'] = request.top_p
+        if request.presence_penalty is not None:
+            body['presence_penalty'] = request.presence_penalty
+        if request.frequency_penalty is not None:
+            body['frequency_penalty'] = request.frequency_penalty
         headers = {"Content-Type": "application/json"}
         if self._api_key:
             headers["Authorization"] = f"Bearer {self._api_key}"

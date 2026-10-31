@@ -1,5 +1,21 @@
 # Video öğrenme API eki
 
+## Güncel ortak ders API'si
+
+Yeni varsayılan çalışma ekranı /dersler/:courseId/ogrenme kullanır.
+GET/POST /courses/:courseId/knowledge/materials; GET materials/:materialId;
+GET materials/:materialId/sources/:segmentId; GET materials/:materialId/file;
+DELETE materials/:materialId (yeni PPTX/TXT). PDF/video mevcut dosya uçlarını
+korur. POST knowledge/answers ve POST knowledge/search aynı yetkili ders
+manifest'ini kullanır; search model çağırmaz. Body/yanıt/sınırlar için
+[CROSS_MATERIAL_RETRIEVAL.md](CROSS_MATERIAL_RETRIEVAL.md).
+
+POST knowledge/practice {conversation_id}: gerçek seçilmiş kaynaktan literal
+boşluk doldurma. POST knowledge/practice/:id/answers {answer}: EXACT_MATCH
+veya REVIEW_SOURCE, kaynak bağlantısı, mastery_estimated=false, persisted=false.
+Sahip/ders/kaynak sürümü her aşamada kontrol edilir. Kalıcı sınav puanı değildir.
+Eski özel video/PDF API'leri aşağıda geriye uyumluluk için belgelenmiştir.
+
 Mevcut PDF API sözleşmeleri değişmedi. Bütün Knot video uçları JWT, ders üyeliği
 ve yükleyen sahipliğiyle korunur. Başka kullanıcı/ders 404, oturumsuz 401.
 

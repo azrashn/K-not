@@ -53,7 +53,8 @@ def create_app(components: Components) -> FastAPI:
         header_id = request.headers.get("x-request-id", "")
         request.state.request_id = header_id if _REQUEST_ID.match(header_id) else str(uuid.uuid4())
         length = request.headers.get("content-length")
-        if length and length.isdigit() and int(length) > MAX_BODY_BYTES:
+        body_limit = 4 * 1024 * 1024 if request.url.path.startswith('/api/v1/knowledge/') else MAX_BODY_BYTES
+        if length and length.isdigit() and int(length) > body_limit:
             return _error(413, ErrorCode.VALIDATION_ERROR, "Request body too large.", request.state.request_id)
         response = await call_next(request)
         response.headers["X-Request-ID"] = request.state.request_id
@@ -160,4 +161,6 @@ def create_app(components: Components) -> FastAPI:
     def answer(body: AnswerRequest, request: Request) -> GroundedAnswer:
         return components.rag.answer(body, resolve_request_id(request, body.request_id))
 
+    from knot_rag.unified import install
+    install(app, components, require_internal_auth)
     return app

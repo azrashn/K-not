@@ -12,5 +12,6 @@ import { VideoLearningService } from './video-learning.service';
   }) })],
   controllers: [VideosController, VideoProgressController],
   providers: [VideosService, VideoProgressService, VideoLearningService, UploadAccessGuard],
+  exports: [VideosService],
 })
 export class VideosModule {}

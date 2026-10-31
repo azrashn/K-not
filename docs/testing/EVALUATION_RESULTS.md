@@ -1,5 +1,8 @@
 # Sonuçlar ve ölçülmeyenler
 
+Güncel birleşik ders dilimi: [AI_EVALUATION_RESULTS.md](AI_EVALUATION_RESULTS.md).
+Aşağıdaki sayılar önceki video-QA ve FR-03 turlarının tarihsel kayıtlarıdır.
+
 ## Son kritik video QA düzeltmesi — 31 Ekim 2026
 
 Önceki sayılar aşağıda tarihsel kayıt olarak korunur. Güncel regresyon:
