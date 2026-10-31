@@ -1,5 +1,6 @@
 import { VideosService, validateVideo } from '../../src/videos/videos.service';
 import type { AppConfig } from '../../src/config/config';
+import { canonicalVideoLink } from '../../src/videos/video-link';
 
 const user = { id: 'student-a', role: 'USER' as const, email: 'a@example.test' };
 const engine = 'up_0123456789';
@@ -12,6 +13,52 @@ function fixture() {
   return { prisma, access, service };
 }
 afterEach(() => jest.restoreAllMocks());
+
+test('link imports rebuild fixed origins and reject SSRF, folders and playlists', () => {
+  expect(canonicalVideoLink('https://youtu.be/BaW_jenozKc?t=10&list=ignored')).toBe('https://www.youtube.com/watch?v=BaW_jenozKc');
+  expect(canonicalVideoLink('https://drive.google.com/open?id=0ByeS4oOUV-49Zzh4R1J6R09zazQ')).toBe('https://drive.google.com/file/d/0ByeS4oOUV-49Zzh4R1J6R09zazQ/view');
+  for (const url of ['http://127.0.0.1/', 'https://youtube.com.evil.test/watch?v=BaW_jenozKc',
+    'https://youtube.com@127.0.0.1/watch?v=BaW_jenozKc', 'https://www.youtube.com/playlist?list=x',
+    'https://drive.google.com/drive/folders/abcdef', 'https://youtu.be:8080/BaW_jenozKc']) {
+    expect(() => canonicalVideoLink(url)).toThrow('HTTPS');
+  }
+});
+test('non-members cannot trigger link downloads', async () => {
+  const { access, service } = fixture();
+  access.requireMember.mockRejectedValue(new Error('not a member'));
+  const fetch = jest.spyOn(globalThis, 'fetch');
+  await expect(service.importLink(user, 'other-course', 'https://youtu.be/BaW_jenozKc')).rejects.toThrow('not a member');
+  expect(fetch).not.toHaveBeenCalled();
+});
+test('imported video uses existing private upload path and strips remote title controls', async () => {
+  const { service } = fixture();
+  const bytes = Buffer.from('0000ftyp0000');
+  jest.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(bytes, { headers: {
+    'x-video-title': encodeURIComponent('A/lecture\n'), 'x-video-extension': '.mp4' } }));
+  const upload = jest.spyOn(service, 'upload').mockResolvedValue({ id: 'private-row' } as any);
+  await service.importLink(user, 'course-a', 'https://youtu.be/BaW_jenozKc');
+  expect(upload).toHaveBeenCalledWith(user, 'course-a', expect.objectContaining({ originalname: 'A lecture.mp4', buffer: bytes }));
+});
+test('download failure is actionable and releases the import slot', async () => {
+  const { service } = fixture();
+  jest.spyOn(globalThis, 'fetch').mockImplementation(async () => new Response('', { status: 413 }));
+  for (let n = 0; n < 2; n++) {
+    await expect(service.importLink(user, 'course-a', 'https://youtu.be/BaW_jenozKc')).rejects.toMatchObject({ code: 'PAYLOAD_TOO_LARGE' });
+  }
+});
+test('streaming downloads are capped even without a content-length header', async () => {
+  const { service } = fixture();
+  const cancel = jest.fn();
+  let chunks = 0;
+  const block = new Uint8Array(1024 * 1024);
+  const stream = new ReadableStream({ pull(controller) {
+    if (chunks++ < 101) controller.enqueue(block); else controller.close();
+  }, cancel });
+  jest.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(stream));
+  const upload = jest.spyOn(service, 'upload');
+  await expect(service.importLink(user, 'course-a', 'https://youtu.be/BaW_jenozKc')).rejects.toMatchObject({ code: 'PAYLOAD_TOO_LARGE' });
+  expect(upload).not.toHaveBeenCalled();
+});
 
 test('rejects spoofed video extensions before contacting the engine', () => {
   expect(() => validateVideo({ originalname: 'lecture.mp4', size: 5, buffer: Buffer.from('%PDF-') } as any)).toThrow('MP4');

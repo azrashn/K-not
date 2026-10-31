@@ -13,6 +13,13 @@ Python/Node paketi kurulmaz. Docker Desktop açıkken repo kökünden:
 
 Arayüz `http://127.0.0.1:5174/#/dersler`. Kendi hesabınla giriş yap, bir ders aç,
 **Ders videoları** → **Video yükle**. MP4 / WebM, en fazla 100 MB.
+Alternatif: **YouTube veya Drive bağlantısı** alanına video URL'sini yapıştır,
+**Bağlantıdan ekle** düğmesine bas. Drive için “Bağlantıya sahip herkes” erişimi
+gerekir; hesapla Drive seçicisi bu sürümde yok. Yalnızca tek video alınır;
+klasör/playlist, giriş isteyen veya canlı videolar desteklenmez. Bilinen süresi
+iki saati aşan ve 100 MB üstü dosyalar reddedilir. İndirme en fazla üç dakika;
+indirme bitene kadar sayfayı açık tut. Ardından normal işleme arka planda sürer.
+YouTube bot/erişim engeli halinde dosyayı kendin indirip yükleyebilirsin.
 İşleme bitince video, zaman damgalı transkript ve kareler açılır. Transkript,
 kare veya cevap kaynağına tıklamak oynatıcıyı ilgili zamana götürür.
 Sorular yalnızca seçili videoda aranır. Cevaplar deneysel olarak etiketlenir.
@@ -42,6 +49,8 @@ Standart bulut odaklı upstream MomentSearch doğrudan tak-çalıştır değildi
 ek kaynak değişikliği MomentSearch reposunda `c53a8e9` commit'inde sürümlenir. Başka makinede
 kurulum için hem Knot dalı hem hazırlanmış motor profili gerekir; otomatik
 kurulumcu veya yayımlanmış Docker dağıtımı bu sürümün parçası değildir.
+YouTube/Drive indiricisi ve konuşmasız video düzeltmesi motorun `7c59ecf`
+commit'indedir; bağlantı özelliği için bu sürüm de gereklidir.
 
 ## Yetki ve veri sözleşmesi
 
@@ -57,6 +66,16 @@ indeks tablolarını sıfırlamaz. Aynı kullanıcı/ders/hash üçlüsü yenide
 tek kayda indirir. Motorun aynı fiziksel dosyayı paylaşması Knot yetkisi vermez.
 Knot'taki her okuma/sorgu ders üyeliği VE yükleyen kullanıcıyla sınırlandırılır.
 İlk sürümde ders genelinde paylaşım, silme veya iptal uçları sunulmaz.
+
+`POST /courses/:courseId/videos/import-link {url}`: JWT ve ders üyeliğiyle korunur.
+Sunucu YouTube/Drive video kimliğini ayıklar, izinli sabit HTTPS URL'si kurar;
+yerel adresler ve benzer alan adları indiriciye verilmez. Kullanıcı başına tek
+etkin indirme, motor genelinde tek indirme; 100 MB akış sınırı hem indirme hem
+Knot tarafında uygulanır. Ham motor hatası veya yerel dosya yolu gösterilmez.
+Alınan video mevcut özel yükleme/dedup yolunu izler; kaynak URL veya motor ID'si
+yetki yerine geçmez. Drive hesabı çerezi, Google OAuth veya ücretli API kullanılmaz.
+Motorun `POST /api/local/import-file` eklentisi ve yt-dlp-ejs 0.8.0 gerekir;
+motorun `requirements.windows.lock.txt` dosyasında kilitlidir, Node zaten kuruludur.
 
 Uçlar (`/courses/:courseId/videos` altında):
 
@@ -112,8 +131,23 @@ transkript/kare/kaynak tıklaması ve soru-cevap test edildi. Transkript tıklam
 yatay taşma ve JavaScript hatası yok. Bu test akışın çalışmasını doğrular; model
 cevabının matematiksel doğruluğunu kanıtlamaz. Kanıt: `data/video-tests/browser-run.json`,
 `knot-video-desktop.png`, `knot-video-mobile.png`; tamamı yerel ve Git dışında.
-Ön yüz 65, backend unit 46 test geçti. Hedef lint'te iki state-in-effect uyarısı
+Ön yüz 66, backend unit 51 test geçti. Hedef lint'te iki state-in-effect uyarısı
 kalır; derlemeleri engellemez. Genel lint önceki skill/Quiz uyarılarını da içerir.
+
+31 Ekim bağlantı testi: `node scripts/test-video-links.cjs` gerçek Edge oturumunda
+Drive ve YouTube eklemeyi doğruladı. Yerel rapor `data/video-tests/link-browser-run.json`.
+Drive Big Buck Bunny kesiti 45,047s / 10.294.477 byte / 5 kare; YouTube resmi Blender
+Big Buck Bunny videosu 634,578s / 28.523.658 byte / 48 kare. İkisinde de konuşma
+algılanmadı: 0 transkript parçası açıkça gösterildi, sahte metin üretilmedi.
+Kare indeksleri ve oynatıcı gerçek dosyadan doğrulandı. Sessiz/konuşmasız videonun
+transkript eksikliğini 503 gibi gösteren eski motor davranışı da düzeltildi.
+Başka kullanıcı dosyayı okuyamadı (404), oturumsuz import 401, izinsiz URL 422.
+390px mobil genişlikte taşma ve JavaScript hatası yok. Drive 7,723s / YouTube
+16,514s süreleri başarılı tarayıcı turuna aittir; Drive daha önce indekslendiği
+için bu sayılar her yeni videonun işleme performansı vaadi değildir.
+Bu test yeni bir konuşma/LLM kalite testi değildir; önceki integral testi ayrı kalır.
+Motor regresyonları yerel FFmpeg PATH profiliyle 5/5 geçti; ilk profilsiz deneme
+FFmpeg bulunamadığı için başarısızdı. Global bir bağımlılık değiştirilmedi.
 
 ## Kalite sınırları
 

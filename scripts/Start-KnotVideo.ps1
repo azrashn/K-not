@@ -62,4 +62,4 @@ Start-Local 'frontend' 5174 (Get-Command node).Source @((Join-Path $root 'node_m
 Wait-Ready 'http://127.0.0.1:3100/health'
 Wait-Ready 'http://127.0.0.1:5174/'
 Write-Host 'K-not video: http://127.0.0.1:5174/#/dersler'
-Write-Host 'Open a course, then Ders videolari. Only private uploads are supported in this release.'
+Write-Host 'Open a course, then Ders videolari. Upload a file or add a public YouTube / Drive video link.'

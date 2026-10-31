@@ -1,10 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from '../api/endpoints'
 import { useApp } from '../app/store'
-import { errorText } from '../api/messages'
 import { Btn, PageFrame } from '../components/ui'
 import { MobileBar } from '../components/PageBits'
-import { validateVideoFile, videoTime } from '../lib/video'
+import { validateVideoFile, videoTime, videoErrorText as errorText } from '../lib/video'
 
 const STATES = { pending: 'Sırada', queued: 'Sırada', fetching: 'Video okunuyor', sampling: 'Kareler çıkarılıyor',
   embedding: 'Ses ve görseller hazırlanıyor', indexed: 'Hazır', failed: 'İşlenemedi', skipped: 'Daha önce işlendi' }
@@ -31,6 +30,9 @@ export default function Videos({ courseId }) {
   const [loadError, setLoadError] = useState('')
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
+  const [link, setLink] = useState('')
+  const [importing, setImporting] = useState(false)
+  const linkAbort = useRef(null)
   const [fileUrl, setFileUrl] = useState(null)
   const [mediaLoading, setMediaLoading] = useState(false)
   const [chunks, setChunks] = useState([])
@@ -42,6 +44,7 @@ export default function Videos({ courseId }) {
   const [time, setTime] = useState(0)
   const input = useRef(null), player = useRef(null), askAbort = useRef(null)
   const active = videos.find(v => v.id === selected)
+  useEffect(() => () => linkAbort.current?.abort(), [courseId])
   const ready = active?.status === 'indexed'
   const refresh = useCallback(async (signal) => {
     try {
@@ -92,6 +95,17 @@ export default function Videos({ courseId }) {
     catch (e) { if (e.name !== 'AbortError') setError(errorText(e)) }
     finally { setAsking(false) }
   }
+  async function importLink(e) {
+    e.preventDefault()
+    if (!link.trim() || importing || uploading) return
+    linkAbort.current = new AbortController()
+    setImporting(true); setError('')
+    try {
+      const row = await api.importVideoLink(courseId, link.trim(), linkAbort.current.signal)
+      if (!linkAbort.current.signal.aborted) { setSelected(row.id); setLink(''); await refresh() }
+    } catch (e) { if (e.name !== 'AbortError') setError(errorText(e)) }
+    finally { setImporting(false) }
+  }
   function seek(seconds) {
     if (player.current) {
       player.current.currentTime = seconds; setTime(seconds)
@@ -111,10 +125,20 @@ export default function Videos({ courseId }) {
     {(error || loadError) && <div role="alert" className="mt-4 border border-hair p-4 text-sm text-kopuk">{error || loadError} <button onClick={() => { setError(''); refresh() }} className="ml-3 underline">Yenile</button></div>}
     <div className="grid gap-6 py-6 xl:grid-cols-[16rem_minmax(0,1fr)]">
       <aside aria-label="Ders video listesi" className="min-w-0">
-        <Btn disabled={uploading} onClick={() => input.current?.click()}>{uploading ? 'Video yükleniyor…' : 'Video yükle'}</Btn>
+        <h2 className="mb-3 text-sm font-medium">Video ekle</h2>
+        <Btn disabled={uploading || importing} onClick={() => input.current?.click()}>{uploading ? 'Video yükleniyor…' : 'Video yükle'}</Btn>
         <input ref={input} type="file" accept=".mp4,.webm,video/mp4,video/webm" className="sr-only" aria-label="Ders videosu seç"
           onChange={e => { if (e.target.files[0]) upload(e.target.files[0]); e.target.value = '' }} />
         <p className="my-3 text-xs text-ink-3">MP4 / WebM · en fazla 100 MB</p>
+        <form onSubmit={importLink} className="mb-5 space-y-3 border border-hair p-3">
+          <label htmlFor="video-link" className="block text-sm font-medium">YouTube veya Drive bağlantısı</label>
+          <input id="video-link" type="url" required maxLength={2048} value={link} disabled={importing}
+            onChange={e => setLink(e.target.value)} placeholder="https://…"
+            aria-describedby="video-link-help" className="w-full min-w-0 border border-hair bg-paper px-2 py-2 text-sm" />
+          <p id="video-link-help" className="text-xs leading-relaxed text-ink-3">YouTube videosu veya Drive dosya bağlantısı. Drive paylaşımı “Bağlantıya sahip herkes” olmalı. En fazla 100 MB / 2 saat.</p>
+          <Btn type="submit" disabled={importing || uploading || !link.trim()}>{importing ? 'Video alınıyor…' : 'Bağlantıdan ekle'}</Btn>
+          {importing && <p role="status" className="text-xs text-ink-2">Video indiriliyor; üç dakika kadar sürebilir. İşlem bitene kadar bu sayfayı açık tut.</p>}
+        </form>
         {loading && <p role="status">Videolar yükleniyor…</p>}
         {!loading && !videos.length && <p className="text-sm text-ink-2">Henüz video yok. İlk ders videonu yükle.</p>}
         <ul className="space-y-2">

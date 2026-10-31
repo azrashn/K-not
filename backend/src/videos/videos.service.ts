@@ -8,6 +8,7 @@ import { RateLimiter } from '../common/rate-limit';
 import { APP_CONFIG, AppConfig } from '../config/config';
 import { AccessService } from '../courses/access.service';
 import { PrismaService, isUniqueViolation } from '../prisma/prisma.service';
+import { canonicalVideoLink } from './video-link';
 
 export const VIDEO_MAX_BYTES = 100 * 1024 * 1024;
 const ENGINE_ID = /^up_[a-f0-9]{10}$/;
@@ -29,6 +30,7 @@ export function validateVideo(file?: Express.Multer.File): Express.Multer.File {
 export class VideosService {
   private readonly limiter = new RateLimiter(12);
   private readonly base: string;
+  private readonly importing = new Set<string>();
   constructor(private readonly prisma: PrismaService, private readonly access: AccessService,
     @Inject(APP_CONFIG) config: AppConfig) {
     this.base = (config.videoServiceUrl || 'http://127.0.0.1:7862').replace(/\/+$/, '');
@@ -103,6 +105,47 @@ export class VideosService {
       row = await this.prisma.video.findUniqueOrThrow({ where: { courseId_ownerId_contentSha256: { courseId, ownerId: user.id, contentSha256: hash } } });
     }
     return this.describe(row);
+  }
+  async importLink(user: AuthUser, courseId: string, input: string) {
+    await this.access.requireMember(user, courseId);
+    const url = canonicalVideoLink(input);
+    if (this.importing.has(user.id)) throw new ApiError('JOB_ALREADY_RUNNING', 'Bağlantıdan bir video zaten alınıyor. Tamamlanmasını bekleyin.');
+    if (!this.limiter.take(user.id)) throw new ApiError('RATE_LIMITED', 'Biraz bekleyip tekrar deneyin.');
+    this.importing.add(user.id);
+    try {
+      let response: Response;
+      try {
+        response = await fetch(this.base + '/api/local/import-file', {
+          method: 'POST', redirect: 'error', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url }), signal: AbortSignal.timeout(195000),
+        });
+      } catch { throw new ApiError('AI_SERVICE_UNAVAILABLE', 'Video bağlantısı alınamadı. Video servisinin açık olduğunu kontrol edin.'); }
+      if (!response.ok) {
+        await response.body?.cancel();
+        if (response.status === 413) throw new ApiError('PAYLOAD_TOO_LARGE', 'Bağlantıdaki video 100 MB sınırını aşıyor. Daha kısa bir video seçin.');
+        if (response.status === 429) throw new ApiError('RATE_LIMITED', 'Başka bir video bağlantısı alınıyor. Biraz sonra tekrar deneyin.');
+        if (response.status === 504) throw new ApiError('PROVIDER_TIMEOUT', 'Video indirmesi üç dakikada tamamlanamadı. Tekrar deneyin veya dosya yükleyin.');
+        throw new ApiError('VALIDATION_ERROR', 'Video indirilemedi. YouTube videosu herkese açık olmalı; Drive için “Bağlantıya sahip herkes” erişimini açın. Giriş isteyen, canlı veya kısıtlı videolar alınamaz. Dosyayı indirip yüklemeyi de deneyebilirsiniz.');
+      }
+      const reader = response.body?.getReader();
+      if (!reader) throw new ApiError('INTERNAL_ERROR', 'Video servisi boş dosya döndürdü.');
+      const buffers: Uint8Array[] = [];
+      let size = 0;
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          size += value.byteLength;
+          if (size > VIDEO_MAX_BYTES) throw new ApiError('PAYLOAD_TOO_LARGE', 'Video en fazla 100 MB olabilir.');
+          buffers.push(value);
+        }
+      } finally { await reader.cancel(); }
+      let title = 'Video';
+      try { title = decodeURIComponent(response.headers.get('x-video-title') || 'Video'); } catch { /* Safe fallback. */ }
+      title = title.replace(/[\x00-\x1f\x7f<>:"/\\|?*]/g, ' ').trim().replace(/\.(mp4|webm)$/i, '').slice(0, 200) || 'Video';
+      const ext = response.headers.get('x-video-extension') === '.webm' ? '.webm' : '.mp4';
+      return await this.upload(user, courseId, { originalname: title + ext, size, buffer: Buffer.concat(buffers) } as Express.Multer.File);
+    } finally { this.importing.delete(user.id); }
   }
   async retry(user: AuthUser, courseId: string, id: string) {
     const row = await this.owned(user, courseId, id);

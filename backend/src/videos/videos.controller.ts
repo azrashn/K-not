@@ -12,11 +12,16 @@ import { VIDEO_MAX_BYTES, VideosService } from './videos.service';
 class VideoParam extends IdParam.Course { @Matches(IDENTIFIER) videoId!: string }
 class FrameParam extends VideoParam { @Matches(/^\d{1,5}$/) index!: string }
 class Question { @IsString() @MinLength(1) @MaxLength(2000) @Matches(/\S/) question!: string }
+class VideoLink { @IsString() @MinLength(1) @MaxLength(2048) url!: string }
 
 @Controller('courses/:courseId/videos')
 export class VideosController {
   constructor(private readonly videos: VideosService) {}
   @Get() list(@CurrentUser() u: AuthUser, @Param() p: IdParam.Course) { return this.videos.list(u, p.courseId); }
+  @Post('import-link') @UseGuards(UploadAccessGuard)
+  importLink(@CurrentUser() u: AuthUser, @Param() p: IdParam.Course, @Body() b: VideoLink) {
+    return this.videos.importLink(u, p.courseId, b.url);
+  }
   @Post() @UseGuards(UploadAccessGuard)
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: VIDEO_MAX_BYTES, files: 1, fields: 0 } }))
   upload(@CurrentUser() u: AuthUser, @Param() p: IdParam.Course, @UploadedFile() f?: Express.Multer.File) { return this.videos.upload(u, p.courseId, f); }

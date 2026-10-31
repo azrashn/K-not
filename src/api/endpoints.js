@@ -10,6 +10,7 @@ export const api = {
   courses: (signal) => request('GET', '/courses', { signal }),
   course: (courseId, signal) => request('GET', `/courses/${enc(courseId)}`, { signal }),
   videos: (courseId, signal) => request('GET', `/courses/${enc(courseId)}/videos`, { signal }),
+  importVideoLink: (courseId, url, signal) => request('POST', `/courses/${enc(courseId)}/videos/import-link`, { body: { url }, signal }),
   uploadVideo: (courseId, file) => {
     const form = new FormData()
     form.append('file', file, file.name)

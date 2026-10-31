@@ -4,6 +4,13 @@ Duraklatma sonrasında çalışma sürdürüldü; ilk çalışan video sürümü
 doğrulaması tamamlandı. Sonraki geliştirmeler aşağıdaki notlardan devam edebilir.
 Dal: `feature/video-integration`, başlangıç `2fdc005`.
 
+31 Ekim ek geliştirme: YouTube ve açık Drive dosya bağlantısıyla ekleme tamamlandı.
+Yeni alan Ders videoları ekranında. Gerçek Edge testi iki kaynağı da indirdi,
+indeksledi ve oynattı; 5 / 48 kare, özel erişim, hata mesajı ve 390px mobil kontrolü
+geçti. Kanıt: Git dışı `data/video-tests/link-browser-run.json`. Tekrarlama:
+`node scripts/test-video-links.cjs`. Drive OAuth seçicisi yok, açık dosya URL'si var.
+Kurulum/erişim sınırları docs/video-integration.md içinde. Yeni büyük model yok.
+
 ## Tamamlanan ve doğrulanan
 
 - Dersten `Ders videoları` ekranına geçiş; özel MP4/WebM yükleme, 100 MB sınırı.
