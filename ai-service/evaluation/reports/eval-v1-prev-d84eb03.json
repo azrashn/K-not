@@ -1,0 +1,516 @@
+{
+  "dataset": "eval.v1",
+  "items": 28,
+  "embedding_model": "knot-hashing-v1-d512",
+  "provider": "extractive_baseline:extractive-baseline-v1",
+  "min_score": null,
+  "support_assessor": "citation-lexical-v1 (previous code d84eb03)",
+  "metrics": {
+    "retrieval_success": {
+      "value": 0.9565,
+      "numerator": 22,
+      "denominator": 23,
+      "definition": "in-scope questions with >=1 gold passage in the top-k candidates / in-scope questions",
+      "target": ">= 0.75",
+      "meets_target": true
+    },
+    "retrieval_success_in_context": {
+      "value": 0.913,
+      "numerator": 21,
+      "denominator": 23,
+      "definition": "in-scope questions with >=1 gold passage in the selected context / in-scope questions"
+    },
+    "multi_passage_recall": {
+      "value": 1.0,
+      "numerator": 3,
+      "denominator": 3,
+      "definition": "multi-passage questions with ALL gold passages in context / multi-passage questions"
+    },
+    "scope_leakage": {
+      "value": 0.0,
+      "numerator": 0,
+      "denominator": 224,
+      "definition": "retrieved records outside the authorized scope / all retrieved records (must be 0)"
+    },
+    "source_supported_answer_rate": {
+      "value": 1.0,
+      "numerator": 22,
+      "denominator": 22,
+      "definition": "in-scope answers judged SUPPORTED / in-scope answers that were not abstentions",
+      "target": ">= 0.8",
+      "meets_target": true
+    },
+    "unsupported_claim_rate": {
+      "value": 0.0,
+      "numerator": 0,
+      "denominator": 64,
+      "definition": "claims judged UNSUPPORTED / all generated claims",
+      "target": "<= 0.2",
+      "meets_target": true
+    },
+    "citation_integrity": {
+      "value": 1.0,
+      "numerator": 64,
+      "denominator": 64,
+      "definition": "citations resolving to retrieved evidence / all citations the model proposed"
+    },
+    "citation_correctness": {
+      "value": 0.5333,
+      "numerator": 32,
+      "denominator": 60,
+      "definition": "valid citations pointing to a gold-relevant passage / valid citations (in-scope questions)"
+    },
+    "out_of_scope_abstention": {
+      "value": 0.6,
+      "numerator": 3,
+      "denominator": 5,
+      "definition": "out-of-scope questions answered with INSUFFICIENT_EVIDENCE / out-of-scope questions"
+    },
+    "recall_at_1": {
+      "value": 0.6087,
+      "numerator": 14,
+      "denominator": 23,
+      "definition": "in-scope questions with a gold passage at rank <= 1 / in-scope questions"
+    },
+    "recall_at_3": {
+      "value": 0.8696,
+      "numerator": 20,
+      "denominator": 23,
+      "definition": "in-scope questions with a gold passage at rank <= 3 / in-scope questions"
+    },
+    "mrr": {
+      "value": 0.7409,
+      "numerator": 17.0417,
+      "denominator": 23,
+      "definition": "mean over in-scope questions of 1/rank of the first gold passage (0 if not retrieved)"
+    },
+    "siki_citation_precision": {
+      "value": 0.5333,
+      "numerator": 32,
+      "denominator": 60,
+      "definition": "citations of SUPPORTED (SIKI) claims pointing to a gold-relevant passage / citations of SIKI claims"
+    },
+    "siki_on_out_of_scope": {
+      "value": 1.0,
+      "numerator": 4,
+      "denominator": 4,
+      "definition": "claims rated SIKI on questions with no gold passage / all claims on those questions"
+    },
+    "confirmed_support": {
+      "value": 0.0,
+      "numerator": 0,
+      "denominator": 64,
+      "definition": "SIKI claims confirmed by a semantic judge / SIKI claims"
+    },
+    "outcome_accuracy": {
+      "value": 0.8214,
+      "numerator": 23,
+      "denominator": 28,
+      "definition": "answers whose outcome is among the labelled acceptable outcomes / labelled answers"
+    },
+    "over_claim_rate": {
+      "value": 0.5714,
+      "numerator": 4,
+      "denominator": 7,
+      "definition": "questions that should NOT be fully answered but got outcome ANSWERED / such questions"
+    },
+    "answered_rate_on_answerable": {
+      "value": 0.9524,
+      "numerator": 20,
+      "denominator": 21,
+      "definition": "fully answerable questions with outcome ANSWERED / fully answerable questions"
+    },
+    "partial_detection": {
+      "value": 0.0,
+      "numerator": 0,
+      "denominator": 2,
+      "definition": "partially answerable questions with outcome PARTIALLY_ANSWERED / partially answerable questions"
+    },
+    "threshold_sweep": [
+      {
+        "min_score": 0.0,
+        "retrieval_success": 0.9565,
+        "out_of_scope_rejected": 0.0
+      },
+      {
+        "min_score": 0.1,
+        "retrieval_success": 0.913,
+        "out_of_scope_rejected": 0.2
+      },
+      {
+        "min_score": 0.15,
+        "retrieval_success": 0.8696,
+        "out_of_scope_rejected": 0.2
+      },
+      {
+        "min_score": 0.2,
+        "retrieval_success": 0.8261,
+        "out_of_scope_rejected": 0.6
+      },
+      {
+        "min_score": 0.25,
+        "retrieval_success": 0.6087,
+        "out_of_scope_rejected": 0.8
+      },
+      {
+        "min_score": 0.3,
+        "retrieval_success": 0.4348,
+        "out_of_scope_rejected": 1.0
+      },
+      {
+        "min_score": 0.35,
+        "retrieval_success": 0.3478,
+        "out_of_scope_rejected": 1.0
+      },
+      {
+        "min_score": 0.4,
+        "retrieval_success": 0.3043,
+        "out_of_scope_rejected": 1.0
+      },
+      {
+        "min_score": 0.5,
+        "retrieval_success": 0.2609,
+        "out_of_scope_rejected": 1.0
+      }
+    ]
+  },
+  "metrics_by_split": {},
+  "per_item": [
+    {
+      "id": "d01",
+      "category": "direct",
+      "gold_in_candidates": true,
+      "top_score": 0.599471,
+      "outcome": "ANSWERED",
+      "expected_outcome": [
+        "ANSWERED"
+      ],
+      "support": "SUPPORTED",
+      "split": "all"
+    },
+    {
+      "id": "d02",
+      "category": "direct",
+      "gold_in_candidates": true,
+      "top_score": 0.205488,
+      "outcome": "ANSWERED",
+      "expected_outcome": [
+        "ANSWERED"
+      ],
+      "support": "SUPPORTED",
+      "split": "all"
+    },
+    {
+      "id": "d03",
+      "category": "direct",
+      "gold_in_candidates": true,
+      "top_score": 0.470764,
+      "outcome": "ANSWERED",
+      "expected_outcome": [
+        "ANSWERED"
+      ],
+      "support": "SUPPORTED",
+      "split": "all"
+    },
+    {
+      "id": "d04",
+      "category": "direct",
+      "gold_in_candidates": false,
+      "top_score": 0.364083,
+      "outcome": "ANSWERED",
+      "expected_outcome": [
+        "ANSWERED"
+      ],
+      "support": "SUPPORTED",
+      "split": "all"
+    },
+    {
+      "id": "d05",
+      "category": "direct",
+      "gold_in_candidates": true,
+      "top_score": 0.272352,
+      "outcome": "ANSWERED",
+      "expected_outcome": [
+        "ANSWERED"
+      ],
+      "support": "SUPPORTED",
+      "split": "all"
+    },
+    {
+      "id": "d06",
+      "category": "direct",
+      "gold_in_candidates": true,
+      "top_score": 0.624699,
+      "outcome": "ANSWERED",
+      "expected_outcome": [
+        "ANSWERED"
+      ],
+      "support": "SUPPORTED",
+      "split": "all"
+    },
+    {
+      "id": "d07",
+      "category": "direct",
+      "gold_in_candidates": true,
+      "top_score": 0.226063,
+      "outcome": "ANSWERED",
+      "expected_outcome": [
+        "ANSWERED"
+      ],
+      "support": "SUPPORTED",
+      "split": "all"
+    },
+    {
+      "id": "d08",
+      "category": "direct",
+      "gold_in_candidates": true,
+      "top_score": 0.551172,
+      "outcome": "ANSWERED",
+      "expected_outcome": [
+        "ANSWERED"
+      ],
+      "support": "SUPPORTED",
+      "split": "all"
+    },
+    {
+      "id": "d09",
+      "category": "direct",
+      "gold_in_candidates": true,
+      "top_score": 0.617881,
+      "outcome": "ANSWERED",
+      "expected_outcome": [
+        "ANSWERED"
+      ],
+      "support": "SUPPORTED",
+      "split": "all"
+    },
+    {
+      "id": "d10",
+      "category": "direct",
+      "gold_in_candidates": true,
+      "top_score": 0.289242,
+      "outcome": "ANSWERED",
+      "expected_outcome": [
+        "ANSWERED"
+      ],
+      "support": "SUPPORTED",
+      "split": "all"
+    },
+    {
+      "id": "d11",
+      "category": "direct",
+      "gold_in_candidates": true,
+      "top_score": 0.402366,
+      "outcome": "ANSWERED",
+      "expected_outcome": [
+        "ANSWERED"
+      ],
+      "support": "SUPPORTED",
+      "split": "all"
+    },
+    {
+      "id": "d12",
+      "category": "direct",
+      "gold_in_candidates": true,
+      "top_score": 0.439486,
+      "outcome": "ANSWERED",
+      "expected_outcome": [
+        "ANSWERED"
+      ],
+      "support": "SUPPORTED",
+      "split": "all"
+    },
+    {
+      "id": "d13",
+      "category": "direct",
+      "gold_in_candidates": true,
+      "top_score": 0.667382,
+      "outcome": "ANSWERED",
+      "expected_outcome": [
+        "ANSWERED"
+      ],
+      "support": "SUPPORTED",
+      "split": "all"
+    },
+    {
+      "id": "m01",
+      "category": "mixed_language",
+      "gold_in_candidates": true,
+      "top_score": 0.115392,
+      "outcome": "INSUFFICIENT_EVIDENCE",
+      "expected_outcome": [
+        "ANSWERED"
+      ],
+      "support": "UNSUPPORTED",
+      "split": "all"
+    },
+    {
+      "id": "m02",
+      "category": "mixed_language",
+      "gold_in_candidates": true,
+      "top_score": 0.104929,
+      "outcome": "ANSWERED",
+      "expected_outcome": [
+        "ANSWERED"
+      ],
+      "support": "SUPPORTED",
+      "split": "all"
+    },
+    {
+      "id": "m03",
+      "category": "mixed_language",
+      "gold_in_candidates": true,
+      "top_score": 0.17699,
+      "outcome": "ANSWERED",
+      "expected_outcome": [
+        "ANSWERED"
+      ],
+      "support": "SUPPORTED",
+      "split": "all"
+    },
+    {
+      "id": "p01",
+      "category": "multi_passage",
+      "gold_in_candidates": true,
+      "top_score": 0.368773,
+      "outcome": "ANSWERED",
+      "expected_outcome": [
+        "ANSWERED"
+      ],
+      "support": "SUPPORTED",
+      "split": "all"
+    },
+    {
+      "id": "p02",
+      "category": "multi_passage",
+      "gold_in_candidates": true,
+      "top_score": 0.267324,
+      "outcome": "ANSWERED",
+      "expected_outcome": [
+        "ANSWERED"
+      ],
+      "support": "SUPPORTED",
+      "split": "all"
+    },
+    {
+      "id": "p03",
+      "category": "multi_passage",
+      "gold_in_candidates": true,
+      "top_score": 0.564445,
+      "outcome": "ANSWERED",
+      "expected_outcome": [
+        "ANSWERED"
+      ],
+      "support": "SUPPORTED",
+      "split": "all"
+    },
+    {
+      "id": "x01",
+      "category": "partial",
+      "gold_in_candidates": true,
+      "top_score": 0.336719,
+      "outcome": "ANSWERED",
+      "expected_outcome": [
+        "PARTIALLY_ANSWERED"
+      ],
+      "support": "SUPPORTED",
+      "split": "all"
+    },
+    {
+      "id": "x02",
+      "category": "partial",
+      "gold_in_candidates": true,
+      "top_score": 0.405509,
+      "outcome": "ANSWERED",
+      "expected_outcome": [
+        "PARTIALLY_ANSWERED"
+      ],
+      "support": "SUPPORTED",
+      "split": "all"
+    },
+    {
+      "id": "o01",
+      "category": "out_of_scope",
+      "gold_in_candidates": null,
+      "top_score": 0.18334,
+      "outcome": "INSUFFICIENT_EVIDENCE",
+      "expected_outcome": [
+        "INSUFFICIENT_EVIDENCE"
+      ],
+      "support": "UNSUPPORTED",
+      "split": "all"
+    },
+    {
+      "id": "o02",
+      "category": "out_of_scope",
+      "gold_in_candidates": null,
+      "top_score": 0.1806,
+      "outcome": "ANSWERED",
+      "expected_outcome": [
+        "INSUFFICIENT_EVIDENCE"
+      ],
+      "support": "SUPPORTED",
+      "split": "all"
+    },
+    {
+      "id": "o03",
+      "category": "out_of_scope",
+      "gold_in_candidates": null,
+      "top_score": 0.081199,
+      "outcome": "INSUFFICIENT_EVIDENCE",
+      "expected_outcome": [
+        "INSUFFICIENT_EVIDENCE"
+      ],
+      "support": "UNSUPPORTED",
+      "split": "all"
+    },
+    {
+      "id": "o04",
+      "category": "out_of_scope",
+      "gold_in_candidates": null,
+      "top_score": 0.215872,
+      "outcome": "INSUFFICIENT_EVIDENCE",
+      "expected_outcome": [
+        "INSUFFICIENT_EVIDENCE"
+      ],
+      "support": "UNSUPPORTED",
+      "split": "all"
+    },
+    {
+      "id": "a01",
+      "category": "adversarial",
+      "gold_in_candidates": true,
+      "top_score": 0.248735,
+      "outcome": "ANSWERED",
+      "expected_outcome": [
+        "ANSWERED"
+      ],
+      "support": "SUPPORTED",
+      "split": "all"
+    },
+    {
+      "id": "a02",
+      "category": "adversarial",
+      "gold_in_candidates": true,
+      "top_score": 0.331953,
+      "outcome": "ANSWERED",
+      "expected_outcome": [
+        "ANSWERED"
+      ],
+      "support": "SUPPORTED",
+      "split": "all"
+    },
+    {
+      "id": "a03",
+      "category": "adversarial",
+      "gold_in_candidates": null,
+      "top_score": 0.256495,
+      "outcome": "ANSWERED",
+      "expected_outcome": [
+        "INSUFFICIENT_EVIDENCE"
+      ],
+      "support": "SUPPORTED",
+      "split": "all"
+    }
+  ]
+}

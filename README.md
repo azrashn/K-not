@@ -8,24 +8,71 @@ CLAIM → KNOT → SOURCE        ASK → PRACTICE → ANSWER → FEEDBACK → RE
 
 ## Çalıştırma
 
+### Video geliştirme dalı
+
+Güncel ürün deneyimi: **Ana Sayfa → Ders oluştur → ortak çalışma alanı →
+Alıştırmalar → Öğrenme Analizi → ilgili kaynağa dön**. Video, PDF, sunum ve
+metin aynı çalışma ekranındadır; özgün PDF/PPTX görüntüsü ve kalıcı sohbet
+eklendi. [Yerel kullanım](docs/development/PRODUCT_LOCAL_SETUP.md),
+[gerçek testler ve sınırlar](docs/development/PRODUCT_TEST_REPORT.md).
+Model cevabı deneysel, kaynak görüntüsü ise özgün dosyadan render edilir.
+
+`feature/video-integration` dalında ders içinden **Ders videoları** ekranı eklendi.
+Yerel video profili `scripts/Start-KnotVideo.ps1` ile açılır:
+http://127.0.0.1:5174/#/dersler. Bu profil backend için 3100, AI için 8110 kullanır;
+OpenTutor ve DocsGPT portlarıyla çakışmaz. Videolar ilk sürümde yükleyene özeldir.
+Kurulum/sınırlar: [Video entegrasyonu](docs/video-integration.md).
+Kalıcı izleme aralıkları, atlamayı izlenmiş saymayan ilerleme çizgisi ve kaldığı
+yere dönme eklendi. [Güncel geliştirme kaydı](docs/development/IMPLEMENTATION_STATUS.md)
+tamamlanan işleri, test kanıtlarını ve henüz uygulanmamış hoca beklentilerini ayırır.
+Sonraki işler: [5 kişilik görev dağılımı](docs/video-team-tasks.md).
+
+### Tek komutla (Windows, önerilen)
+
+Docker Desktop açıkken:
+
+```powershell
+npm run dev:all      # MySQL + backend + AI servisi + ön yüz; ilk seferde kurulumu da yapar
+npm run dev:status   # servis durumu
+npm run dev:stop     # hepsini durdur
+```
+
+Betik (`scripts/dev.ps1`) tekrar çalıştırılabilir: `.env` dosyalarını eşitler (veritabanı adresi `.env.docker`'dan türetilir, backend ile ai-service aynı tokenları ve `data/storage` yolunu kullanır), eksik bağımlılıkları kurar, migrasyon ve seed'i uygular, servisleri arka planda başlatır (günlükler `logs/`). Giriş: http://localhost:5173. İlk seed'de üretilen şifreler repo dışında bir geçici dosyaya yazılır (yolu ekrana basılır).
+
+Aşağıdaki elle adımlar yalnızca betiği kullanmak istemezsen gerekir.
+
+Ön yüz yalnızca NestJS API'siyle konuşur (`/api` → `backend/`); Python ai-service'e ya da ChromaDB'ye tarayıcıdan erişilmez ve ön yüzde hiçbir iç servis anahtarı yoktur.
+
 ```bash
 npm install
-npm run dev      # http://localhost:5173
-npm run build
+cp .env.example .env   # VITE_API_BASE_URL=/api, VITE_API_PROXY_TARGET=http://localhost:3000
+npm run dev            # http://localhost:5173 — /api istekleri backend'e aktarılır
+npm run build && npx vite preview   # aynı proxy preview'da da geçerli
 ```
+
+Backend ve ai-service kurulumu için `backend/README.md` ve `ai-service/README.md`. Gizli bilgiler, yerel veritabanı (Docker) ve commit öncesi tarama için **`docs/security.md`** (bu depo herkese açık: `.env`, parola, yüklenen belge ve üçüncü taraf materyal asla commit edilmez). Hesaplar yönetici tarafından tohumlanır (kayıt yok); oturum 1 saatlik JWT'dir, süresi dolunca giriş ekranına dönülür.
+
+### Testler
+
+```bash
+npm test           # Vitest + Testing Library: API istemcisi, giriş/oturum, yükleme/durum/silme, yanıt durumları, kaynak vurgusu (sahte fetch)
+npm run test:e2e   # gerçek uçtan uca: Chromium → vite preview → NestJS → MySQL + Python ai-service (sahte yok)
+```
+
+`test:e2e` boş, ayrı bir MySQL veritabanı ister (`E2E_DATABASE_URL`; varsayılan `mysql://knot:knot-dev-password@localhost:3306/knot_e2e`), önceden `npm run build` ve `backend/` içinde `npm run build` gerekir. Veritabanını sıfırlamaz; içinde belge varsa çalışmayı reddeder. Gömme için model indirmeyen `hashing` arka ucunu, yanıt için çıkarımsal temel sağlayıcıyı (LLM değil) kullanır. Chromium yolu: `CHROMIUM_PATH` (varsayılan `/opt/pw-browsers/chromium`).
 
 ## Sayfalar (hash tabanlı rota)
 
-| Rota | Sayfa |
-| --- | --- |
-| `#/` | Ana Sayfa: “Şimdi ne çalışmalıyım?” — tek devam eylemi, tekrar önerisi, son çalışma |
-| `#/dersler` | Dersler: hazırlık durumu ve ders bazlı bilgi ipi |
-| `#/dersler/:id` | Ders: materyaller (Tümü / Slaytlar / Notlar / Geçmiş Sınavlar), durumlar: Yüklendi → Okunuyor → Hazırlanıyor → Hazır / Sorun var |
-| `#/dersler/veri-yapilari/calisma` | AI Çalışma Alanı: iddia satırları, kaynak etiketi, Düğüm Gücü (nedeniyle), kaynak görüntüleyici, İpucu ver / Basitçe açıkla / Bunu test et |
-| `#/quiz` | Pratik: Ders → Konu → Materyaller; çoktan seçmeli, doğru/yanlış, açık uçlu; kanıta bağlı cevap değerlendirmesi |
-| `#/analitik` | Analitik: **Öğrenmem** (Bilgi İpi) ve **Kaynak güveni** (desteklenen / kısmi / desteksiz yanıtlar) |
+| Rota | Sayfa | Veri |
+| --- | --- | --- |
+| `#/dersler` | Dersler: kayıtlı olunan dersler ve hazırlık durumu | **Gerçek** (`GET /courses`) |
+| `#/dersler/:id` | Ders: PDF yükleme, durum izleme (Yüklendi → Okunuyor → Hazırlanıyor → Hazır / Sorun var), yeniden deneme, indirme, silme | **Gerçek** |
+| `#/dersler/:id/calisma` | Çalışma alanı: iddia satırları, sunucunun destek etiketi (SIKI / GEVEŞEK / KOPUK), gerçek sayfa metninde birebir alıntı vurgusu | **Gerçek** (`POST /courses/:id/answers`, `GET /documents/:id/pages/:n`) |
+| `#/` | Ana Sayfa | Örnek veri (backend yok) |
+| `#/quiz` | Pratik | Örnek veri (WBS-6) |
+| `#/analitik` | Analitik | Örnek veri (WBS-7) |
 
-Veri tamamen mock'tur (`src/data`). Quiz sonuçları Bilgi İpi'ni ve tekrar listesini, çalışma alanındaki yanıtlar Kaynak güveni sayaçlarını canlı günceller.
+Örnek veri kullanan ekranlar “Örnek veri” etiketiyle işaretlidir (`src/data`, `src/app/store.jsx`). Eski mock ders bağlantıları (`#/dersler/veri-yapilari…`) ders listesine yönlendirilir.
 
 ## Öğrenme döngüsü
 
@@ -37,7 +84,7 @@ Döngü ayrı bir diyagram olarak değil, eylemlerle kurulur: yanıttaki **Bunu 
 
 ## Kapsam
 
-Faz 1: ders materyali indeksleme, kaynağa dayalı soru-cevap, otomatik soru üretimi, cevap değerlendirme ve kanıt ölçümü. Video/transkript, öğretmen paneli, sosyal özellikler ve oyunlaştırma kapsam dışıdır.
+Faz 1: ders materyali indeksleme, kaynağa dayalı soru-cevap, otomatik soru üretimi, cevap değerlendirme ve kanıt ölçümü. Bu dalda ayrı ve deneysel video/transkript akışı eklenmiştir; öğretmen paneli, sosyal özellikler ve oyunlaştırma kapsam dışıdır.
 
 ## Tasarım dili
 
@@ -46,3 +93,7 @@ Faz 1: ders materyali indeksleme, kaynağa dayalı soru-cevap, otomatik soru ür
 - **Hiyerarşi:** kutu ve çizgi yerine boşluk, tipografi ve tek bir aktif yüzey.
 - **Hareket:** 150–400 ms, güçlü ease-out; `prefers-reduced-motion` açıkken iplik çizilmez, hareket kalkar.
 - İplik/düğüm metaforu kalıcı süs değildir: iddia→kaynak bağlantısı yalnızca etkinleştirme anında çizilir.
+
+## Yapay zekâ servisi (WBS-3 · RAG)
+
+Kaynağa dayalı yanıt motoru `ai-service/` altında ayrı bir Python (FastAPI) servisidir; yalnızca NestJS arka ucu tarafından çağrılır. Kurulum ve testler için [`ai-service/README.md`](ai-service/README.md), sözleşmeler için `docs/rag-architecture.md`, `docs/rag-api-contract.md`, `docs/rag-integration.md` ve `docs/rag-evaluation.md` dosyalarına bakın.

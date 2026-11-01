@@ -7,7 +7,7 @@ import { useMediaQuery } from '../hooks/useMediaQuery'
 import { excerpt, docFile } from '../lib/docs'
 import { EASE_DRAWER, EASE_OUT } from '../lib/motion'
 import { Btn, TextLink } from '../components/ui'
-import { MobileBar } from '../components/PageBits'
+import { MobileBar, SampleNotice } from '../components/PageBits'
 import { MiniThread } from '../components/Threads'
 import CitationPill from '../components/Citation'
 import SourceViewer from '../components/SourceViewer'
@@ -257,6 +257,7 @@ export default function Quiz() {
     <div className="flex h-full min-w-0">
       <div ref={scroller} className="scroll-quiet min-w-0 flex-1 overflow-y-auto" data-scroll>
         <MobileBar />
+      <SampleNotice>Alıştırma üretimi ve cevap değerlendirmesi henüz bağlı değil (WBS-6/7).</SampleNotice>
         <div className={`mx-auto w-full px-5 pb-28 sm:px-10 ${phase === 'setup' ? 'max-w-[68rem]' : 'max-w-[44rem]'}`}>
           <AnimatePresence mode="wait" initial={false}>
             <motion.div

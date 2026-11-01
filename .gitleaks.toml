@@ -1,0 +1,87 @@
+# Gitleaks configuration for K-not. Default rules + project rules.
+#
+# Why custom rules: the default rules found NONE of the credentials committed on 2026-10-09
+# (MySQL passwords in docker-compose.yml, a mysql:// URL with a password in prisma.config.ts /
+# scripts/seed.ts, a seed output file with generated account passwords). The rules below catch
+# those patterns; placeholders (change-me…, ${VAR}, <…>) and the documented local-only default
+# are allowed.
+#
+#   gitleaks git --redact .              # whole history
+#   gitleaks git --staged --redact .     # what is about to be committed (pre-commit hook)
+#   gitleaks dir --redact .              # working tree
+
+title = "K-not gitleaks config"
+
+[extend]
+useDefault = true
+
+# Placeholder values that are documented as non-secret (global allowlist, matched on the secret).
+[allowlist]
+description = "Documented placeholders, env-var/template references and fixed e2e test strings"
+regexTarget = "secret"
+regexes = [
+  '''^change-me''',
+  '''^\$\{''',                      # ${VAR}, ${VAR:?msg}, ${VAR:-default}, JS template expressions
+  '''^<[^>]+>$''',
+  '''^\*+$''',
+  '''^knot-dev-password$''',         # documented local-only default for throwaway dev databases
+  '''^process\.env''',
+  '''^e2e-[a-z0-9-]+$''',            # fixed values for the disposable e2e stack (tests/e2e)
+]
+
+[[rules]]
+id = "db-url-with-password"
+description = "Database URL with an embedded password"
+regex = '''(?i)\b(?:mysql|mariadb|postgres(?:ql)?|mongodb(?:\+srv)?)://[^:\s/'"@]+:([^@\s'"`]+)@'''
+secretGroup = 1
+keywords = ["mysql://", "mariadb://", "postgres", "mongodb"]
+
+[[rules]]
+id = "db-password-assignment"
+description = "Database password assigned in env/compose/config files"
+regex = '''(?i)\b(?:MYSQL_ROOT_PASSWORD|MYSQL_PASSWORD|MARIADB_ROOT_PASSWORD|MARIADB_PASSWORD|POSTGRES_PASSWORD|DB_PASSWORD|DATABASE_PASSWORD)\b\s*[:=]\s*['"]?([^\s'"#]+)'''
+secretGroup = 1
+keywords = ["password"]
+
+[[rules]]
+id = "knot-app-secret"
+description = "K-not service secret assigned a literal value (env: KEY=value; code/YAML: KEY: 'value')"
+regex = '''\b(?:JWT_SECRET|RAG_INTERNAL_API_TOKEN|INGEST_CALLBACK_TOKEN|LLM_API_KEY|ANTHROPIC_API_KEY|OPENAI_API_KEY)\b['"]?\s*(?:=\s*['"]?|:\s*['"])([^\s'"#,}]{8,})'''
+secretGroup = 1
+keywords = ["jwt_secret", "rag_internal_api_token", "ingest_callback_token", "llm_api_key", "anthropic_api_key", "openai_api_key"]
+  [[rules.allowlists]]
+  description = "Test-only values in test code (fixed strings for throwaway test servers)"
+  paths = ['''^(backend/test|ai-service/tests|tests/frontend)/''']
+
+[[rules]]
+id = "knot-app-secret-yaml"
+description = "K-not service secret as an unquoted YAML value"
+regex = '''(?m)^\s*-?\s*(?:JWT_SECRET|RAG_INTERNAL_API_TOKEN|INGEST_CALLBACK_TOKEN|LLM_API_KEY|ANTHROPIC_API_KEY|OPENAI_API_KEY):\s+([^\s'"#]{8,})\s*$'''
+secretGroup = 1
+keywords = ["jwt_secret", "rag_internal_api_token", "ingest_callback_token", "llm_api_key", "anthropic_api_key", "openai_api_key"]
+
+[[rules]]
+id = "generated-password-output"
+description = "Seed output containing a generated password"
+regex = '''(?i)generated password for \S+:\s*(\S{8,})'''
+secretGroup = 1
+keywords = ["generated password"]
+
+# Path-only rules: files that must never be committed, whatever they contain (some, like a
+# UTF-16 seed log, are invisible to content rules).
+[[rules]]
+id = "credential-output-file"
+description = "Seed/credential output file"
+path = '''(?i)(^|/)(seed_output[^/]*|[^/]*passwords?[^/]*\.(txt|csv|json)|[^/]*credentials?[^/]*\.(txt|csv))$'''
+
+[[rules]]
+id = "env-file"
+description = "Environment file (use *.example for templates)"
+path = '''(^|/)\.env(\.[^/]+)?$'''
+  [[rules.allowlists]]
+  paths = ['''(^|/)\.env(\.[a-z0-9_-]+)*\.example$''']
+
+[[rules]]
+id = "runtime-document-storage"
+description = "Uploaded documents / runtime storage (may contain third-party or student material)"
+path = '''(^|/)(data/storage|storage/documents)/'''

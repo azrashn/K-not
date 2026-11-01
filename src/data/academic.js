@@ -123,6 +123,10 @@ export const topicState = (score) => (score <= 0 ? 'open' : score >= 0.72 ? 'tig
 
 export const STATE_TEXT = { tight: 'Sıkı', loose: 'Gevşek', weak: 'Zayıf', open: 'Henüz bağlanmadı' }
 
+// Öğrenme Analizi'nde öğrenciye gösterilen etiketler (iç adlar yukarıdakilerle aynı kalır).
+export const LEARN_LABEL = { tight: 'İyi gidiyorsun', loose: 'Biraz daha pratik yap', weak: 'Tekrar öneriliyor', open: 'Henüz değerlendirilmedi' }
+export const TRUST_LABEL = { full: 'Kaynakla doğrulanan yanıtlar', partial: 'Kısmen desteklenen yanıtlar', none: 'Yeterli kaynak bulunamayan yanıtlar' }
+
 // Kaynak kapsamı (prototip verisi): hangi sayfalar yanıt ya da değerlendirmede kanıt olarak kullanıldı
 export const COVERAGE = [
   { name: 'Hafta4_AVL_Agaclari.pdf', used: 9, total: 32 },

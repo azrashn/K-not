@@ -15,3 +15,13 @@ export function MobileBar({ title }) {
     </div>
   )
 }
+
+// Arka ucu henüz olmayan ekranlar (WBS-6/7/8) için açık etiket: gerçek veriyle karışmaz.
+export function SampleNotice({ children }) {
+  return (
+    <p role="note" data-sample-notice className="m-0 mt-4 inline-flex items-center gap-2 rounded-lg bg-gevesek-tint px-3 py-1.5 text-[13px] text-gevesek">
+      <span className="font-mono text-[11px] font-semibold uppercase tracking-wider">Örnek veri</span>
+      <span>{children || 'Bu ekran henüz gerçek verilere bağlı değil.'}</span>
+    </p>
+  )
+}

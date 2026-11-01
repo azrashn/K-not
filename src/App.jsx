@@ -3,27 +3,29 @@ import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import { X } from '@phosphor-icons/react'
 import { AppProvider, useApp, pathFor } from './app/store'
 import { useMediaQuery } from './hooks/useMediaQuery'
-import NavRail, { NAV, NavButton, KnotMark } from './components/NavRail'
+import NavRail, { NAV, NavButton, KnotMark, UserBadge } from './components/NavRail'
+import { AuthProvider, useAuth } from './app/auth'
+import Login from './pages/Login'
 import { EASE_DRAWER, EASE_OUT } from './lib/motion'
-import Home from './pages/Home'
+import Home from './pages/HomeDashboard'
 import Courses from './pages/Courses'
 import CourseDetail from './pages/CourseDetail'
 import Workspace from './pages/Workspace'
-import Quiz from './pages/Quiz'
-import Analytics from './pages/Analytics'
+import Quiz from './pages/CourseQuiz'
+import Analytics from './pages/LearningAnalytics'
+import Videos from './pages/Videos'
+import LearningWorkspace from './pages/LearningWorkspace'
 
 // Rota prop olarak donar: çıkış animasyonundaki eski sayfa yeni rotayı okuyup erken oluşmaz.
 function Page({ route }) {
-  const { navigate } = useApp()
   const { view, courseId } = route
-  useEffect(() => {
-    if (view === 'workspace' && courseId !== 'veri-yapilari') navigate(`/dersler/${courseId}`)
-  }, [view, courseId, navigate])
   switch (view) {
     case 'list': return <Courses />
     case 'course': return <CourseDetail courseId={courseId} />
-    case 'workspace': return courseId === 'veri-yapilari' ? <Workspace courseId={courseId} /> : null
-    case 'quiz': return <Quiz />
+    case 'workspace': return <Workspace courseId={courseId} />
+    case 'learning': return <LearningWorkspace key={courseId} courseId={courseId} />
+    case 'videos': return <Videos courseId={courseId} />
+    case 'quiz': return <Quiz courseId={courseId} />
     case 'analytics': return <Analytics />
     default: return <Home />
   }
@@ -36,8 +38,8 @@ function Shell() {
   const onNav = (id) => { setMenuOpen(false); navigate(pathFor(id)) }
   const pageKey = `${route.view}:${route.courseId || ''}`
   useEffect(() => {
-    const names = { home: 'Ana Sayfa', list: 'Dersler', course: 'Ders', workspace: 'Çalışma alanı', quiz: 'Quiz', analytics: 'Bilgi İpi' }
-    document.title = `${names[route.view] || 'K-not'} — K-not`
+    const names = { home: 'Ana Sayfa', list: 'Dersler', course: 'Ders', workspace: 'Çalışma alanı', quiz: 'Quiz', analytics: 'Öğrenme Analizi' }
+    document.title = `${route.view === 'videos' ? 'Ders videoları' : names[route.view] || 'K-not'} — K-not`
   }, [route.view])
 
   return (
@@ -80,6 +82,7 @@ function Shell() {
                   <li key={item.id}><NavButton item={item} vertical={false} current={item.id === route.section} onSelect={onNav} /></li>
                 ))}
               </ul>
+              <div className="mt-auto px-1"><UserBadge vertical={false} /></div>
             </motion.nav>
           </>
         )}
@@ -88,10 +91,21 @@ function Shell() {
   )
 }
 
-export default function App() {
+// Korunan uygulama: oturum yoksa (ya da süresi dolduysa) giriş ekranı. Rota (#/...) korunur.
+function Gate() {
+  const { authenticated } = useAuth()
+  if (!authenticated) return <Login />
   return (
     <AppProvider>
       <Shell />
     </AppProvider>
+  )
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <Gate />
+    </AuthProvider>
   )
 }

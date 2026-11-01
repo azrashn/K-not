@@ -1,0 +1,20 @@
+{
+  "users": [
+    { "email": "admin@knot.local", "display_name": "Yönetici", "role": "ADMIN" },
+    { "email": "m.aydin@knot.local", "display_name": "Doç. Dr. M. Aydın" },
+    { "email": "ayse@knot.local", "display_name": "Ayşe Yılmaz" },
+    { "email": "mehmet@knot.local", "display_name": "Mehmet Demir" }
+  ],
+  "courses": [
+    {
+      "code": "BIL 211", "name": "Veri Yapıları", "term": "Güz 2026", "instructor_name": "Doç. Dr. M. Aydın",
+      "members": [
+        { "email": "m.aydin@knot.local", "role": "INSTRUCTOR" },
+        { "email": "ayse@knot.local", "role": "STUDENT" },
+        { "email": "mehmet@knot.local", "role": "STUDENT" }
+      ]
+    },
+    { "code": "BIL 304", "name": "İşletim Sistemleri", "term": "Güz 2026", "members": [{ "email": "mehmet@knot.local", "role": "STUDENT" }] }
+  ],
+  "index_version": { "collection": "knot_chunks_v1", "chunker_version": "c1" }
+}

@@ -24,3 +24,29 @@ dist-ssr
 *.sw?
 
 .playwright-mcp
+
+# ── Secrets and local configuration (never commit; templates are *.example) ──
+.env
+.env.*
+!.env.example
+!.env.*.example
+**/.env
+**/.env.*
+!**/.env.example
+!**/.env.*.example
+
+# ── Credential / seed output ──
+seed_output*
+*password*.txt
+*passwords*.json
+*credentials*.txt
+*.pem
+*.key
+*.p12
+*.pfx
+
+# ── Runtime data and uploaded documents (may contain third-party or student material) ──
+/data/*
+!/data/.gitkeep
+**/storage/documents/
+/*.pdf

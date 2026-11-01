@@ -8,7 +8,12 @@ const STATES = {
   KOPUK: { label: 'KOPUK', text: 'text-kopuk', color: 'var(--color-kopuk)', soft: 'var(--color-kopuk-tint)' },
 }
 
-const levelOf = (c) => (c.gap || !c.cites?.length ? 0 : c.cites.some((x) => x.strength === 'partial') ? 0.5 : 1)
+// Gerçek yanıtlarda düzey YALNIZCA sunucunun support_status değerinden gelir; alıntı varlığı
+// bir iddiayı yükseltmez. (Örnek ekranlarda support alanı yoksa eski alıntı kuralı kullanılır.)
+const SUPPORT_LEVEL = { SUPPORTED: 1, PARTIALLY_SUPPORTED: 0.5, UNSUPPORTED: 0 }
+const levelOf = (c) => (c.support
+  ? (SUPPORT_LEVEL[c.support] ?? 0)
+  : c.gap || !c.cites?.length ? 0 : c.cites.some((x) => x.strength === 'partial') ? 0.5 : 1)
 
 // Düğüm Gücü simgesi: her iddia bir düğüm; aralarındaki ip kanıt gücünü anlatır.
 //  SIKI → gergin ip + sıkı düğüm · GEVEŞEK → gevşek sarkan ip + açık ilmek · KOPUK → kopuk, uçları yıpranmış ip
@@ -73,7 +78,7 @@ export function KnotGlyph({ state, levels, verified, reduce }) {
 }
 
 // Kanıt desteğinin özeti: durum, sayılar ve gerekçeler iddialardan türetilir. Güven yüzdesi yoktur.
-export function analyze(claims) {
+export function analyze(claims, stateOverride) {
   const total = claims.length
   const lv = claims.map(levelOf)
   const full = lv.filter((x) => x === 1).length
@@ -81,7 +86,7 @@ export function analyze(claims) {
   const none = lv.filter((x) => x === 0).length
   const supported = full + partial
   const sources = new Set(claims.flatMap((c) => c.cites.map((x) => `${x.doc}:${x.page}`))).size
-  const state = supported === 0 ? 'KOPUK' : none === 0 && partial === 0 ? 'SIKI' : 'GEVESEK'
+  const state = stateOverride || (supported === 0 ? 'KOPUK' : none === 0 && partial === 0 ? 'SIKI' : 'GEVESEK')
   const first = `${supported}/${total} iddia destekleniyor`
   let second
   if (state === 'SIKI') second = `${sources} kaynak kullanıldı`
@@ -97,10 +102,10 @@ const RULES = [
 ]
 
 // Düğüm Gücü: sade bir imza. Durum, tek cümlelik gerekçe ve istenirse iddia bazında neden.
-export default function KnotStrength({ claims, verified, onActivate }) {
+export default function KnotStrength({ claims, verified, onActivate, state: stateOverride, heuristic }) {
   const reduce = useReducedMotion()
   const [open, setOpen] = useState(false)
-  const k = analyze(claims)
+  const k = analyze(claims, stateOverride)
   const s = STATES[k.state]
   const key = verified ? k.state : 'PENDING'
 
@@ -154,7 +159,8 @@ export default function KnotStrength({ claims, verified, onActivate }) {
               {claims.map((c, i) => {
                 const l = k.levels[i]
                 const mark = l === 1 ? ['✓', 'text-siki'] : l === 0.5 ? ['◐', 'text-gevesek'] : ['—', 'text-kopuk']
-                const note = l === 1 ? c.cites[0].label : l === 0.5 ? `${c.cites[0].label} · kısmi` : 'kanıt yok'
+                const lab = c.cites?.[0]?.label ?? 'kaynak'
+                const note = l === 1 ? lab : l === 0.5 ? `${lab} · kısmi` : 'kanıt yok'
                 return (
                   <li key={c.id}>
                     <button type="button" onClick={() => onActivate?.(c, c.cites?.[0])} className="press -mx-2 grid w-[calc(100%+1rem)] grid-cols-[1.25rem_minmax(0,1fr)_auto] items-baseline gap-x-2 rounded-lg px-2 py-1.5 text-left hover:bg-ink/[0.04]">
@@ -174,6 +180,11 @@ export default function KnotStrength({ claims, verified, onActivate }) {
                 </div>
               ))}
             </dl>
+            {heuristic && (
+              <p className="m-0 mt-3 text-[12.5px] leading-relaxed text-ink-3" data-heuristic-note>
+                Destek düzeyi, iddiaların kaynak metniyle sözcük düzeyinde karşılaştırılmasıyla belirlenir; anlamsal olarak doğrulanmış değildir.
+              </p>
+            )}
           </motion.div>
         )}
       </AnimatePresence>
