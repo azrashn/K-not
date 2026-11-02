@@ -1,5 +1,28 @@
 # K-NOT geliştirme ilerlemesi
 
+## Güncel — quiz üretim hatası (2 Kasım 2026)
+
+Ekrandaki genel kalite uyarısının ilk gerçek nedeni `Unverifiable source quote`:
+model alıntıyı değiştiriyor/çeviriyor, birebir kaynak kontrolü soruyu reddediyordu.
+Artık model yalnız sunucunun sunduğu alıntı kimliğini seçer; orijinal metin ve
+kaynak indeksi sunucuda eklenir. Bağımsız cevap/şık denetimi korunur; açık 0 tabanlı
+seçenek kimlikleri gönderilir. Tek düzeltme denemesi toplam 130 saniye bütçesine
+dahildir. Tekrarlama ayarları ve kısa alan talimatları küçük model için düzenlendi.
+Model/bağlantı hataları soru kalitesiyle karıştırılmaz. Form değişince eski hata
+temizlenir; açıklama ve hata mesajları sadeleştirildi.
+
+**Sınır:** Gerçek yerel model + mevcut Algoritma/video kaynağıyla soru üretimi,
+kaynak metadatası, cevap anahtarının gizliliği ve yeniden yükleme HTTP testi geçti
+(12.233 s). Ancak üretilen Türkçe soru ve çeldiriciler insan incelemesinde zayıf;
+pedagojik kalite **PARTIAL**. Model denetimi doğruluk kanıtı değildir. Genel quiz
+kalitesi veya önceki BFS/DFS retrieval sorunu çözülmüş sayılmaz. Yeni model indirilmedi.
+
+Komutlar/başarısız gerçek denemeler ve kanıtlar:
+[QUIZ_SOURCE_BINDING_FIX.md](QUIZ_SOURCE_BINDING_FIX.md). Dal feature/video-integration.
+Bir sonraki adım: iyi hazırlanmış PDF ile gürültülü video transkriptini ayrı
+değerlendirmek; daha güçlü yerel metin modeli gerekiyorsa boyutunu ölçüp onay almak.
+OpenTutor/DocsGPT kaynaklarına ve paylaşılan model sunucusunun ayarlarına dokunulmadı.
+
 ## Güncel — bağlam / ilerleme / quiz düzeltmesi (31 Ekim 2026)
 
 Başlangıç `cfb4a81`, dal `feature/video-integration`. Aktif page/slide/time/

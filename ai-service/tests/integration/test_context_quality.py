@@ -52,7 +52,10 @@ def test_quiz_rejects_two_correct_options_even_if_global_flags_agree(monkeypatch
         "complete",
         lambda self, request: LLMResponse(
             text=json.dumps(
-                check if request.system.startswith("Independently solve") else draft
+                check if request.system.startswith("Independently solve") else {
+                    **{k: v for k, v in draft.items() if k not in ("quote", "source_index")},
+                    "quote_id": "q1",
+                }
             )
         ),
     )

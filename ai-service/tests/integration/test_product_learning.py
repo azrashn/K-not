@@ -94,7 +94,7 @@ def test_quiz_types_have_exact_source_and_honest_assessment(client, kind, monkey
                     ],
                 }
                 if "Independently solve" in request.system
-                else draft
+                else {**{k: v for k, v in draft.items() if k not in ("quote", "source_index")}, "quote_id": "q1"}
             )
         )
 

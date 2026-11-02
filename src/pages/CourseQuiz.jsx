@@ -104,7 +104,11 @@ export default function CourseQuiz({ courseId }) {
       </PageTitle>
       <div className="quiz-layout">
         <aside>
-          <form className="product-panel product-form" onSubmit={start}>
+          <form
+            className="product-panel product-form"
+            onSubmit={start}
+            onChange={() => setError("")}
+          >
             <h2>Çalışma kapsamı</h2>
             <label>
               Ders
@@ -220,9 +224,9 @@ export default function CourseQuiz({ courseId }) {
               </select>
             </label>
             <p className="product-note">
-              Sorular kaynak, konu, açıklık ve cevap/şık kontrolünden geçmeden
-              sunulmaz. Yerel model denetimi doğruluk garantisi değildir. Açık
-              uçlu cevaplar otomatik doğru/yanlış puanı almaz.
+              Sorular seçtiğin ders kaynaklarından hazırlanır. Yanıtından sonra
+              açıklamayı ve ilgili kaynağı görebilirsin. Açık uçlu yanıtlar
+              otomatik puanlanmaz.
             </p>
             <Btn
               type="submit"

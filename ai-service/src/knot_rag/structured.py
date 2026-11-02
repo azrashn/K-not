@@ -70,12 +70,12 @@ def visual_review_schema():
     )
 
 
-def quiz_schema(kind, source_count):
+def quiz_schema(kind, source_count, quote_ids=None):
     n = 4 if kind == "MULTIPLE_CHOICE" else 2 if kind == "TRUE_FALSE" else 0
     expected = (
         {"type": "string", "enum": [str(i) for i in range(n)]} if n else string(180)
     )
-    return obj(
+    schema = obj(
         {
             "question": string(900),
             "objective": string(300),
@@ -87,6 +87,17 @@ def quiz_schema(kind, source_count):
             "option_feedback": array(string(700), n, n),
         }
     )
+    if quote_ids is not None:
+        # Select a server-owned excerpt, rather than asking the model to copy
+        # or translate a citation. Public quiz responses retain quote/index.
+        properties = schema["properties"]
+        del properties["quote"], properties["source_index"]
+        schema["properties"] = properties = {
+            "quote_id": {"type": "string", "enum": list(quote_ids)},
+            **properties,
+        }
+        schema["required"] = list(properties)
+    return schema
 
 
 def quiz_review_schema(kind):

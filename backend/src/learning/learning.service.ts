@@ -177,10 +177,20 @@ export class LearningService {
       body: { question: b.topic, kind: b.kind, evidence: candidates },
       timeoutMs: 150000,
     });
+    if (r.kind === "timeout")
+      throw new ApiError(
+        "PROVIDER_TIMEOUT",
+        "Soru hazırlama beklenenden uzun sürdü. Lütfen yeniden deneyin.",
+      );
+    if (r.kind === "unreachable" || (r.kind === "response" && r.status === 503))
+      throw new ApiError(
+        "AI_SERVICE_UNAVAILABLE",
+        "Soru hazırlayan yerel model yanıt veremedi. Lütfen biraz sonra yeniden deneyin.",
+      );
     if (r.kind === "response" && r.status === 422)
       throw new ApiError(
         "VALIDATION_ERROR",
-        "Soru kaynak, açıklık veya seçenek kalite kontrolünden geçmedi; yayınlanmadı. Başka bir bölüm veya soru türü deneyin.",
+        "Kaynaklara dayalı, net bir soru hazırlanamadı. Konuyu tek bir kavram veya adıma daraltıp yeniden deneyin.",
       );
     if (r.kind !== "response" || r.status !== 200)
       throw new ApiError(
