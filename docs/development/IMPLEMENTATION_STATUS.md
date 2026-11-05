@@ -1,3 +1,16 @@
+# Güncel uygulama aşaması — 5 Kasım 2026
+
+**A0 yerel uygulama ve doğrulama tamamlandı.** GitHub runner/temiz Windows kurulumu bekliyor; bütün A0 bulguları kapatılmış sayılmaz.
+- Quiz çalışma ağacı SHA256 manifestli yerel yedekte korundu: logs/a0-baseline-2026-11-05.
+- Ayrı QA USER hesabı: gerçek login200 ve sıfır ders; mevcut hesaplar/veriler korunuyor.
+- CI kalite workflow'u: frontend/backend test+build ve Python sözleşmeleri; gerçek AI kabulü ayrı.
+- Windows Python3.14.2 constraints ve pip check temiz. Hash-lock/temiz kurulum henüz kanıtlanmadı.
+- Yeni yerel doğrulama: frontend92/92 (47.14s), backend unit100/100 (29.323s), Python468/468 (109.89s); toplam660. Frontend/backend build PASS. Python39 deprecation ve frontend bundle>500kB uyarıları devam ediyor.
+- 59 bulgu: IMPLEMENTATION_BACKLOG.json. Aşamalar: IMPLEMENTATION_PLAN_2026-11-05.md. Ayrıntı: A0_BASELINE.md.
+**Sıradaki A1:** matematik şıkları, hedefte cevap sızıntısı, ders değişimi yarışı; onaylanan4B indirmesi ve gerçek PDF/video kabulü. Önceki quiz değişiklikleri hâlâ A1 çalışma ağacında; tamamlandı diye sunulmadı.
+
+---
+
 # K-NOT geliştirme ilerlemesi
 
 ## Güncel — quiz üretim hatası (2 Kasım 2026)
