@@ -50,3 +50,7 @@ seed_output*
 !/data/.gitkeep
 **/storage/documents/
 /*.pdf
+
+# Browser QA artifacts can contain private course/session data.
+.playwright-cli/
+/output/playwright/

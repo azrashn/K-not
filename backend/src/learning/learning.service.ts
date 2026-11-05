@@ -190,7 +190,9 @@ export class LearningService {
     if (r.kind === "response" && r.status === 422)
       throw new ApiError(
         "VALIDATION_ERROR",
-        "Kaynaklara dayalı, net bir soru hazırlanamadı. Konuyu tek bir kavram veya adıma daraltıp yeniden deneyin.",
+        r.body?.detail?.code === "QUIZ_TOPIC_NOT_FOUND"
+          ? "Seçili kaynaklarda bu konuyu açıklayan bir bölüm bulunamadı. Konuyu veya kaynak kapsamını değiştirin."
+          : "Kaynaklara dayalı, net bir soru hazırlanamadı. Konuyu tek bir kavram veya adıma daraltıp yeniden deneyin.",
       );
     if (r.kind !== "response" || r.status !== 200)
       throw new ApiError(
@@ -262,7 +264,9 @@ export class LearningService {
       kind: row.kind,
       question: d.question,
       options: d.options,
-      objective: d.objective || null,
+      // A paraphrased objective can disclose the answer despite lexical checks.
+      // Keep detailed objectives server-side until the student has answered.
+      objective: null,
       note: d.note,
       experimental: d.experimental,
       assessment: d.assessment,
@@ -333,6 +337,7 @@ export class LearningService {
       quote: data.quote,
       source: data.source,
       explanation: data.explanation || null,
+      objective: data.objective || null,
       selected_option_feedback: data.options?.length
         ? data.option_feedback?.[Number(response)] || null
         : null,

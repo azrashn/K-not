@@ -30,7 +30,8 @@ export default function CourseQuiz({ courseId }) {
   const [scopeMode, setScopeMode] = useState("course"),
     [selectedMaterials, setSelectedMaterials] = useState([]),
     [watchedOnly, setWatchedOnly] = useState(false);
-  const consumed = useRef(false);
+  const consumed = useRef(false), requestEpoch = useRef(0);
+  useEffect(() => () => { requestEpoch.current += 1; }, []);
   useEffect(() => {
     if (consumed.current) return;
     consumed.current = true;
@@ -50,6 +51,7 @@ export default function CourseQuiz({ courseId }) {
       api.quizzes(course, abort.signal),
     ])
       .then(([m, h]) => {
+        if (abort.signal.aborted) return;
         setMaterials(m.materials);
         setHistory(h);
       })
@@ -60,7 +62,9 @@ export default function CourseQuiz({ courseId }) {
   }, [course]);
   async function start(e) {
     e.preventDefault();
+    const epoch = ++requestEpoch.current;
     setBusy(true);
+    setQuiz(null);
     setError("");
     setResult(null);
     setAnswer("");
@@ -76,12 +80,14 @@ export default function CourseQuiz({ courseId }) {
               : { mode: "course" },
         watched_only: watchedOnly,
       });
+      if (epoch !== requestEpoch.current) return;
       setQuiz(q);
-      setHistory(await api.quizzes(course));
+      const history = await api.quizzes(course);
+      if (epoch === requestEpoch.current) setHistory(history);
     } catch (err) {
-      setError(videoErrorText(err));
+      if (epoch === requestEpoch.current) setError(videoErrorText(err));
     } finally {
-      setBusy(false);
+      if (epoch === requestEpoch.current) setBusy(false);
     }
   }
   return (
@@ -116,7 +122,13 @@ export default function CourseQuiz({ courseId }) {
                 aria-label="Ders"
                 value={course}
                 onChange={(e) => {
+                  requestEpoch.current += 1;
                   setCourse(e.target.value);
+                  setBusy(false);
+                  setAnswer("");
+                  setMaterials([]);
+                  setHistory([]);
+                  setSelectedMaterials([]);
                   setQuiz(null);
                   setResult(null);
                   setMaterial("");
@@ -134,6 +146,7 @@ export default function CourseQuiz({ courseId }) {
               Konu
               <input
                 aria-label="Konu"
+                disabled={busy}
                 value={topic}
                 onChange={(e) => setTopic(e.target.value)}
                 maxLength={200}
@@ -144,6 +157,7 @@ export default function CourseQuiz({ courseId }) {
               Kaynak kapsamı
               <select
                 aria-label="Kaynak kapsamı"
+                disabled={busy}
                 value={scopeMode}
                 onChange={(e) => setScopeMode(e.target.value)}
               >
@@ -157,6 +171,7 @@ export default function CourseQuiz({ courseId }) {
                 Materyal
                 <select
                   aria-label="Quiz materyali"
+                  disabled={busy}
                   value={material}
                   onChange={(e) => setMaterial(e.target.value)}
                 >
@@ -180,6 +195,7 @@ export default function CourseQuiz({ courseId }) {
                     <label className="reference-check" key={m.id}>
                       <input
                         type="checkbox"
+                        disabled={busy}
                         aria-label={`${m.title} quiz kapsamına ekle`}
                         checked={selectedMaterials.includes(m.id)}
                         onChange={(e) =>
@@ -198,6 +214,7 @@ export default function CourseQuiz({ courseId }) {
             <label className="reference-check">
               <input
                 type="checkbox"
+                disabled={busy}
                 checked={watchedOnly}
                 onChange={(e) => setWatchedOnly(e.target.checked)}
               />
@@ -213,6 +230,7 @@ export default function CourseQuiz({ courseId }) {
               Soru türü
               <select
                 aria-label="Soru türü"
+                disabled={busy}
                 value={kind}
                 onChange={(e) => setKind(e.target.value)}
               >
@@ -248,13 +266,17 @@ export default function CourseQuiz({ courseId }) {
             <button
               key={q.id}
               className="resume-row"
+              disabled={busy}
               onClick={async () => {
+                const epoch = ++requestEpoch.current;
                 try {
-                  setQuiz(await api.quiz(course, q.id));
+                  const saved = await api.quiz(course, q.id);
+                  if (epoch !== requestEpoch.current) return;
+                  setQuiz(saved);
                   setResult(null);
                   setAnswer("");
                 } catch (e) {
-                  setError(videoErrorText(e));
+                  if (epoch === requestEpoch.current) setError(videoErrorText(e));
                 }
               }}
             >
@@ -276,7 +298,7 @@ export default function CourseQuiz({ courseId }) {
               {error}
             </p>
           )}
-          {!quiz ? (
+          {busy && !quiz ? <p role="status">Seçtiğin kaynaklardan soru hazırlanıyor ve denetleniyor…</p> : !quiz ? (
             <EmptyState title="Öğrendiklerini dene">
               Bir ders, konu ve soru türü seç. Gerçek kaynak bulunduğunda
               alıştırman burada açılır.
@@ -298,14 +320,18 @@ export default function CourseQuiz({ courseId }) {
                 className="product-form"
                 onSubmit={async (e) => {
                   e.preventDefault();
+                  const epoch = ++requestEpoch.current;
                   setBusy(true);
                   try {
-                    setResult(await api.answerQuiz(course, quiz.id, answer));
-                    setHistory(await api.quizzes(course));
+                    const result = await api.answerQuiz(course, quiz.id, answer);
+                    if (epoch !== requestEpoch.current) return;
+                    setResult(result);
+                    const history = await api.quizzes(course);
+                    if (epoch === requestEpoch.current) setHistory(history);
                   } catch (err) {
-                    setError(videoErrorText(err));
+                    if (epoch === requestEpoch.current) setError(videoErrorText(err));
                   } finally {
-                    setBusy(false);
+                    if (epoch === requestEpoch.current) setBusy(false);
                   }
                 }}
               >
@@ -356,6 +382,7 @@ export default function CourseQuiz({ courseId }) {
                         : "Yanıtın kaydedildi"}
                   </span>
                   <p>{result.message}</p>
+                  {result.objective && <p>Öğrenme hedefi: {result.objective}</p>}
                   {result.explanation && <p>{result.explanation}</p>}
                   {result.selected_option_feedback && (
                     <p>Seçtiğin yanıt: {result.selected_option_feedback}</p>

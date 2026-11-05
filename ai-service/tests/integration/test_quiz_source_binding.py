@@ -44,6 +44,11 @@ def review(correct=(0,)):
 def local(monkeypatch):
     monkeypatch.setenv("UNIFIED_LLM_BASE_URL", "http://127.0.0.1:11436/v1")
     monkeypatch.setenv("UNIFIED_LLM_MODEL", "test-double")
+    # These existing regressions isolate citation binding/review. The complete
+    # planner + writer contract is exercised in test_quiz_planning.py.
+    monkeypatch.setattr("knot_rag.quiz_quality.plan_question", lambda *args: {
+        "quote_id": "q1", "answer_phrase": "queue", "objective": "Distinguish ordering behavior."
+    })
 
 
 def body():

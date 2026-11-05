@@ -70,7 +70,7 @@ def visual_review_schema():
     )
 
 
-def quiz_schema(kind, source_count, quote_ids=None):
+def quiz_schema(kind, source_count, quote_ids=None, named_choices=False):
     n = 4 if kind == "MULTIPLE_CHOICE" else 2 if kind == "TRUE_FALSE" else 0
     expected = (
         {"type": "string", "enum": [str(i) for i in range(n)]} if n else string(180)
@@ -97,7 +97,21 @@ def quiz_schema(kind, source_count, quote_ids=None):
             **properties,
         }
         schema["required"] = list(properties)
+    if named_choices and kind == "MULTIPLE_CHOICE":
+        properties = schema["properties"]
+        properties["options"] = obj({key: string(150) for key in "ABCD"})
+        properties["expected"] = {"type": "string", "enum": list("ABCD")}
+        properties["option_feedback"] = obj({key: string(350) for key in "ABCD"})
     return schema
+
+
+def quiz_plan_schema(quote_ids):
+    return obj({
+        "topic_supported": {"type": "boolean"},
+        "quote_id": {"type": "string", "enum": list(quote_ids)},
+        "objective": string(200),
+        "answer_phrase": string(120),
+    })
 
 
 def quiz_review_schema(kind):

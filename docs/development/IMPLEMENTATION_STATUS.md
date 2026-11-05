@@ -1,3 +1,9 @@
+# A1 devam — 5 Kasım 2026
+
+Matematik şıkları, cevap öncesi hedef gizliliği ve ders değişimi yarışları düzeltildi. Gerçek2B soru üretimi yetersiz; 4B indirmesi devam ediyor, model ayarları değiştirilmedi. A1 tamamlanmış değil. Ayrıntı A1_PROGRESS.md. Ara sınav/final talebi plana A2-E ve backlog K60 olarak eklendi.
+
+---
+
 # Güncel uygulama aşaması — 5 Kasım 2026
 
 **A0 yerel uygulama ve doğrulama tamamlandı.** GitHub runner/temiz Windows kurulumu bekliyor; bütün A0 bulguları kapatılmış sayılmaz.

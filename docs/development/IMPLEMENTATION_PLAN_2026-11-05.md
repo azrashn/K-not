@@ -58,6 +58,33 @@ A4'ün tasarım taslakları A1 sırasında hazırlanabilir; davranış entegrasy
 
 **Kabul:** PDF sayfası/video anından başlatılan oturum aynı kaynağa bağlı kalır; yenileme sonrası soru ve attempt ayrıntıları geri gelir; başka kullanıcı/ders kaynağı kabul edilmez. Cevap anahtarı cevap öncesi istemciye gönderilmez.
 
+## A2-E — Örnek ara sınav/finalden özgün deneme sınavı
+
+5 Kasım ek gereksinimi: hoca geçmiş midterm/final dosyalarını yükleyerek örnek
+ara sınav/final soruları ve deneme sınavları oluşturabilmeli. **PLANLANDI**.
+A1 kalite kapısı ve A2 soru seti/rubrik altyapısından sonra uygulanacak.
+
+- Materyale amaç etiketi: ders kaynağı / örnek ara sınav / örnek final / cevap
+  anahtarı. Sınav türü, ders ve kaynak sürümü saklanır. Cevap anahtarı öğrenciye
+  cevap öncesi sunulmaz; yalnız sınav görüntüsünden doğru cevap varmış gibi çıkarılmaz.
+- Kaynak soru sınırları, alt maddeler, puanlar, soru türleri, konular ve varsa
+  süre çıkarılır; OCR gerekliyse A5'e bağlıdır. Öğretmen çıkarılan taslağı onaylar.
+- Onaylanan blueprint: kapsam, konu ağırlığı, zorluk, soru türü, soru sayısı,
+  toplam puan ve süre. Az örnekten zorluk çıkarımı tahmindir ve düzenlenebilir.
+- Özgün sorular ders materyallerindeki bilgiye dayanır; yüklenen sınavlar biçim
+  ve kapsam örneğidir. Sadece isim/sayı değiştirerek kopya üretimi yeterli sayılmaz.
+- Her yeni soruda bilgi kaynağı ve örnek sınavla ilişkisi ayrı tutulur. Aynı veya
+  çok benzer soru tespiti, matematikte çözülebilirlik, puan tutarlılığı ve rubric
+  kontrolleri geçmeden sınav yayımlanmaz. “Benzer soru” bir başarı garantisi değildir.
+- Öğretmen önizleme/düzenleme/onay, öğrencide sınav modu, sonrasında anahtar ve
+  gerekçeli değerlendirme. PDF dışa aktarma sonraki alt iş; temel ekran akışını
+  geciktirmemeli.
+
+**Kabul:** hak sahibi olunan bir ara sınav ve bir final ile ayrı test; onaylanan
+blueprint'e uygun özgün soru setleri, puan toplamı, kaynak ilişkileri, cevap gizliliği,
+öğretmen incelemesi ve kalıcılık. Eksik ders kaynağında konu uydurulmaz. Bu özellik
+henüz uygulanmadı; A2-E kabul edilmeden çalışıyor diye sunulmayacak.
+
 ## A3 — Öğrenciye soru soran öğretmen
 
 **Bulgular:** K01–K05; K30'un öğretim belleği.

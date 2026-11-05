@@ -15,6 +15,9 @@ from knot_rag.generation.providers.openai_compatible import OpenAICompatibleProv
 def test_quiz_rejects_two_correct_options_even_if_global_flags_agree(monkeypatch):
     from knot_rag.quiz_quality import quiz
     from knot_rag.unified import QuizDraft
+    monkeypatch.setattr("knot_rag.quiz_quality.plan_question", lambda *args: {
+        "quote_id": "q1", "answer_phrase": "queue", "objective": "Identify pending element storage."
+    })
 
     draft = {
         "question": "Which structure stores pending elements?",

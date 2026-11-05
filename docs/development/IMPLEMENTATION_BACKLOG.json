@@ -1,7 +1,7 @@
 {
   "updated": "2026-11-05",
   "source_head": "3b8241f",
-  "stage": "A0",
+  "stage": "A1_DEVAM",
   "findings": [
     {
       "id": "K01",
@@ -119,9 +119,11 @@
       "action": "Hedefi cevap öncesinde kavramsal ve cevapsız biçimde göster; anlamsal cevap sızıntısı değerlendirmesi ekle.",
       "accept": "Öğretmen etiketli sızıntı örnekleri reddedilsin; hedef hiçbir dilbilgisel dönüşümle anahtarı açıklamasın.",
       "source": "ai-service/src/knot_rag/quiz_quality.py",
-      "status": "PLANLANDI",
-      "evidence_paths": [],
-      "verification": "Kabul testi henüz tamamlanmadı"
+      "status": "KISMEN_UYGULANDI",
+      "evidence_paths": [
+        "docs/development/A1_PROGRESS.md"
+      ],
+      "verification": "Odaklı otomatik testler geçti; gerçek model/UI kabulü bekliyor"
     },
     {
       "id": "K09",
@@ -149,9 +151,11 @@
       "action": "Matematiksel operatörleri koruyan normalizasyon ve uygun eşdeğerlik kontrolü kullan.",
       "accept": "Dört işlem şıkları farklı kalırken boşluk/yazım kaynaklı gerçek tekrarlar yakalansın.",
       "source": "ai-service/src/knot_rag/quiz_quality.py",
-      "status": "PLANLANDI",
-      "evidence_paths": [],
-      "verification": "Kabul testi henüz tamamlanmadı"
+      "status": "KISMEN_UYGULANDI",
+      "evidence_paths": [
+        "docs/development/A1_PROGRESS.md"
+      ],
+      "verification": "Odaklı otomatik testler geçti; gerçek model/UI kabulü bekliyor"
     },
     {
       "id": "K11",
@@ -239,9 +243,11 @@
       "action": "İstek kimliği/AbortController kullan; ders değişiminde tüm bağlı durumu temizle.",
       "accept": "Geciktirilmiş üretim sırasında ders değiştirildiğinde eski soru yeni derste görünmesin.",
       "source": "src/pages/CourseQuiz.jsx",
-      "status": "PLANLANDI",
-      "evidence_paths": [],
-      "verification": "Kabul testi henüz tamamlanmadı"
+      "status": "KISMEN_UYGULANDI",
+      "evidence_paths": [
+        "docs/development/A1_PROGRESS.md"
+      ],
+      "verification": "Odaklı otomatik testler geçti; gerçek model/UI kabulü bekliyor"
     },
     {
       "id": "K17",
@@ -329,9 +335,11 @@
       "action": "Gerçek aşama bilgisi, geçen süre, güvenli iptal ve son girdiyi koruyan retry ekle.",
       "accept": "İptal edilen istek sonradan aktif cevabı değiştirmesin; sahte yüzde gösterilmesin.",
       "source": "src/pages/CourseQuiz.jsx",
-      "status": "PLANLANDI",
-      "evidence_paths": [],
-      "verification": "Kabul testi henüz tamamlanmadı"
+      "status": "KISMEN_UYGULANDI",
+      "evidence_paths": [
+        "docs/development/A1_PROGRESS.md"
+      ],
+      "verification": "Odaklı otomatik testler geçti; gerçek model/UI kabulü bekliyor"
     },
     {
       "id": "K23",
@@ -899,6 +907,20 @@
         "docs/development/A0_BASELINE.md"
       ],
       "verification": "Kabul testi henüz tamamlanmadı"
+    },
+    {
+      "id": "K60",
+      "group": "Örnek sınav üretimi",
+      "priority": "P1",
+      "status": "PLANLANDI",
+      "title": "Yüklenen ara sınav/finalden özgün deneme soruları",
+      "evidence": "5 Kasım hoca talebi",
+      "impact": "Mevcut quiz örnek sınav biçim/kapsamını modellemiyor",
+      "action": "A2-E blueprint ve öğretmen onaylı özgün deneme",
+      "accept": "Ara sınav/final ayrı örneklerle kaynak, puan, özgünlük ve cevap gizliliği kabulü",
+      "source": "docs/development/IMPLEMENTATION_PLAN_2026-11-05.md",
+      "evidence_paths": [],
+      "verification": "Henüz uygulanmadı"
     }
   ]
 }
