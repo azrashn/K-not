@@ -7,6 +7,7 @@ import { AccessService } from "../courses/access.service";
 import { KnowledgeService } from "../knowledge/knowledge.service";
 import { AiServiceClient } from "../ai/ai-client";
 import { validSourceCompletion } from "./quiz-validation";
+import { quizHistoryItem } from "./quiz-history";
 
 @Injectable()
 export class LearningService {
@@ -377,7 +378,7 @@ export class LearningService {
   }
   async quizzes(u: AuthUser, c: string) {
     await this.access.requireMember(u, c);
-    return this.prisma.learningQuiz.findMany({
+    const rows = await this.prisma.learningQuiz.findMany({
       where: { userId: u.id, courseId: c, redacted: false },
       select: {
         id: true,
@@ -389,9 +390,11 @@ export class LearningService {
           orderBy: { createdAt: "desc" },
           take: 1,
         },
+        _count: { select: { attempts: true } },
       },
       orderBy: { createdAt: "desc" },
       take: 100,
     });
+    return rows.map((row) => quizHistoryItem(row));
   }
 }

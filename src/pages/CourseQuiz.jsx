@@ -6,6 +6,7 @@ import { PageFrame, Btn } from "../components/ui";
 import { MobileBar } from "../components/PageBits";
 import { PageTitle, EmptyState } from "../components/ProductUI";
 import { videoErrorText } from "../lib/video";
+import { HISTORY_FILTERS, filterHistory, historyLabel, summarizeHistory } from "../lib/quiz-history";
 const labels = {
   MULTIPLE_CHOICE: "Çoktan seçmeli",
   TRUE_FALSE: "Doğru / yanlış",
@@ -22,6 +23,7 @@ export default function CourseQuiz({ courseId }) {
     [material, setMaterial] = useState("");
   const [materials, setMaterials] = useState([]),
     [history, setHistory] = useState([]),
+    [historyFilter, setHistoryFilter] = useState("all"),
     [quiz, setQuiz] = useState(null),
     [answer, setAnswer] = useState(""),
     [result, setResult] = useState(null),
@@ -30,6 +32,8 @@ export default function CourseQuiz({ courseId }) {
   const [scopeMode, setScopeMode] = useState("course"),
     [selectedMaterials, setSelectedMaterials] = useState([]),
     [watchedOnly, setWatchedOnly] = useState(false);
+  const summary = summarizeHistory(history);
+  const visibleHistory = filterHistory(history, historyFilter);
   const consumed = useRef(false), requestEpoch = useRef(0);
   useEffect(() => () => { requestEpoch.current += 1; }, []);
   useEffect(() => {
@@ -263,7 +267,30 @@ export default function CourseQuiz({ courseId }) {
           <div className="section-heading mt-6">
             <h2>Önceki alıştırmalar</h2>
           </div>
-          {history.map((q) => (
+          {history.length > 0 && (
+            <p className="product-note" aria-live="polite">
+              {summary.total} soru · {summary.answered} yanıtlandı · {summary.unanswered} yanıt bekliyor
+            </p>
+          )}
+          {history.length > 0 && (
+            <div role="group" aria-label="Alıştırma filtresi" className="flex gap-2 flex-wrap mb-3">
+              {HISTORY_FILTERS.map((f) => (
+                <button
+                  key={f.id}
+                  type="button"
+                  aria-pressed={historyFilter === f.id}
+                  className="source-badge"
+                  onClick={() => setHistoryFilter(f.id)}
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
+          )}
+          {history.length > 0 && visibleHistory.length === 0 && (
+            <p className="product-note">Bu filtrede alıştırma yok.</p>
+          )}
+          {visibleHistory.map((q) => (
             <button
               key={q.id}
               className="resume-row"
@@ -283,12 +310,7 @@ export default function CourseQuiz({ courseId }) {
             >
               <strong>{q.topic}</strong>
               <small>
-                {labels[q.kind]} ·{" "}
-                {q.attempts?.[0]?.outcome === "CORRECT"
-                  ? "Eşleşen yanıt"
-                  : q.attempts?.length
-                    ? "Yanıtlandı"
-                    : "Yanıt bekliyor"}
+                {labels[q.kind]} · {historyLabel(q)}
               </small>
             </button>
           ))}
