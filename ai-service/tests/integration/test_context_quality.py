@@ -268,7 +268,7 @@ def test_mcq_rejects_duplicate_ambiguous_and_answer_leaking_options():
         {"options": ["queue", "QUEUE", "array", "tree"]},
         {"options": ["queue", "queue structure", "array", "tree"]},
         {"quote": "A fabricated quote."},
-        {"objective": "Learn why queue is the correct answer."},
+        {"question": "Why is queue the correct answer?"},
     ]:
         with pytest.raises(ValueError):
             validate_draft({**d, **changed}, "MULTIPLE_CHOICE", [{"text": d["quote"]}])

@@ -87,6 +87,12 @@ def quiz_schema(kind, source_count, quote_ids=None, named_choices=False):
             "option_feedback": array(string(700), n, n),
         }
     )
+    # Match the server's existing validation in the generation grammar too.
+    schema['properties']['question']['minLength']=10
+    schema['properties']['objective']['minLength']=8
+    schema['properties']['explanation']['minLength']=15
+    if kind=='CLOZE':schema['properties']['question']['pattern']='^[\\s\\S]*_____[\\s\\S]*$'
+    if kind=='OPEN':schema['properties']['expected']={'type':'string','enum':['']}
     if quote_ids is not None:
         # Select a server-owned excerpt, rather than asking the model to copy
         # or translate a citation. Public quiz responses retain quote/index.
@@ -108,9 +114,8 @@ def quiz_schema(kind, source_count, quote_ids=None, named_choices=False):
 def quiz_plan_schema(quote_ids):
     return obj({
         "topic_supported": {"type": "boolean"},
-        "quote_id": {"type": "string", "enum": list(quote_ids)},
+        "fact_id": {"type": "string", "enum": ["", *quote_ids]},
         "objective": string(200),
-        "answer_phrase": string(120),
     })
 
 

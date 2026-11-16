@@ -35,6 +35,9 @@ CASES = [
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", default="qwen3-vl:2b-instruct")
+    parser.add_argument("--only-current", action="store_true")
+    parser.add_argument("--kind", default="MULTIPLE_CHOICE", choices=['MULTIPLE_CHOICE','TRUE_FALSE','CLOZE','SHORT_ANSWER','OPEN'])
+    parser.add_argument("--case", choices=[c['id'] for c in CASES])
     args = parser.parse_args()
     os.environ["UNIFIED_LLM_BASE_URL"] = "http://127.0.0.1:11436/v1"
     os.environ["UNIFIED_LLM_MODEL"] = args.model
@@ -52,22 +55,26 @@ def main():
     report = {"baseline_commit": "3b8241f", "model": os.environ["UNIFIED_LLM_MODEL"], "runs": []}
     # Preserve every run, including rejected drafts, instead of overwriting failures.
     target = OUT / ("before-after-" + args.model.replace(":", "-") + "-" + str(time.time_ns()) + ".json")
-    for label, generate in [("baseline", baseline.quiz), ("planned", quiz)]:
+    for label, generate in ([("planned", quiz)] if args.only_current else [("baseline", baseline.quiz), ("planned", quiz)]):
         for case in CASES:
+            if args.case and case['id']!=args.case:continue
             calls = []
 
             def capture(self, request):
                 response = original(self, request)
                 calls.append({"stage": "plan" if request.system.startswith("Plan one") else
-                              "review" if request.system.startswith("Independently solve") else "write",
+                              "review" if request.system.startswith("Independently solve") else
+                              "feedback" if request.system.startswith("Audit and rewrite") else
+                              "distractors" if request.system.startswith("Audit distractors") else
+                              "term" if request.system.startswith("Select ONE") else "write",
                               "response": response.text})
                 return response
 
             OpenAICompatibleProvider.complete = capture
             started = time.monotonic()
-            run = {"pipeline": label, "case": case["id"], "expected_abstention": case["id"] == "unsupported-topic"}
+            run = {"pipeline": label, "case": case["id"], "kind":args.kind, "expected_abstention": case["id"] == "unsupported-topic"}
             try:
-                result = generate(QuizDraft(question=case["question"], language="tr", kind="MULTIPLE_CHOICE", evidence=[{"text": case["text"]}]))
+                result = generate(QuizDraft(question=case["question"], language="tr", kind=args.kind, evidence=[{"text": case["text"]}]))
                 run.update(status=200, result=result, exact_quote=result["quote"] in case["text"])
             except HTTPException as error:
                 run.update(status=error.status_code, detail=error.detail)

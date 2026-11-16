@@ -108,6 +108,7 @@ export default function CourseQuiz({ courseId }) {
         Sorular ders kaynaklarına bağlanır. Geri bildirimden ilgili sayfa, slayt
         veya video bölümüne dönebilirsin.
       </PageTitle>
+      {courses.error && <div className="product-error" role="alert">Dersler yüklenemedi. <button className="product-link" onClick={courses.reload}>Dersleri yeniden yükle</button></div>}
       <div className="quiz-layout">
         <aside>
           <form
@@ -306,6 +307,7 @@ export default function CourseQuiz({ courseId }) {
           ) : (
             <article className="quiz-question product-panel">
               <span className="source-badge">{labels[quiz.kind]}</span>
+              {quiz.question_style === "SOURCE_COMPLETION" && <p className="product-note">Kaynakta geçen kavramı hatırlama sorusu</p>}
               {quiz.objective && (
                 <p className="product-note">Öğrenme hedefi: {quiz.objective}</p>
               )}
@@ -383,7 +385,7 @@ export default function CourseQuiz({ courseId }) {
                   </span>
                   <p>{result.message}</p>
                   {result.objective && <p>Öğrenme hedefi: {result.objective}</p>}
-                  {result.explanation && <p>{result.explanation}</p>}
+                  {result.explanation && result.explanation !== result.quote && <p>{result.explanation}</p>}
                   {result.selected_option_feedback && (
                     <p>Seçtiğin yanıt: {result.selected_option_feedback}</p>
                   )}

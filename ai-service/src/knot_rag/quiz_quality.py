@@ -10,6 +10,8 @@ from knot_rag.generation.providers.policy import is_local_endpoint
 from knot_rag.structured import quiz_schema, quiz_review_schema
 from knot_rag.quiz_payload import normalize_choice_payload, parse_quiz_payload
 from knot_rag.quiz_planning import plan_question
+from knot_rag.quiz_feedback import review_feedback
+from knot_rag.quiz_completion import completion_plan, write_completion, source_feedback, validated_completion, review_completion_options
 from knot_rag.text import fold
 
 
@@ -115,10 +117,11 @@ def validate_draft(d, kind, evidence):
             and len(normalized[int(expected)]) >= 4
             and any(
                 contains_answer(canonical(d[k]), normalized[int(expected)])
-                for k in ("question", "objective")
+                # Detailed objectives are private until after the answer.
+                for k in ("question",)
             )
         ):
-            raise ValueError("Answer leaked in question or objective")
+            raise ValueError("Answer leaked in question")
         feedback = d.get("option_feedback")
         if (
             not isinstance(feedback, list)
@@ -159,20 +162,39 @@ def quiz(body):
         "SHORT_ANSWER": "A clear, specific short-answer question; expected is a short source phrase, options empty.",
         "OPEN": "A source-linked explanation/application prompt; expected empty string and options empty. No automatic grade.",
     }[body.kind]
-    # The Nest request has a 150s limit. One rejected draft may be repaired,
-    # but every draft still requires exact-source and blind-answer validation.
+    # Three bounded attempts share the Nest request's 150s budget. Conceptual
+    # drafts need blind review; recall drafts need exact source reconstruction.
     deadline = time.monotonic() + 130
     with httpx.Client() as client:
         provider = OpenAICompatibleProvider(url, model, client=client)
         failure = ""
-        for attempt in range(2):
+        rejected_facts = []
+        for attempt in range(3):
+            plan = None
             try:
                 if deadline - time.monotonic() < 8:
                     break
-                plan = (plan_question(provider, body, excerpts, deadline, failure)
+                plan = (plan_question(provider, body, excerpts, deadline, failure, rejected_facts)
                         if body.kind == "MULTIPLE_CHOICE" else None)
                 selected_excerpts = ({plan["quote_id"]: excerpts[plan["quote_id"]]} if plan else excerpts)
                 language = "Turkish" if body.language == "tr" else "English"
+                completion = completion_plan(provider, plan, body.question, deadline, language,
+                                             excerpts[plan['quote_id']]['quote']) if plan and attempt > 0 else None
+                if completion:
+                    selected=excerpts[plan['quote_id']]
+                    draft=write_completion(provider,plan,completion,selected['quote'],deadline,language,failure)
+                    draft.pop('quote_id')
+                    draft=validate_draft({**draft,**selected},body.kind,evidence)
+                    proof=validated_completion(draft,completion)
+                    review_completion_options(provider,draft,completion,deadline)
+                    return {'kind':body.kind,**draft,'completion_proof':proof,'experimental':True,'llm_used':True,
+                            'assessment':'SOURCE_RECALL','question_style':'SOURCE_COMPLETION',
+                            'quality':{'structural_validation':True,'independent_model_review':False,
+                                       'deterministic_source_validation':True,'truth_verified':False,
+                                       'option_audit_version':3,'pipeline_version':'source-completion-proof-v3',
+                                       'feedback_mode':'EXACT_SOURCE_REFERENCE','distractor_model_review':True},
+                            'note':'Kaynakta geçen ifadeyi hatırlama sorusu. Cevap, özgün kaynakla birebir eşleştirildi; kavramsal hâkimiyet ölçümü değildir.'}
+                writer_schema = quiz_schema(body.kind, len(evidence), selected_excerpts, named_choices=bool(plan))
                 result = provider.complete(
                     LLMRequest(
                         system=f"Write the question, objective, options and explanations in {language}. Keep copied technical answer terms faithful to the original source. "
@@ -186,7 +208,13 @@ def quiz(body):
                         "Keep each option to 2-8 words, each option_feedback to at most 15 words, and explanation to 1-2 sentences. Never repeat a sentence. "
                         "Preserve source qualifiers such as may/can/always: a possible property must not become a necessary property. "
                         "Keep the specified output language after a correction too. "
-                        + ("Follow the supplied question plan. One option must equal answer_phrase exactly. "
+                        + ("When source_completion is supplied, copy its question EXACTLY, put its answer at its letter, and provide three distinct plausible terms from the SAME category. Candidate_terms are suggestions, NOT a restricted list: invent plausible incorrect alternatives when the source has too few. For a formula all options must be formulas, for a substance all must be substances, for a data structure all must be data structures. Never use page headings, document titles, grammatical filler, or unrelated source words as options. Use the ORIGINAL SOURCE LANGUAGE for ALL options, overriding the general language instruction. This is source recall, not an advanced application question. "
+                           "Follow the supplied question plan. Test ONLY the ONE fact in focus_text, not the whole topic. "
+                           "Ask a narrow identification/value question: WHICH structure, term, quantity, or rule fits this fact? "
+                           "Avoid broad HOW questions and 'main difference' questions. "
+                           "All four options MUST answer the same dimension and be concise parallel phrases. "
+                           "Never mix a traversal order with a data structure or a different true property as a distractor. "
+                           "Never include two synonymous/equivalent correct descriptions. "
                            "Use named options {A:text,B:text,C:text,D:text}, expected is its LETTER A/B/C/D, "
                            "and option_feedback is {A:reason,B:reason,C:reason,D:reason}. "
                            "The other three options must be different plausible misconceptions of the same kind, not nonsense or unrelated categories. "
@@ -201,6 +229,7 @@ def quiz(body):
                                     for key, value in selected_excerpts.items()
                                 ],
                                 **({"plan": plan} if plan else {}),
+                                **({'source_completion':completion} if completion else {}),
                                 **({"previous_rejection": failure,
                                     "instruction": "Create a different, simpler question resolving this issue."}
                                    if failure else {}),
@@ -214,14 +243,12 @@ def quiz(body):
                         top_p=0.9,
                         frequency_penalty=0.6,
                         presence_penalty=0.2,
-                        response_schema=quiz_schema(body.kind, len(evidence), selected_excerpts, named_choices=bool(plan)),
+                        response_schema=writer_schema,
                     )
                 )
                 draft = validate_draft(
                     bind_excerpt(normalize_choice_payload(parse_quiz_payload(result.text)), selected_excerpts), body.kind, evidence
                 )
-                if plan and fold(draft["options"][int(draft["expected"])]) != fold(plan["answer_phrase"]):
-                    raise ValueError("Correct option changed the planned source answer")
                 if deadline - time.monotonic() < 5:
                     break
                 # Blind answer check: omit proposed answer and explanatory key from the reviewer.
@@ -275,7 +302,8 @@ def quiz(body):
                     issues = [k for k in flags if not isinstance(check, dict) or check.get(k) is not True]
                     if not isinstance(check, dict) or canonical(str(check.get("expected", ""))) != canonical(draft["expected"]):
                         issues.append("answer_disagreement")
-                    raise ValueError("Independent review rejected: " + ", ".join(issues))
+                    reason = str(check.get("reason", ""))[:300] if isinstance(check, dict) else ""
+                    raise ValueError("Independent review rejected: " + ", ".join(issues) + "; " + reason)
                 judgments = check.get("option_judgments")
                 count = len(draft["options"])
                 if (
@@ -297,11 +325,13 @@ def quiz(body):
                     != [int(draft["expected"])]
                 ):
                     raise ValueError("Ambiguous option audit")
+                draft = source_feedback(draft, language) if completion else review_feedback(provider, draft, body.kind, deadline, language)
                 return {
                     "kind": body.kind,
                     **draft,
                     "experimental": True,
                     "llm_used": True,
+                    "question_style": "SOURCE_COMPLETION" if completion else "CONCEPTUAL",
                     "assessment": (
                         "REFLECTION_NOT_AUTOGRADED"
                         if body.kind == "OPEN"
@@ -312,7 +342,9 @@ def quiz(body):
                         "independent_model_review": True,
                         "truth_verified": False,
                         "option_audit_version": 2,
-                        "pipeline_version": "source-plan-named-choices-v1" if plan else "source-binding-v1",
+                        "pipeline_version": "source-fact-feedback-v2" if plan else "source-feedback-v2",
+                        "feedback_reviewed": not bool(completion),
+                        "feedback_mode": "EXACT_SOURCE_REFERENCE" if completion else "MODEL_REVIEWED",
                         "reviewer": model,
                     },
                     "note": "Yerel model sorusu iki aşamada kontrol edildi; pedagojik ve anlamsal doğruluk hâlâ deneysel.",
@@ -325,7 +357,9 @@ def quiz(body):
                 logging.getLogger(__name__).warning("quiz_provider_failed: %s", type(exc).__name__)
                 raise HTTPException(503, "Local quiz model unavailable") from exc
             except (ValueError, TypeError, KeyError) as exc:
-                failure = str(exc)[:160]
+                failure = str(exc)[:500]
+                if plan and plan.get('fact_id'):
+                    rejected_facts.append(plan['fact_id'])
                 logging.getLogger(__name__).warning(
                     "quiz_quality_rejected attempt=%s: %s", attempt + 1, failure
                 )

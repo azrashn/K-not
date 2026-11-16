@@ -42,6 +42,14 @@ beforeEach(() => {
 })
 afterEach(() => vi.restoreAllMocks())
 
+test('quiz course list can recover after a temporary backend outage', async () => {
+  api.courses.mockRejectedValueOnce(new Error('offline')).mockResolvedValueOnce([{id:'c',name:'Physics'}]);
+  const user=userEvent.setup();render(<CourseQuiz/>);
+  await user.click(await screen.findByRole('button',{name:'Dersleri yeniden yükle'}));
+  await screen.findByRole('option',{name:'Physics'});
+  expect(screen.queryByRole('alert')).toBeNull();
+});
+
 test('switching courses ignores late quiz generation and clears previous history', async () => {
   const user=userEvent.setup();
   api.courses.mockResolvedValue([{id:'c',name:'Physics'},{id:'d',name:'Biology'}]);

@@ -16,7 +16,7 @@ TEXT = "A queue removes items in first-in-first-out order. A stack removes the l
 
 
 def payloads():
-    plan = {"topic_supported": True, "quote_id": "q1", "objective": "Distinguish removal ordering.", "answer_phrase": "queue"}
+    plan = {"topic_supported": True, "fact_id": "q1.s1", "objective": "Distinguish removal ordering."}
     draft = {
         "quote_id": "q1", "question": "Which structure removes the earliest added item first?",
         "objective": plan["objective"], "options": {"D": "tree", "B": "stack", "A": "queue", "C": "heap"},
@@ -31,6 +31,8 @@ def payloads():
 
 @pytest.fixture(autouse=True)
 def local(monkeypatch):
+    # Feedback rewriting has its own rejecting contract tests.
+    monkeypatch.setattr('knot_rag.quiz_quality.review_feedback', lambda provider,draft,*args: draft)
     monkeypatch.delenv("QUIZ_LLM_BASE_URL", raising=False)
     monkeypatch.delenv("QUIZ_LLM_MODEL", raising=False)
     monkeypatch.setenv("UNIFIED_LLM_BASE_URL", "http://127.0.0.1:11436/v1")
@@ -62,16 +64,16 @@ def test_planned_question_named_answers_and_feedback_remain_aligned(monkeypatch)
     assert result["expected"] == "0"
     assert result["option_feedback"][0].endswith("A")
     assert result["quote"] == TEXT
-    assert result["quality"]["pipeline_version"] == "source-plan-named-choices-v1"
+    assert result["quality"]["pipeline_version"] == "source-fact-feedback-v2"
     assert result["quality"]["truth_verified"] is False
     writer = json.loads(seen[1].user)
-    assert writer["plan"]["answer_phrase"] == "queue"
+    assert writer["plan"]["focus_text"] == TEXT.split('. ')[0]+'.'
     review = json.loads(seen[2].user)
     assert "expected" not in review and "plan" not in review
 
 
 def test_unsupported_topic_abstains_before_writing_a_question(monkeypatch):
-    generate, seen = run(monkeypatch, lambda p, d, r: p.update(topic_supported=False, answer_phrase=""))
+    generate, seen = run(monkeypatch, lambda p, d, r: p.update(topic_supported=False, fact_id=""))
     with pytest.raises(HTTPException) as error:
         generate()
     assert error.value.status_code == 422

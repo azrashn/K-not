@@ -37,6 +37,7 @@ def client(monkeypatch):
 
 @pytest.mark.parametrize("kind", ["CLOZE", "SHORT_ANSWER", "TRUE_FALSE", "OPEN"])
 def test_quiz_types_have_exact_source_and_honest_assessment(client, kind, monkeypatch):
+    monkeypatch.setattr('knot_rag.quiz_quality.review_feedback', lambda provider,draft,*args: draft)
     text = "Chlorophyll absorbs sunlight during photosynthesis."
     monkeypatch.setenv("UNIFIED_LLM_BASE_URL", "http://127.0.0.1:11436/v1")
     monkeypatch.setenv("UNIFIED_LLM_MODEL", "test-double")

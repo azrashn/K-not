@@ -6,6 +6,7 @@ import { ApiError, notFound } from "../common/errors";
 import { AccessService } from "../courses/access.service";
 import { KnowledgeService } from "../knowledge/knowledge.service";
 import { AiServiceClient } from "../ai/ai-client";
+import { validSourceCompletion } from "./quiz-validation";
 
 @Injectable()
 export class LearningService {
@@ -156,7 +157,7 @@ export class LearningService {
         ? { strategy: "single", active_material_id: b.material_id }
         : {}),
     });
-    const candidates = found.evidence
+    let candidates = found.evidence
       .filter(
         (e: any) =>
           !b.watched_only ||
@@ -165,6 +166,25 @@ export class LearningService {
           ),
       )
       .slice(0, 4);
+    // A selected ready material can be relevant across languages even when the
+    // text retrieval's lexical guard finds no anchor. The source-fact planner
+    // still rejects unrelated topics; never bypass watched-only restrictions.
+    if (!candidates.length && !b.watched_only &&
+        b.scope?.mode === "selected" && b.scope.material_ids?.length) {
+      const materials = await this.knowledge.materials(u, c);
+      for (const id of b.scope.material_ids.slice(0, 4)) {
+        const m = materials.find((m: any) => m.id === id && m.status === "READY");
+        if (!m) continue;
+        const preview = await this.knowledge.preview(u, c, id);
+        for (const segment of preview.segments) {
+          if (!segment.text?.trim()) continue;
+          candidates.push({...segment, material_id:m.id, version:m.version,
+                           title:m.title, kind:m.kind});
+          if (candidates.length >= 4) break;
+        }
+        if (candidates.length >= 4) break;
+      }
+    }
     let source = candidates[0];
     if (!source)
       throw new ApiError(
@@ -202,8 +222,8 @@ export class LearningService {
     const q = r.body;
     if (
       !q.quality?.structural_validation ||
-      !q.quality?.independent_model_review ||
-      q.quality?.option_audit_version !== 2 ||
+      (!(q.quality?.independent_model_review && q.quality?.option_audit_version === 2) &&
+        !validSourceCompletion(q,candidates)) ||
       !Number.isInteger(q.source_index) ||
       q.source_index < 1 ||
       q.source_index > candidates.length
@@ -270,10 +290,13 @@ export class LearningService {
       note: d.note,
       experimental: d.experimental,
       assessment: d.assessment,
+      question_style: d.question_style || "CONCEPTUAL",
       scope: d.scope,
       watched_only: d.watched_only || false,
       quality_state:
-        d.quality?.option_audit_version === 2
+        d.quality?.option_audit_version === 3 && d.quality?.deterministic_source_validation
+          ? "SOURCE_RECALL_CHECKED"
+          : d.quality?.option_audit_version === 2
           ? "MODEL_REVIEWED_UNVERIFIED"
           : "LEGACY_NOT_REVIEWED",
       source: s
@@ -328,7 +351,9 @@ export class LearningService {
         ? "Yanıtın kaydedildi. Açık uçlu yanıt için otomatik doğruluk puanı verilmedi."
         : matched
           ? "Yanıt, bu sorunun kaynakla eşleştirilen cevap anahtarıyla uyumlu."
-          : "Kaynak ifadesini incele; farklı sözcüklerle verilen kısa cevap otomatik yanlış sayılmaz.",
+          : data.options?.length
+            ? "Seçtiğin seçenek cevap anahtarıyla uyuşmuyor. Doğru seçeneği ve kaynak açıklamasını birlikte incele."
+            : "Kaynak ifadesini incele; farklı sözcüklerle verilen kısa cevap otomatik yanlış sayılmaz.",
       expected: reflection
         ? null
         : data.options?.length
@@ -338,6 +363,7 @@ export class LearningService {
       source: data.source,
       explanation: data.explanation || null,
       objective: data.objective || null,
+      feedback_mode: data.quality?.feedback_mode || "MODEL_REVIEWED",
       selected_option_feedback: data.options?.length
         ? data.option_feedback?.[Number(response)] || null
         : null,

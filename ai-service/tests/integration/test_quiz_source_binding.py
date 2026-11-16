@@ -42,6 +42,9 @@ def review(correct=(0,)):
 
 @pytest.fixture(autouse=True)
 def local(monkeypatch):
+    monkeypatch.setattr('knot_rag.quiz_quality.completion_plan', lambda *args: None)
+    # This suite isolates source binding and blind answer checks.
+    monkeypatch.setattr('knot_rag.quiz_quality.review_feedback', lambda provider,draft,*args: draft)
     monkeypatch.setenv("UNIFIED_LLM_BASE_URL", "http://127.0.0.1:11436/v1")
     monkeypatch.setenv("UNIFIED_LLM_MODEL", "test-double")
     # These existing regressions isolate citation binding/review. The complete
@@ -119,7 +122,7 @@ def test_second_attempt_cannot_bypass_ambiguous_option_rejection(monkeypatch):
     with pytest.raises(HTTPException) as error:
         quiz(body())
     assert error.value.status_code == 422
-    assert len(calls) == 4
+    assert len(calls) == 6
 
 
 def test_provider_failure_is_not_misreported_as_question_quality(monkeypatch):
