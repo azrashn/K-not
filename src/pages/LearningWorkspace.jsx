@@ -9,6 +9,7 @@ import DocumentCanvas from "../components/DocumentCanvas";
 import VideoProgressPanel from "../components/VideoProgressPanel";
 import { MaterialRename } from "../components/ProductUI";
 import MaterialSummary from "../components/MaterialSummary";
+import ClaimSupport from "../components/ClaimSupport";
 
 const locationLabel = (l) =>
   l.kind === "video"
@@ -1237,6 +1238,7 @@ export default function LearningWorkspace({ courseId }) {
                         </button>
                       </div>
                       <p className="answer-text">{t.answer}</p>
+                      <ClaimSupport claims={t.claims} />
                       {t.visual_analysis?.status === "IMAGE_PROVIDED" && (
                         <p className="product-note">
                           Özgün kaynak görüntüsü yerel modele gönderildi ·

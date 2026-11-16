@@ -104,9 +104,13 @@
       "action": "Planın kısa ve birebir kaynak cevabı seçmesini sağlamlaştır; onaylanmış 4B modeli ayrı değerlendirmede karşılaştır.",
       "accept": "Etiketli algoritma setinde kaynak bulunduğu halde ret oranı ölçülsün ve kabul eşiğini karşılasın.",
       "source": "ai-service/src/knot_rag/quiz_planning.py",
-      "status": "PLANLANDI",
-      "evidence_paths": [],
-      "verification": "Kabul testi henüz tamamlanmadı"
+      "status": "KISMEN_UYGULANDI",
+      "evidence_paths": [
+        "ai-service/evaluation/quiz_acceptance.py",
+        "ai-service/evaluation/data/quiz_acceptance_set.json",
+        "ai-service/tests/unit/test_quiz_acceptance.py"
+      ],
+      "verification": "Etiketli algoritma seti (12 kaynak) ve kabul oranını ölçen komut eklendi: python evaluation/quiz_acceptance.py. Gerçek yerel modelle ölçüm bu ortamda yapılamadı; kabul eşiği kullanıcının makinesinde doğrulanmalı."
     },
     {
       "id": "K08",
@@ -136,9 +140,12 @@
       "action": "Öğretmen tarafından etiketli kabul seti, bağımsız ölçümler ve uygun alanlarda deterministik cevap kontrolü ekle.",
       "accept": "Tek doğru cevap, kaynak desteği ve çeldirici kalitesi ayrı ayrı insan etiketleriyle ölçülsün.",
       "source": "ai-service/src/knot_rag/quiz_quality.py",
-      "status": "PLANLANDI",
-      "evidence_paths": [],
-      "verification": "Kabul testi henüz tamamlanmadı"
+      "status": "KISMEN_UYGULANDI",
+      "evidence_paths": [
+        "ai-service/src/knot_rag/quiz_quality.py",
+        "ai-service/tests/integration/test_quiz_review_model.py"
+      ],
+      "verification": "Kör inceleme için ayrı yerel model seçilebilir (QUIZ_REVIEW_LLM_BASE_URL/MODEL); sonuç, denetçinin ayrı model olup olmadığını (reviewer_is_separate_model) bildirir. Öğretmen etiketli kabul seti ve insan değerlendirmesi hâlâ yok; truth_verified false kalır."
     },
     {
       "id": "K10",
@@ -429,9 +436,15 @@
       "action": "Claim düzeyinde kaynak desteği değerlendirmesi ve alan doğruluk seti ekle.",
       "accept": "Kaynakta olmayan iddia ile doğru atıflı doğru iddia ayrı metriklerle ölçülsün.",
       "source": "ai-service/src/knot_rag/explanations.py",
-      "status": "PLANLANDI",
-      "evidence_paths": [],
-      "verification": "Kabul testi henüz tamamlanmadı"
+      "status": "KISMEN_UYGULANDI",
+      "evidence_paths": [
+        "ai-service/src/knot_rag/claim_check.py",
+        "ai-service/tests/unit/test_claim_check.py",
+        "ai-service/tests/integration/test_explain_support.py",
+        "src/components/ClaimSupport.jsx",
+        "tests/frontend/claim-support.test.jsx"
+      ],
+      "verification": "Her iddia, atıf yaptığı kaynak parçalarıyla sözcük, sayı ve olumsuzluk düzeyinde karşılaştırılır; sonuç cevabın altında gösterilir (SUPPORTED/PARTIAL/UNSUPPORTED). Anlamsal doğruluk kanıtı değildir; etiketli alan doğruluk seti hâlâ yok."
     },
     {
       "id": "K29",
@@ -446,7 +459,7 @@
       "source": "ai-service/src/knot_rag/unified.py",
       "status": "PLANLANDI",
       "evidence_paths": [],
-      "verification": "Kabul testi henüz tamamlanmadı"
+      "verification": "Davranış değiştirilmedi: konu çıpası zorunluluğu kanıt-öncelikli tasarımın parçası ve paylaşılan yolda algoritmaya özel kural yok ilkesi var. Kaybı ölçmek için K07 komutundaki kısaltma/eş anlamlı örnekleri kullanılabilir; gevşetme kararı ölçümden sonra verilmeli."
     },
     {
       "id": "K30",

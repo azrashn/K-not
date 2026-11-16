@@ -7,6 +7,7 @@ from knot_rag.generation.providers.base import LLMRequest, ProviderError
 from knot_rag.generation.providers.openai_compatible import OpenAICompatibleProvider
 from knot_rag.generation.providers.policy import is_local_endpoint
 from knot_rag.visual_context import prepare_image
+from knot_rag.claim_check import check_claims
 from knot_rag.structured import explanation_schema, visual_review_schema
 
 STYLES = {
@@ -322,9 +323,12 @@ def explain(body):
                     "visual_analysis": visual,
                     "response_mode": mode,
                 }
+            # Each claim is compared with the passages it cites; the result is advice, not verification.
+            claims, support_summary = check_claims(claims, body.evidence)
             return {
                 "answer": rendered,
                 "claims": claims,
+                "support_summary": support_summary,
                 "llm_used": True,
                 "status": "GENERATED_UNVERIFIED",
                 "response_mode": mode,

@@ -1490,3 +1490,38 @@
     border-bottom-color: #000;
   }
 }
+
+/* Per-claim source check under an answer. */
+.claim-support {
+  margin-top: 12px;
+  border: 1px solid var(--color-hair);
+  border-radius: 6px;
+  padding: 10px 14px;
+  background: var(--color-surface);
+  font-size: 13px;
+}
+.claim-support:hover {
+  border-color: var(--color-line-strong);
+}
+.claim-support summary {
+  cursor: pointer;
+  font-weight: 550;
+}
+.claim-support ol {
+  display: grid;
+  gap: 8px;
+  padding-left: 18px;
+  margin: 10px 0;
+}
+.claim-support small {
+  display: block;
+  color: var(--color-ink-3);
+}
+.claim-support li[data-support="UNSUPPORTED"] {
+  border-left: 2px solid var(--color-accent);
+  padding-left: 8px;
+}
+.claim-support-warning {
+  margin: 8px 0;
+  color: var(--color-accent-deep);
+}

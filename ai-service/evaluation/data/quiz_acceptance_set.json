@@ -1,0 +1,17 @@
+{
+  "description": "Labelled algorithm sources. Every case states its fact in the source, so a question about it should be accepted; a rejection is a pipeline miss to investigate, not a bad source.",
+  "cases": [
+    {"id": "bfs-queue", "kind": "MULTIPLE_CHOICE", "topic": "BFS", "text": "Genişlik öncelikli arama (BFS) bir kuyruk kullanır. Başlangıç düğümü kuyruğa eklenir ve düğümler seviye seviye ziyaret edilir."},
+    {"id": "dfs-stack", "kind": "MULTIPLE_CHOICE", "topic": "DFS", "text": "Derinlik öncelikli arama (DFS) bir yığın kullanır ya da özyineleme ile çalışır. Bir dalın sonuna kadar iner, sonra geri döner."},
+    {"id": "dijkstra-negative", "kind": "TRUE_FALSE", "topic": "Dijkstra", "text": "Dijkstra algoritması negatif kenar ağırlıkları ile doğru çalışmaz. Tüm kenar ağırlıkları eksi olmayan sayılar olmalıdır."},
+    {"id": "binary-search", "kind": "MULTIPLE_CHOICE", "topic": "ikili arama", "text": "İkili arama yalnızca sıralı bir dizide çalışır. Her adımda arama aralığı yarıya indirilir ve karmaşıklığı O(log n) olur."},
+    {"id": "stack-lifo", "kind": "MULTIPLE_CHOICE", "topic": "yığın", "text": "Yığın son giren ilk çıkar (LIFO) ilkesiyle çalışan bir veri yapısıdır. Ekleme ve silme işlemleri yığının aynı ucundan yapılır."},
+    {"id": "queue-fifo", "kind": "MULTIPLE_CHOICE", "topic": "kuyruk", "text": "Kuyruk ilk giren ilk çıkar (FIFO) ilkesiyle çalışır. Eleman arkadan eklenir ve önden çıkarılır."},
+    {"id": "linked-list", "kind": "SHORT_ANSWER", "topic": "bağlı liste", "text": "Bağlı listede her düğüm veriyi ve bir sonraki düğümün adresini tutar. Başa eleman eklemek sabit zamanda yapılır."},
+    {"id": "hash-collision", "kind": "MULTIPLE_CHOICE", "topic": "hash tablosu", "text": "Hash tablosunda iki anahtar aynı gözü gösteriyorsa çakışma oluşur. Çakışmalar zincirleme ya da açık adresleme ile çözülür."},
+    {"id": "quicksort-pivot", "kind": "SHORT_ANSWER", "topic": "hızlı sıralama", "text": "Hızlı sıralama bir pivot eleman seçer ve diziyi pivottan küçükler ve büyükler olarak böler. Ortalama karmaşıklığı O(n log n) olur."},
+    {"id": "heap-root", "kind": "MULTIPLE_CHOICE", "topic": "yığın ağacı", "text": "Minimum yığın ağacında kök düğüm en küçük elemandır. Her düğüm çocuklarından küçük ya da eşittir."},
+    {"id": "tree-inorder", "kind": "OPEN", "topic": "ikili ağaç", "text": "İkili arama ağacında sıralı (inorder) gezinti elemanları küçükten büyüğe verir. Önce sol alt ağaç, sonra kök, sonra sağ alt ağaç ziyaret edilir."},
+    {"id": "graph-cycle", "kind": "TRUE_FALSE", "topic": "döngü", "text": "Yönlü bir grafta döngü varsa topolojik sıralama yapılamaz. Topolojik sıralama yalnızca yönlü döngüsüz graflar için tanımlıdır."}
+  ]
+}

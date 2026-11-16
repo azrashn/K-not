@@ -146,6 +146,19 @@ def validate_draft(d, kind, evidence):
     return d
 
 
+def review_provider(client, writer_url, writer_model):
+    """(provider, model name) for the blind review. QUIZ_REVIEW_LLM_BASE_URL / QUIZ_REVIEW_LLM_MODEL
+    select a second local model; without them the writer's model reviews (reported as not separate)."""
+    url = os.environ.get("QUIZ_REVIEW_LLM_BASE_URL", "")
+    model = os.environ.get("QUIZ_REVIEW_LLM_MODEL", "")
+    if not url and not model:
+        return OpenAICompatibleProvider(writer_url, writer_model, client=client), writer_model
+    url = url or writer_url
+    if not model or not is_local_endpoint(url):
+        raise HTTPException(503, "Local quiz review model unavailable")
+    return OpenAICompatibleProvider(url, model, client=client), model
+
+
 def quiz(body):
     url = os.environ.get("QUIZ_LLM_BASE_URL") or os.environ.get("UNIFIED_LLM_BASE_URL", "")
     model = os.environ.get("QUIZ_LLM_MODEL") or os.environ.get("UNIFIED_LLM_MODEL", "")
@@ -167,6 +180,8 @@ def quiz(body):
     deadline = time.monotonic() + 130
     with httpx.Client() as client:
         provider = OpenAICompatibleProvider(url, model, client=client)
+        # The blind review can use a different local model: the writer cannot grade itself.
+        reviewer, reviewer_model = review_provider(client, url, model)
         failure = ""
         rejected_facts = []
         for attempt in range(3):
@@ -253,7 +268,7 @@ def quiz(body):
                 if deadline - time.monotonic() < 5:
                     break
                 # Blind answer check: omit proposed answer and explanatory key from the reviewer.
-                review = provider.complete(
+                review = reviewer.complete(
                     LLMRequest(
                         system="Independently solve and audit this question using only its source. Return JSON {expected,clear,topic_related,answer_supported,single_correct,distractors_valid,reason}. "
                         "expected is the option INDEX STRING for choices, missing phrase for cloze/short, empty for open. Reject ambiguous/multiple-correct questions and unsupported/absurd distractors. "
@@ -346,7 +361,8 @@ def quiz(body):
                         "pipeline_version": "source-fact-feedback-v2" if plan else "source-feedback-v2",
                         "feedback_reviewed": not bool(completion),
                         "feedback_mode": "EXACT_SOURCE_REFERENCE" if completion else "MODEL_REVIEWED",
-                        "reviewer": model,
+                        "reviewer": reviewer_model,
+                        "reviewer_is_separate_model": reviewer_model != model,
                     },
                     "note": "Yerel model sorusu iki aşamada kontrol edildi; pedagojik ve anlamsal doğruluk hâlâ deneysel.",
                 }
