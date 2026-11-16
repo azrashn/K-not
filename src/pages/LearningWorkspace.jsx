@@ -8,6 +8,7 @@ import { videoTime, videoErrorText } from "../lib/video";
 import DocumentCanvas from "../components/DocumentCanvas";
 import VideoProgressPanel from "../components/VideoProgressPanel";
 import { MaterialRename } from "../components/ProductUI";
+import MaterialSummary from "../components/MaterialSummary";
 
 const locationLabel = (l) =>
   l.kind === "video"
@@ -1022,6 +1023,16 @@ export default function LearningWorkspace({ courseId }) {
                 </p>
               )}
             </details>
+          )}
+          {selected && selected.status === "READY" && (
+            <MaterialSummary
+              courseId={courseId}
+              material={selected}
+              labelOf={locationLabel}
+              onOpenSource={(src) =>
+                openEvidence({ material_id: selected.id, id: src.id })
+              }
+            />
           )}
           {segments.length > 1 && (
             <details className="source-sections">

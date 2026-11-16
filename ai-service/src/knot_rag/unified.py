@@ -92,6 +92,12 @@ class Extract(StrictModel):
     content: str = Field(max_length=3_000_000)
 
 
+class Summary(StrictModel):
+    focus: Literal["summary", "concepts"] = "summary"
+    language: Literal["tr", "en"] = "tr"
+    evidence: list[dict] = Field(min_length=1, max_length=8)
+
+
 class QuizDraft(Explain):
     kind: Literal["MULTIPLE_CHOICE", "TRUE_FALSE", "CLOZE", "SHORT_ANSWER", "OPEN"]
     language: Literal["tr", "en"] = "tr"
@@ -765,6 +771,12 @@ def install(app, components, auth):
         from knot_rag.explanations import explain as generate_explanation
 
         return generate_explanation(body)
+
+    @router.post("/summary")
+    def summary(body: Summary):
+        from knot_rag.summary import summarize
+
+        return summarize(body)
 
     @router.post("/quiz")
     def quiz(body: QuizDraft):
