@@ -198,7 +198,8 @@ def quiz(body):
                 result = provider.complete(
                     LLMRequest(
                         system=f"Write the question, objective, options and explanations in {language}. Keep copied technical answer terms faithful to the original source. "
-                        "Create ONE educational question about the specified topic using only these source excerpts. "
+                        + (f"{body.style_hint} " if getattr(body, "style_hint", None) else "")
+                        + "Create ONE educational question about the specified topic using only these source excerpts. "
                         + spec
                         + " Return JSON {quote_id,question,objective,options,expected,explanation,option_feedback}. "
                         "Choose quote_id from the provided excerpts. The selected excerpt alone must support the answer and explanation. Do not write or translate a source quote; its exact text is attached by the server. "

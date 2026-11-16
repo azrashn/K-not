@@ -38,6 +38,7 @@ beforeEach(() => {
     { id: 'c', name: 'Physics', documents: { total: 0 }, material_count: 0 },
   ])
   api.quizzes.mockResolvedValue([])
+  api.examStyles.mockResolvedValue([])
   api.knowledgeMaterials.mockResolvedValue({ materials: [] })
 })
 afterEach(() => vi.restoreAllMocks())

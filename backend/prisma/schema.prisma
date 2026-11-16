@@ -72,6 +72,7 @@ model User {
   videos       Video[]
   videoProgress VideoProgress[]
   studyMaterials StudyMaterial[]
+  examStyles ExamStyle[]
   ownedCourses Course[] @relation("PersonalCourses")
   conversations LearningConversation[]
   activities LearningActivity[]
@@ -99,6 +100,7 @@ model Course {
   documents      Document[]
   videos         Video[]
   studyMaterials StudyMaterial[]
+  examStyles ExamStyle[]
 
   @@unique([code, term])
 }
@@ -249,6 +251,21 @@ model StudyMaterial {
 
   @@unique([courseId, ownerId, sha256])
   @@index([courseId, ownerId])
+}
+
+// A past exam's style profile (question formats, sample stems, topic terms). The exam text itself
+// is not kept: only the derived profile, so quizzes can imitate the instructor's style.
+model ExamStyle {
+  id        String   @id
+  courseId  String
+  ownerId   String
+  name      String   @db.VarChar(120)
+  profile   Json
+  createdAt DateTime @default(now())
+  course    Course   @relation(fields: [courseId], references: [id])
+  owner     User     @relation(fields: [ownerId], references: [id])
+
+  @@index([courseId, ownerId, createdAt])
 }
 
 model Document {
