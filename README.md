@@ -47,6 +47,8 @@ Uygulama: http://localhost:5173. İlk açılışta AI servisi gömme modelini in
 
 ## Sorun giderme
 
+Önce şunu çalıştırın: `npm run doctor`. Docker, MySQL konteyneri, veritabanı bağlantısı, 3000/5173/8100 portları ve yerel model tek ekranda ✓ / ! / ✗ ile gösterilir; her ✗ için ne yapılacağı yazılır. `npm run doctor -- --fix`, `DATABASE_URL` içindeki `localhost` adresini `127.0.0.1` yapar (Windows'ta IPv6'ya çözülüp bağlantı zaman aşımı yaratabilir). `npm run start:all` MySQL konteynerini kendisi açar ve sağlıklı olmasını bekler; port başka bir programda kullanılıyorsa başlamaz ve PID'yi söyler.
+
 | Belirti | Neden / çözüm |
 | --- | --- |
 | `Docker kurulu ama çalışmıyor` | Docker Desktop'ı aç, hazır olunca `npm run setup` tekrar. |
@@ -60,7 +62,8 @@ Uygulama: http://localhost:5173. İlk açılışta AI servisi gömme modelini in
 | Yüklenen PDF "Hazırlanıyor"da kalıyor | `RAG_INTERNAL_API_TOKEN`/`INGEST_CALLBACK_TOKEN`/`STORAGE_ROOT` backend ve ai-service'te aynı olmalı, `INGEST_ENABLED=true` olmalı → `npm run setup` eşitler. |
 | Özgün sayfa görüntüsü yok | Poppler (`pdftoppm`) kur (yukarıda); PPTX için ayrıca Docker açık olmalı. |
 | Video yükleme / "video servisi" hatası | Harici MomentSearch motoru kurulu ve çalışır değil, ya da FFmpeg PATH'te değil. |
-| `Port 5173/3000/8100 in use` | Önce `npm run stop:all`; başka program tutuyorsa onu kapat. |
+| `Port 5173/3000/8100 in use` | `npm run doctor` portu tutan PID'yi gösterir. Önce `npm run stop:all`; başka program tutuyorsa onu kapat (Windows: `taskkill /PID <numara> /F`). |
+| Docker yeniden başladıktan sonra `pool timeout` / veritabanına bağlanılamıyor | `knot_mysql` konteyneri kendiliğinden açılmaz. `npm run start:all` açar; elle: `docker start knot_mysql`, sağlıklı olana kadar bekleyin. |
 | `npm ci` "lock file" uyarısı / eski Node | Node >= 20.19 kullan (`node -v`); `nvm use` (`.nvmrc`). |
 | PowerShell betiği engellendi | `npm run dev:all` zaten `-ExecutionPolicy Bypass` kullanır; `setup.bat`/`npm run setup` PowerShell gerektirmez. |
 

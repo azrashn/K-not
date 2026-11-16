@@ -15,7 +15,7 @@ export default defineConfig(({ mode }) => {
     preview: { proxy },
     test: {
       environment: 'jsdom',
-      include: ['tests/frontend/**/*.test.{js,jsx}'],
+      include: ['tests/frontend/**/*.test.{js,jsx}', 'tests/scripts/**/*.test.js'],
       setupFiles: ['tests/frontend/setup.js'],
       restoreMocks: true,
     },

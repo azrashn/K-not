@@ -104,7 +104,7 @@ let databaseUrl = opt('database-url')
 if (!databaseUrl) {
   if (useDocker) {
     const u = getEnv(dockerEnv, 'MYSQL_USER'), p = encodeURIComponent(getEnv(dockerEnv, 'MYSQL_PASSWORD'))
-    databaseUrl = `mysql://${u}:${p}@localhost:${getEnv(dockerEnv, 'MYSQL_HOST_PORT') || '3306'}/${getEnv(dockerEnv, 'MYSQL_DATABASE') || 'knot_dev'}`
+    databaseUrl = `mysql://${u}:${p}@127.0.0.1:${getEnv(dockerEnv, 'MYSQL_HOST_PORT') || '3306'}/${getEnv(dockerEnv, 'MYSQL_DATABASE') || 'knot_dev'}`
   } else databaseUrl = getEnv(beEnv, 'DATABASE_URL')
 }
 setEnv(beEnv, 'DATABASE_URL', databaseUrl)
