@@ -1,0 +1,18 @@
+{
+  "sources": [
+    { "id": "s1", "text": "Kuyruk ilk giren ilk çıkar yapısıdır. Yığın son giren ilk çıkar çalışır.", "location": { "kind": "page", "page": 1 } }
+  ],
+  "model_output": {
+    "points": [
+      { "text": "Kuyruk FIFO yapısıdır.", "quote": "ilk giren ilk çıkar yapısıdır", "source_index": 1 }
+    ]
+  },
+  "response": {
+    "focus": "summary",
+    "items": [
+      { "text": "Kuyruk FIFO yapısıdır.", "quote": "ilk giren ilk çıkar yapısıdır", "source_index": 1 }
+    ],
+    "dropped": 0,
+    "quality": { "quote_verified": true, "model_generated": true }
+  }
+}

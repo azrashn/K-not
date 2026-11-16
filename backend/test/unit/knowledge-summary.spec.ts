@@ -13,7 +13,7 @@ test('pickSpread covers the whole material instead of only its first segments', 
 });
 
 test('a point is kept only when its quote is inside the segment it cites', () => {
-  const raw = { points: [
+  const raw = { items: [
     { text: 'Kuyruk FIFO yapısıdır.', quote: 'ilk giren ilk çıkar yapısıdır', source_index: 1 },
     { text: 'Yanlış atıf.', quote: 'ilk giren ilk çıkar yapısıdır', source_index: 2 },
     { text: 'Değiştirilmiş alıntı.', quote: 'ilk giren son çıkar', source_index: 1 },
@@ -24,7 +24,7 @@ test('a point is kept only when its quote is inside the segment it cites', () =>
 });
 
 test('concept items need a term and an explanation as well as a verified quote', () => {
-  const raw = { concepts: [
+  const raw = { items: [
     { term: 'Dijkstra', explanation: 'Negatif kenar ağırlığı sorun yaratır.', quote: 'negatif kenar ağırlığı', source_index: 2 },
     { term: 'X', explanation: 'çok kısa', quote: 'negatif kenar ağırlığı', source_index: 2 },
   ] };
@@ -34,7 +34,7 @@ test('concept items need a term and an explanation as well as a verified quote',
 });
 
 test('no verifiable point means the summary is not published', async () => {
-  const ai = { call: jest.fn().mockResolvedValue({ kind: 'response', status: 200, body: { points: [{ text: 'Uydurma madde.', quote: 'hiçbir yerde yok', source_index: 1 }] } }) };
+  const ai = { call: jest.fn().mockResolvedValue({ kind: 'response', status: 200, body: { items: [{ text: 'Uydurma madde.', quote: 'hiçbir yerde yok', source_index: 1 }] } }) };
   const service = new KnowledgeService({} as any, {} as any, ai as any, {} as any, {} as any, {} as any);
   (service as any).preview = jest.fn().mockResolvedValue({ material: { id: 'pdf_a', kind: 'PDF', title: 'Notlar', source_id: 'src' }, segments: segs });
   await expect(service.summarize({ id: 'u', role: 'USER' } as any, 'c', 'pdf_a', 'summary')).rejects.toMatchObject({ code: 'GENERATION_FAILED' });
@@ -43,7 +43,7 @@ test('no verifiable point means the summary is not published', async () => {
 });
 
 test('a verified summary returns sources with their location and the material it belongs to', async () => {
-  const ai = { call: jest.fn().mockResolvedValue({ kind: 'response', status: 200, body: { points: [{ text: 'Kuyruk FIFO yapısıdır.', quote: 'ilk giren ilk çıkar yapısıdır', source_index: 1 }] } }) };
+  const ai = { call: jest.fn().mockResolvedValue({ kind: 'response', status: 200, body: { items: [{ text: 'Kuyruk FIFO yapısıdır.', quote: 'ilk giren ilk çıkar yapısıdır', source_index: 1 }] } }) };
   const service = new KnowledgeService({} as any, {} as any, ai as any, {} as any, {} as any, {} as any);
   (service as any).preview = jest.fn().mockResolvedValue({ material: { id: 'pdf_a', kind: 'PDF', title: 'Notlar', source_id: 'src' }, segments: segs });
   const result = await service.summarize({ id: 'u', role: 'USER' } as any, 'c', 'pdf_a', 'summary');
