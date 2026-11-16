@@ -30,7 +30,6 @@ Poppler kurulumu: Windows `winget install oschwartz10612.Poppler` (ya da `choco 
 ```bash
 git clone https://github.com/azrashn/K-not.git
 cd K-not
-git checkout feature/video-integration
 npm run setup -- --start     # ya da: ./setup.sh --start (macOS/Linux/Git Bash) · setup.bat --start (Windows)
 ```
 
@@ -64,6 +63,14 @@ Uygulama: http://localhost:5173. İlk açılışta AI servisi gömme modelini in
 | `Port 5173/3000/8100 in use` | Önce `npm run stop:all`; başka program tutuyorsa onu kapat. |
 | `npm ci` "lock file" uyarısı / eski Node | Node >= 20.19 kullan (`node -v`); `nvm use` (`.nvmrc`). |
 | PowerShell betiği engellendi | `npm run dev:all` zaten `-ExecutionPolicy Bypass` kullanır; `setup.bat`/`npm run setup` PowerShell gerektirmez. |
+
+## Dal stratejisi
+
+- `main`: kararlı sürüm. Yalnızca `dev`'den, pull request ile güncellenir; sürümler `vX.Y.Z` etiketiyle işaretlenir. `git clone` sonrası ek bir `checkout` gerekmez.
+- `dev`: entegrasyon dalı. Çalışan en güncel kod buradadır.
+- `feature/*`, `fix/*`, `chore/*`: tek bir konu için `dev`'den açılır, pull request ile `dev`'e döner.
+- Bir dalın birleşmesi için frontend, backend (unit + API) ve Python testleri geçmeli; commit mesajları yapılan işi anlatır.
+- Birleşmiş veya terk edilmiş dalların silinmesi ayrı bir kararla yapılır; önce liste çıkarılır.
 
 ## Çalıştırma
 
