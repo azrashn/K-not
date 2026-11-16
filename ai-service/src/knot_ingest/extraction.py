@@ -1,6 +1,7 @@
 """PDF validation and page-aware text extraction (pypdf, BSD licence, pinned).
 
-No OCR: pages without a text layer become empty page texts. Never logs document text.
+Pages without a text layer become empty page texts. OCR is optional (knot_ingest.ocr) and only
+runs for a document that would otherwise be refused. Never logs document text.
 """
 
 from __future__ import annotations
@@ -14,6 +15,7 @@ from pypdf.errors import FileNotDecryptedError
 
 from knot_ingest.errors import IngestFailure
 from knot_ingest.normalize import normalize_page_text
+from knot_ingest.ocr import OcrOptions
 from knot_ingest.schemas import IngestErrorCode as E
 
 log = logging.getLogger("knot_rag.ingest.extraction")
@@ -28,6 +30,7 @@ PINNED_PYPDF_VERSION = "6.17.0"
 class ExtractedDocument:
     page_texts: list[str]  # normalized, physical page order; "" for pages without text
     empty_pages: int
+    ocr_pages: tuple[int, ...] = ()  # 1-based pages whose text came from OCR, not from the file
 
     @property
     def page_count(self) -> int:
@@ -35,7 +38,10 @@ class ExtractedDocument:
 
     @property
     def warnings(self) -> list[str]:
-        return [f"PAGES_WITHOUT_TEXT:{self.empty_pages}"] if self.empty_pages else []
+        out = [f"PAGES_WITHOUT_TEXT:{self.empty_pages}"] if self.empty_pages else []
+        if self.ocr_pages:
+            out.append("OCR_PAGES:" + ",".join(str(p) for p in self.ocr_pages))
+        return out
 
 
 def _open(data: bytes) -> pypdf.PdfReader:
@@ -55,7 +61,7 @@ def _open(data: bytes) -> pypdf.PdfReader:
     return reader
 
 
-def extract_pdf(data: bytes, *, max_pages: int, max_empty_page_ratio: float) -> ExtractedDocument:
+def extract_pdf(data: bytes, *, max_pages: int, max_empty_page_ratio: float, ocr: OcrOptions | None = None) -> ExtractedDocument:
     if not data.startswith(PDF_MAGIC):
         raise IngestFailure(E.UNSUPPORTED_FORMAT, "The file is not a PDF.")
     reader = _open(data)
@@ -81,10 +87,25 @@ def extract_pdf(data: bytes, *, max_pages: int, max_empty_page_ratio: float) -> 
         texts.append(normalize_page_text(raw))
 
     empty = sum(1 for t in texts if not t)
+    ocr_done: list[int] = []
+    if ocr is not None and empty / page_count > max_empty_page_ratio and empty <= ocr.max_pages:
+        # Only a document that would be refused gets OCR, so documents that work today keep their text.
+        wanted = [n for n, t in enumerate(texts, start=1) if not t]
+        try:
+            recognised = ocr.run(data, wanted, ocr.languages, ocr.dpi)
+        except Exception as exc:  # missing program, bad configuration: fall through to the usual refusal
+            log.warning("ingest.ocr.unavailable", extra={"error": type(exc).__name__})
+            recognised = {}
+        for number, raw in recognised.items():
+            clean = normalize_page_text(raw)
+            if clean:
+                texts[number - 1] = clean
+                ocr_done.append(number)
+        empty = sum(1 for t in texts if not t)
     if empty / page_count > max_empty_page_ratio:
         raise IngestFailure(E.NO_TEXT_LAYER, f"No extractable text on {empty} of {page_count} pages.")
     if empty == page_count:
         raise IngestFailure(E.EMPTY_DOCUMENT, "The PDF contains no readable text.")
     log.info("ingest.extracted", extra={"page_count": page_count, "empty_pages": empty,
                                         "characters": sum(len(t) for t in texts)})
-    return ExtractedDocument(page_texts=texts, empty_pages=empty)
+    return ExtractedDocument(page_texts=texts, empty_pages=empty, ocr_pages=tuple(sorted(ocr_done)))

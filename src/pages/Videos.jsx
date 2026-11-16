@@ -4,6 +4,7 @@ import { useApp } from '../app/store'
 import { Btn, PageFrame } from '../components/ui'
 import { MobileBar } from '../components/PageBits'
 import { validateVideoFile, videoTime, videoErrorText as errorText } from '../lib/video'
+import { mb, useLimits } from '../lib/limits'
 import { useVideoProgress } from '../hooks/useVideoProgress'
 
 const STATES = { pending: 'Sırada', queued: 'Sırada', fetching: 'Video okunuyor', sampling: 'Kareler çıkarılıyor',
@@ -25,6 +26,7 @@ function FrameImage({ courseId, videoId, index }) {
 
 export default function Videos({ courseId }) {
   const { navigate } = useApp()
+  const limits = useLimits()
   const [videos, setVideos] = useState([])
   const [selected, setSelected] = useState(null)
   const [error, setError] = useState('')
@@ -87,7 +89,7 @@ export default function Videos({ courseId }) {
     return () => { controller.abort(); askAbort.current?.abort(); if (url) URL.revokeObjectURL(url) }
   }, [courseId, selected, ready])
   async function upload(file) {
-    const invalid = validateVideoFile(file)
+    const invalid = validateVideoFile(file, limits.video_bytes)
     if (invalid) { setError(invalid); return }
     setUploading(true); setError('')
     try { const row = await api.uploadVideo(courseId, file); setSelected(row.id); await refresh() }
@@ -168,13 +170,13 @@ export default function Videos({ courseId }) {
         <Btn disabled={uploading || importing} onClick={() => input.current?.click()}>{uploading ? 'Video yükleniyor…' : 'Video yükle'}</Btn>
         <input ref={input} type="file" accept=".mp4,.webm,video/mp4,video/webm" className="sr-only" aria-label="Ders videosu seç"
           onChange={e => { if (e.target.files[0]) upload(e.target.files[0]); e.target.value = '' }} />
-        <p className="my-3 text-xs text-ink-3">MP4 / WebM · en fazla 100 MB</p>
+        <p className="my-3 text-xs text-ink-3">MP4 / WebM · en fazla {mb(limits.video_bytes)}</p>
         <form onSubmit={importLink} className="mb-5 space-y-3 border border-hair p-3">
           <label htmlFor="video-link" className="block text-sm font-medium">YouTube veya Drive bağlantısı</label>
           <input id="video-link" type="url" required maxLength={2048} value={link} disabled={importing}
             onChange={e => setLink(e.target.value)} placeholder="https://…"
             aria-describedby="video-link-help" className="w-full min-w-0 border border-hair bg-paper px-2 py-2 text-sm" />
-          <p id="video-link-help" className="text-xs leading-relaxed text-ink-3">YouTube videosu veya Drive dosya bağlantısı. Drive paylaşımı “Bağlantıya sahip herkes” olmalı. En fazla 100 MB / 2 saat.</p>
+          <p id="video-link-help" className="text-xs leading-relaxed text-ink-3">YouTube videosu veya Drive dosya bağlantısı. Drive paylaşımı “Bağlantıya sahip herkes” olmalı. En fazla {mb(limits.video_bytes)} / 2 saat.</p>
           <Btn type="submit" disabled={importing || uploading || !link.trim()}>{importing ? 'Video alınıyor…' : 'Bağlantıdan ekle'}</Btn>
           {importing && <p role="status" className="text-xs text-ink-2">Video indiriliyor; üç dakika kadar sürebilir. İşlem bitene kadar bu sayfayı açık tut.</p>}
         </form>

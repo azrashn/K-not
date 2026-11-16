@@ -4,9 +4,9 @@ export function videoTime(seconds) {
   const s = Math.max(0, Math.floor(Number(seconds) || 0))
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
 }
-export function validateVideoFile(file) {
+export function validateVideoFile(file, maxBytes = 100 * 1024 * 1024) {
   if (!file || !/\.(mp4|webm)$/i.test(file.name)) return 'MP4 veya WebM video seçin.'
-  if (file.size > 100 * 1024 * 1024) return 'Video en fazla 100 MB olabilir.'
+  if (file.size > maxBytes) return `Video en fazla ${Math.round(maxBytes / (1024 * 1024))} MB olabilir.`
   return null
 }
 

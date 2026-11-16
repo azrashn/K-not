@@ -10,6 +10,8 @@ import VideoProgressPanel from "../components/VideoProgressPanel";
 import { MaterialRename } from "../components/ProductUI";
 import MaterialSummary from "../components/MaterialSummary";
 import ClaimSupport from "../components/ClaimSupport";
+import MaterialFind from "../components/MaterialFind";
+import { mb, useLimits } from "../lib/limits";
 
 const locationLabel = (l) =>
   l.kind === "video"
@@ -159,6 +161,7 @@ function Voice({ text }) {
 
 export default function LearningWorkspace({ courseId }) {
   const { navigate, takeIntent } = useApp();
+  const limits = useLimits();
   const [course, setCourse] = useState(null),
     [materials, setMaterials] = useState([]);
   const [selected, setSelected] = useState(null),
@@ -718,7 +721,7 @@ export default function LearningWorkspace({ courseId }) {
                 {linkBusy ? "Video alınıyor…" : "Bağlantıdan ekle"}
               </button>
               <p>
-                Drive: bağlantıya sahip herkes erişebilmeli. En fazla 100 MB / 2
+                Drive: bağlantıya sahip herkes erişebilmeli. En fazla {mb(limits.video_bytes)} / 2
                 saat.
               </p>
             </form>
@@ -737,8 +740,8 @@ export default function LearningWorkspace({ courseId }) {
                     : "Belge yükle"}
                 <small>
                   {uploadMode === "video"
-                    ? "MP4 / WebM · 100 MB"
-                    : "PDF / PPTX / TXT · PPTX ve TXT: 2 MB"}
+                    ? `MP4 / WebM · ${mb(limits.video_bytes)}`
+                    : `PDF / PPTX / TXT · PPTX ve TXT: ${mb(limits.study_file_bytes)}`}
                 </small>
               </button>
               <input
@@ -1024,6 +1027,16 @@ export default function LearningWorkspace({ courseId }) {
                 </p>
               )}
             </details>
+          )}
+          {selected && selected.status === "READY" && (
+            <MaterialFind
+              courseId={courseId}
+              material={selected}
+              labelOf={locationLabel}
+              onOpenSource={(src) =>
+                openEvidence({ material_id: selected.id, id: src.id })
+              }
+            />
           )}
           {selected && selected.status === "READY" && (
             <MaterialSummary

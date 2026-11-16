@@ -1525,3 +1525,51 @@
   margin: 8px 0;
   color: var(--color-accent-deep);
 }
+
+/* Search inside the open material. */
+.material-find {
+  margin: 14px 0;
+}
+.material-find-form {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.material-find-form input {
+  flex: 1;
+  border: 1px solid var(--color-line);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 13px;
+  background: var(--color-surface);
+}
+.material-find-form input:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+.material-find-hits {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0 0;
+  border: 1px solid var(--color-hair);
+  border-radius: 6px;
+}
+.material-find-hits li + li {
+  border-top: 1px solid var(--color-hair);
+}
+.material-find-hits button {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+  text-align: left;
+  padding: 10px 12px;
+  font-size: 13px;
+}
+.material-find-hits button:hover {
+  background: var(--color-paper);
+}
+.material-find-hits mark {
+  background: var(--color-accent-tint);
+  color: var(--color-accent-deep);
+  padding: 0 1px;
+}

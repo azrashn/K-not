@@ -8,6 +8,7 @@ import {
   ParseIntPipe,
   Patch,
   Post,
+  Query,
   Res,
   UploadedFile,
   UseGuards,
@@ -39,6 +40,7 @@ import { AuthUser } from "../common/request-context";
 import { IdParam } from "../common/validation";
 import { UploadAccessGuard } from "../documents/upload-access.guard";
 import { KnowledgeService } from "./knowledge.service";
+import { STUDY_FILE_MAX_BYTES } from "../common/limits";
 import { LearningHistoryService } from "../learning/history.service";
 import { AccessService } from "../courses/access.service";
 
@@ -102,6 +104,9 @@ class Question {
 class Practice {
   @IsUUID() conversation_id!: string;
 }
+class FindQuery {
+  @IsString() @MinLength(2) @MaxLength(100) @Matches(/\S/) q!: string;
+}
 class SummaryRequest {
   @IsIn(["summary", "concepts"]) focus!: "summary" | "concepts";
 }
@@ -143,7 +148,7 @@ export class KnowledgeController {
   @UseGuards(UploadAccessGuard)
   @UseInterceptors(
     FileInterceptor("file", {
-      limits: { fileSize: 2 * 1024 * 1024, files: 1, fields: 0 },
+      limits: { fileSize: STUDY_FILE_MAX_BYTES, files: 1, fields: 0 },
       defParamCharset: "utf8",
     }),
   )
@@ -175,6 +180,14 @@ export class KnowledgeController {
     @Param("materialId") id: string,
   ) {
     return this.knowledge.preview(u, c, id);
+  }
+  @Get("materials/:materialId/find") find(
+    @CurrentUser() u: AuthUser,
+    @Param("courseId") c: string,
+    @Param("materialId") id: string,
+    @Query() q: FindQuery,
+  ) {
+    return this.knowledge.find(u, c, id, q.q);
   }
   @Post("materials/:materialId/summary")
   @HttpCode(200)

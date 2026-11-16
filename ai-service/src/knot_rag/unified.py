@@ -87,9 +87,22 @@ class Explain(StrictModel):
     selected_text: str | None = Field(default=None, max_length=1500)
 
 
+def _extract_limit() -> int:
+    """KNOWLEDGE_EXTRACT_MAX_BYTES (default 20 MiB) must match the backend's STUDY_FILE_MAX_BYTES."""
+    try:
+        value = int(os.environ.get("KNOWLEDGE_EXTRACT_MAX_BYTES", ""))
+    except ValueError:
+        return 20 * 1024 * 1024
+    return value if 1024 <= value <= 50 * 1024 * 1024 else 20 * 1024 * 1024
+
+
+EXTRACT_MAX_BYTES = _extract_limit()
+
+
 class Extract(StrictModel):
     kind: Literal["PPTX", "TXT"]
-    content: str = Field(max_length=3_000_000)
+    # base64 grows the payload by 4/3
+    content: str = Field(max_length=EXTRACT_MAX_BYTES * 4 // 3 + 16)
 
 
 class ExamFile(StrictModel):
@@ -127,8 +140,8 @@ def chunk_text(text: str, location: dict) -> list[dict]:
 
 def extract_file(kind: str, content: bytes) -> list[dict]:
     """No archive extraction, macros, embedded links, images or XML entities executed."""
-    if len(content) > 2 * 1024 * 1024:
-        raise ValueError("File exceeds 2 MiB")
+    if len(content) > EXTRACT_MAX_BYTES:
+        raise ValueError(f"File exceeds {EXTRACT_MAX_BYTES // (1024 * 1024)} MiB")
     if kind == "TXT":
         text = content.decode("utf-8-sig", errors="strict").strip()
         if not text or "\x00" in text or len(text) > 300000:
@@ -138,8 +151,8 @@ def extract_file(kind: str, content: bytes) -> list[dict]:
         infos = archive.infolist()
         if len(infos) > 2000 or len({i.filename for i in infos}) != len(infos):
             raise ValueError("Archive entry limit or duplicate name")
-        if sum(i.file_size for i in infos) > 20 * 1024 * 1024:
-            raise ValueError("Expanded archive exceeds 20 MiB")
+        if sum(i.file_size for i in infos) > max(20 * 1024 * 1024, 3 * EXTRACT_MAX_BYTES):
+            raise ValueError("Expanded archive is too large")
         if any(i.flag_bits & 1 or i.file_size > 2 * 1024 * 1024 for i in infos):
             raise ValueError("Encrypted or oversized archive entry")
         names = {i.filename for i in infos}

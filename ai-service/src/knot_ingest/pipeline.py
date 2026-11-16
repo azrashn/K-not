@@ -20,6 +20,7 @@ from knot_ingest.callbacks import EventEmitter, Heartbeat
 from knot_ingest.chunking import build_chunks, build_page_artifact, check_invariants, chunk_spans, layout_pages
 from knot_ingest.errors import IngestFailure, JobAborted
 from knot_ingest.extraction import extract_pdf
+from knot_ingest.ocr import OcrOptions
 from knot_ingest.schemas import EventType, IngestErrorCode as E, IngestionJobRequest, JobError, JobResult, Stage
 from knot_ingest.storage import LocalStorage, UnsafeStorageKey, pages_artifact_key
 from knot_rag.errors import ConfigurationError
@@ -58,6 +59,10 @@ class RunnerSettings:
     write_batch_size: int = 128
     max_pages: int = 400
     max_empty_page_ratio: float = 0.5
+    ocr_enabled: bool = False
+    ocr_languages: str = "tur+eng"
+    ocr_dpi: int = 200
+    ocr_max_pages: int = 40
 
 
 class JobRunner:
@@ -175,7 +180,9 @@ class JobRunner:
 
             self._enter(handle, Stage.EXTRACTING, 0.05)
             data = self._read_source(req)
-            extracted = extract_pdf(data, max_pages=self._s.max_pages, max_empty_page_ratio=self._s.max_empty_page_ratio)
+            ocr = (OcrOptions(languages=self._s.ocr_languages, dpi=self._s.ocr_dpi, max_pages=self._s.ocr_max_pages)
+                   if self._s.ocr_enabled else None)
+            extracted = extract_pdf(data, max_pages=self._s.max_pages, max_empty_page_ratio=self._s.max_empty_page_ratio, ocr=ocr)
             page_count = extracted.page_count
             self._enter(handle, Stage.EXTRACTING, 0.2, JobResult(page_count=page_count))
 

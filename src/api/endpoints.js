@@ -5,6 +5,7 @@ const enc = encodeURIComponent
 
 export const api = {
   login: (email, password) => request('POST', '/auth/login', { body: { email, password }, auth: false }),
+  limits: (signal) => request('GET', '/limits', { signal }),
   me: (signal) => request('GET', '/auth/me', { signal }),
 
   courses: (signal, archived = false) => request('GET', '/courses' + (archived ? '?archived=1' : ''), { signal }),
@@ -37,6 +38,7 @@ export const api = {
   knowledgeSource: (courseId, id, segment, signal) => request('GET', `/courses/${enc(courseId)}/knowledge/materials/${enc(id)}/sources/${enc(segment)}`, { signal }),
   knowledgeAnswer: (courseId, body, signal) => request('POST', `/courses/${enc(courseId)}/knowledge/answers`, { body, signal }),
   knowledgePractice: (courseId, conversation) => request('POST', `/courses/${enc(courseId)}/knowledge/practice`, { body: { conversation_id: conversation } }),
+  materialFind: (courseId, materialId, q, signal) => request('GET', `/courses/${enc(courseId)}/knowledge/materials/${enc(materialId)}/find?q=${enc(q)}`, { signal }),
   materialSummary: (courseId, materialId, focus, signal) => request('POST', `/courses/${enc(courseId)}/knowledge/materials/${enc(materialId)}/summary`, { body: { focus }, signal }),
   knowledgeGrade: (courseId, id, answer) => request('POST', `/courses/${enc(courseId)}/knowledge/practice/${enc(id)}/answers`, { body: { answer } }),
   knowledgeRemove: (courseId, id) => request('DELETE', `/courses/${enc(courseId)}/knowledge/materials/${enc(id)}`),

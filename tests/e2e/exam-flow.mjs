@@ -194,6 +194,25 @@ async function main() {
       await shot('06-summary')
     })
 
+    await step('search inside the open material finds the section, highlights the match and opens it', async () => {
+      await page.getByLabel('Belge içinde ara', { exact: true }).fill('KUYRUK')
+      await page.getByRole('button', { name: 'Ara', exact: true }).click()
+      await page.getByText(/bölümde bulundu/).waitFor()
+      const mark = await page.locator('.material-find-hits mark').first().innerText()
+      check(mark.toLowerCase() === 'kuyruk', `highlighted "${mark}"`)
+      await page.locator('.material-find-hits button').first().click()
+      await page.getByText('Genişlik öncelikli arama (BFS) bir kuyruk kullanır').first().waitFor()
+      await page.getByLabel('Belge içinde ara', { exact: true }).fill('yokboyle')
+      await page.getByRole('button', { name: 'Ara', exact: true }).click()
+      await page.getByText(/bu materyalde bulunamadı/).waitFor()
+    })
+
+    await step('upload hints show the limits the server enforces', async () => {
+      const limits = await apiJson('/limits')
+      check(limits.status === 200 && limits.body.study_file_bytes === 20 * 1024 * 1024, `limits: ${JSON.stringify(limits.body)}`)
+      await page.getByText('PPTX ve TXT: 20 MB').waitFor()
+    })
+
     console.log(`\nEND-TO-END PASSED (${results.length} steps). Artifacts: ${work}`)
   } catch (e) {
     await page.screenshot({ path: path.join(work, 'failure.png'), fullPage: true }).catch(() => undefined)

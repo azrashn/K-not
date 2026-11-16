@@ -532,9 +532,13 @@
       "action": "İsteğe bağlı sayfa OCR, kalite skoru ve özgün metin ayrımı ekle.",
       "accept": "Türkçe tarama örnekleri kaynak sayfası korunarak aranabilir olsun; el yazısı ayrı deneysel işaretlensin.",
       "source": "ai-service/src/knot_ingest/extraction.py",
-      "status": "PLANLANDI",
-      "evidence_paths": [],
-      "verification": "Kabul testi henüz tamamlanmadı"
+      "status": "KISMEN_UYGULANDI",
+      "evidence_paths": [
+        "ai-service/src/knot_ingest/ocr.py",
+        "ai-service/src/knot_ingest/extraction.py",
+        "ai-service/tests/ingest/test_ocr.py"
+      ],
+      "verification": "Isteğe bağlı OCR (INGEST_OCR_ENABLED, varsayılan kapalı): yalnızca metin katmanı olmadığı için reddedilecek PDF'te, Poppler + Tesseract ile; OCR sayfaları OCR_PAGES uyarısıyla işaretlenir. Gerçek Tesseract (tur) ile okuma testi geçti. Kalite skoru ve el yazısı yok; Windows kurulumu ayrıca yapılmalı."
     },
     {
       "id": "K35",
@@ -577,9 +581,15 @@
       "action": "Boyut hedefini belirle; akışlı/parçalı yükleme, disk kotası ve kesintiden devam ekle.",
       "accept": "Seçilen gerçek ders profili bellek taşmadan yüklenebilsin ve bağlantı kopmasından devam etsin.",
       "source": "backend/src/videos/videos.service.ts",
-      "status": "PLANLANDI",
-      "evidence_paths": [],
-      "verification": "Kabul testi henüz tamamlanmadı"
+      "status": "KISMEN_UYGULANDI",
+      "evidence_paths": [
+        "backend/src/common/limits.ts",
+        "backend/src/common/limits.controller.ts",
+        "backend/test/unit/limits.spec.ts",
+        "src/lib/limits.js",
+        "tests/frontend/limits.test.jsx"
+      ],
+      "verification": "PPTX/TXT varsayılanı 2 MB'tan 20 MB'a çıktı; PPTX/TXT (STUDY_FILE_MAX_BYTES) ve video (VIDEO_MAX_BYTES) sınırları ortam değişkeniyle ayarlanır, arayüz sunucunun gerçek sınırını /limits uç noktasından okur. Dosya hâlâ bellekte tutulur: akışlı/parçalı yükleme ve kesintiden devam yapılmadı (video motoru bu repoda değil)."
     },
     {
       "id": "K38",
@@ -607,9 +617,14 @@
       "action": "PDF text-layer, sayfa araması ve konumlu highlight ekle.",
       "accept": "Görsel üzerindeki seçili metin sunucuda aynı sayfa metniyle doğrulansın.",
       "source": "src/components/DocumentCanvas.jsx",
-      "status": "PLANLANDI",
-      "evidence_paths": [],
-      "verification": "Kabul testi henüz tamamlanmadı"
+      "status": "KISMEN_UYGULANDI",
+      "evidence_paths": [
+        "backend/src/knowledge/find.ts",
+        "backend/test/unit/find.spec.ts",
+        "src/components/MaterialFind.jsx",
+        "tests/frontend/material-find.test.jsx"
+      ],
+      "verification": "Materyal içi metin araması: Türkçe harf duyarsız, eşleşmeyi vurgular ve ilgili sayfa/slayt/zaman bölümünü açar (PDF, PPTX, TXT, video transkripti). Özgün PDF üzerinde gerçek metin katmanı ile seçim ve konumlu vurgu yapılmadı."
     },
     {
       "id": "K40",

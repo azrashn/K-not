@@ -3,7 +3,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import Videos from '../../src/pages/Videos'
 import { validateVideoFile, videoTime, videoErrorText } from '../../src/lib/video'
 import { api } from '../../src/api/endpoints'
-vi.mock('../../src/api/endpoints', () => ({ api: { videos: vi.fn(), videoTranscript: vi.fn(), videoFrames: vi.fn(), videoFile: vi.fn(), videoFrame: vi.fn(), videoAnswer: vi.fn(), importVideoLink: vi.fn(), removeVideo: vi.fn(), videoProgress: vi.fn(), saveVideoProgress: vi.fn() } }))
+vi.mock('../../src/api/endpoints', () => ({ api: { videos: vi.fn(), videoTranscript: vi.fn(), videoFrames: vi.fn(), videoFile: vi.fn(), videoFrame: vi.fn(), videoAnswer: vi.fn(), importVideoLink: vi.fn(), removeVideo: vi.fn(), videoProgress: vi.fn(), saveVideoProgress: vi.fn(), limits: vi.fn() } }))
 vi.mock('../../src/app/store', () => ({ useApp: () => ({ navigate: vi.fn() }) }))
 vi.mock('../../src/components/PageBits', () => ({ MobileBar: () => null }))
 beforeEach(() => {
@@ -11,6 +11,7 @@ beforeEach(() => {
   URL.createObjectURL = vi.fn(() => 'blob:authenticated-video')
   URL.revokeObjectURL = vi.fn()
   Object.defineProperty(HTMLMediaElement.prototype, 'readyState', { configurable: true, get: () => 1 })
+  api.limits.mockResolvedValue({ video_bytes: 100 * 1024 * 1024, study_file_bytes: 20 * 1024 * 1024, document_bytes: 30 * 1024 * 1024 })
   api.videos.mockResolvedValue({ videos: [{ id: 'video-1', title: 'Lecture', status: 'indexed', frame_count: 1 }] })
   api.videoFile.mockResolvedValue(new Blob(['video']))
   api.videoTranscript.mockResolvedValue({ chunks: [{ text: 'A real timestamp contract', start_seconds: 65, end_seconds: 72 }] })

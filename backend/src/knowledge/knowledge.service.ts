@@ -13,6 +13,8 @@ import { RateLimiter } from "../common/rate-limit";
 import { LearningHistoryService } from "../learning/history.service";
 import { resolveScope, validateViewport, inViewport } from "./context";
 import { pickSpread, verifiedSummaryItems, SummaryFocus } from "./summary";
+import { FIND_MIN, findInSegments } from "./find";
+import { STUDY_FILE_MAX_BYTES, mbText } from "../common/limits";
 
 const hash = (value: string) =>
   createHash("sha256").update(value).digest("hex");
@@ -314,10 +316,10 @@ export class KnowledgeService {
   }
   async upload(user: AuthUser, course: string, file?: Express.Multer.File) {
     await this.access.requireMember(user, course);
-    if (!file || file.size > 2 * 1024 * 1024 || file.size === 0)
+    if (!file || file.size > STUDY_FILE_MAX_BYTES || file.size === 0)
       throw new ApiError(
         "VALIDATION_ERROR",
-        "En fazla 2 MB PPTX veya UTF-8 metin dosyası seçin.",
+        `En fazla ${mbText(STUDY_FILE_MAX_BYTES)} PPTX veya UTF-8 metin dosyası seçin.`,
       );
     const filename = file.originalname
       .split(/[\\/]/)
@@ -478,6 +480,18 @@ export class KnowledgeService {
         source_id: m.source_id,
       },
       segments: await this.segments(user, course, m),
+    };
+  }
+  async find(user: AuthUser, course: string, materialId: string, query: string) {
+    if (String(query).trim().length < FIND_MIN)
+      throw new ApiError("VALIDATION_ERROR", `Arama en az ${FIND_MIN} karakter olmalı.`);
+    const preview = await this.preview(user, course, materialId);
+    const hits = findInSegments(preview.segments as any[], query);
+    return {
+      material: preview.material,
+      query: String(query).trim(),
+      hits,
+      segments_searched: preview.segments.length,
     };
   }
   async summarize(

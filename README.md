@@ -16,6 +16,7 @@ CLAIM → KNOT → SOURCE        ASK → PRACTICE → ANSWER → FEEDBACK → RE
 | **Docker** (Compose v2) | güncel | MySQL 8 konteyneri; PPTX önizleme görüntüsü | Evet\* |
 | Git | herhangi | — | Evet |
 | Poppler (`pdftoppm`) | herhangi | PDF/PPTX özgün sayfa görüntüsü (yoksa yalnızca metin gösterilir) | Hayır |
+| Tesseract (+ dil verisi, örn. `tesseract-ocr-tur`) | 5+ | Taranmış PDF için isteğe bağlı OCR (`INGEST_OCR_ENABLED=true`, `ai-service/.env.example`) | Hayır |
 | FFmpeg | 6+ | Yalnızca harici video motoru için (aşağıya bak) | Hayır |
 | Disk / ağ | ~5 GB, ilk kurulumda internet | torch + gömme modeli (`intfloat/multilingual-e5-small`, ~470 MB) | — |
 

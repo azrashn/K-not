@@ -1,6 +1,6 @@
 // Per-claim source check shown under a generated answer. It is a word-level comparison with the
 // cited passages (words, numbers, negation), never a proof that the answer is true.
-export const SUPPORT_LABELS = {
+const SUPPORT_LABELS = {
   SUPPORTED: "Kaynakla örtüşüyor",
   PARTIAL: "Kısmen örtüşüyor",
   UNSUPPORTED: "Kaynakta karşılığı zayıf",

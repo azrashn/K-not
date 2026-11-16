@@ -65,7 +65,9 @@ def build_service(
     storage = LocalStorage(settings.storage_root)
     runner = JobRunner(
         RunnerSettings(heartbeat_seconds=settings.heartbeat_seconds, embed_batch_size=settings.embed_batch_size,
-                       max_pages=settings.max_pages, max_empty_page_ratio=settings.max_empty_page_ratio),
+                       max_pages=settings.max_pages, max_empty_page_ratio=settings.max_empty_page_ratio,
+                       ocr_enabled=settings.ocr_enabled, ocr_languages=settings.ocr_languages,
+                       ocr_dpi=settings.ocr_dpi, ocr_max_pages=settings.ocr_max_pages),
         storage, chroma_client, emitter_factory,
     )
     worker = IngestionWorker(runner.run, concurrency=settings.worker_concurrency, capacity=settings.queue_capacity,

@@ -30,6 +30,11 @@ class IngestSettings:
     callback_timeout_seconds: float = 10.0
     terminal_retry_seconds: float = 120.0  # SUCCEEDED/FAILED are retried this long on 5xx/timeout
     shutdown_grace_seconds: float = 20.0
+    # Optional OCR for scanned PDFs (needs Poppler + Tesseract). Off by default.
+    ocr_enabled: bool = False
+    ocr_languages: str = "tur+eng"
+    ocr_dpi: int = 200
+    ocr_max_pages: int = 40
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] | None = None) -> "IngestSettings":
@@ -47,6 +52,10 @@ class IngestSettings:
                 embed_batch_size=int(g("INGEST_EMBED_BATCH_SIZE", "32")),
                 max_pages=int(g("INGEST_MAX_PAGES", "400")),
                 max_empty_page_ratio=float(g("INGEST_MAX_EMPTY_PAGE_RATIO", "0.5")),
+                ocr_enabled=_bool(g("INGEST_OCR_ENABLED")),
+                ocr_languages=g("INGEST_OCR_LANGUAGES", "tur+eng"),
+                ocr_dpi=int(g("INGEST_OCR_DPI", "200")),
+                ocr_max_pages=int(g("INGEST_OCR_MAX_PAGES", "40")),
                 supported_indexing_versions=tuple(
                     v.strip() for v in g("INGEST_SUPPORTED_INDEXING_VERSIONS", "c1").split(",") if v.strip()
                 ),
@@ -66,6 +75,11 @@ class IngestSettings:
             raise ConfigurationError("INGEST_CALLBACK_TOKEN is required when INGEST_ENABLED=true.")
         if self.worker_concurrency < 1 or self.queue_capacity < 1 or self.embed_batch_size < 1:
             raise ConfigurationError("Ingestion concurrency, queue capacity and batch size must be >= 1.")
+        if self.ocr_enabled:
+            from knot_ingest.ocr import valid_languages
+
+            if not valid_languages(self.ocr_languages) or not 72 <= self.ocr_dpi <= 400 or self.ocr_max_pages < 1:
+                raise ConfigurationError("Invalid OCR languages (e.g. tur+eng), dpi (72-400) or page limit.")
         if self.heartbeat_seconds <= 0 or self.max_pages < 1 or not 0 <= self.max_empty_page_ratio <= 1:
             raise ConfigurationError("Invalid ingestion heartbeat, page limit or empty-page ratio.")
         unsupported = set(self.supported_indexing_versions) - {"c1"}

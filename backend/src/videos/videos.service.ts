@@ -12,14 +12,15 @@ import { AccessService } from '../courses/access.service';
 import { PrismaService, isUniqueViolation } from '../prisma/prisma.service';
 import { canonicalVideoLink } from './video-link';
 
-export const VIDEO_MAX_BYTES = 100 * 1024 * 1024;
+import { VIDEO_MAX_BYTES, mbText } from '../common/limits';
+export { VIDEO_MAX_BYTES };
 const ENGINE_ID = /^up_[a-f0-9]{10}$/;
 export interface EngineVideo { id: string; status: string; frame_count?: number; progress?: number; error?: string; transcript_note?: string }
 export interface EngineCitation { video_id: string; n: number; idx?: number | null; ms: number; t_start: number; t_end: number; transcript?: string; timestamp?: string; [key: string]: unknown }
 
 export function validateVideo(file?: Express.Multer.File): Express.Multer.File {
   if (!file?.buffer?.length) throw new ApiError('VALIDATION_ERROR', 'Bir video dosyası seçin.');
-  if (file.size > VIDEO_MAX_BYTES) throw new ApiError('PAYLOAD_TOO_LARGE', 'Video en fazla 100 MB olabilir.');
+  if (file.size > VIDEO_MAX_BYTES) throw new ApiError('PAYLOAD_TOO_LARGE', `Video en fazla ${mbText(VIDEO_MAX_BYTES)} olabilir.`);
   const mp4 = file.buffer.length >= 12 && file.buffer.toString('ascii', 4, 8) === 'ftyp';
   const webm = file.buffer.length >= 4 && file.buffer.subarray(0, 4).equals(Buffer.from([0x1a, 0x45, 0xdf, 0xa3]));
   if ((!mp4 && !webm) || !/\.(mp4|webm)$/i.test(file.originalname)) {
@@ -183,7 +184,7 @@ export class VideosService {
       } catch { throw new ApiError('AI_SERVICE_UNAVAILABLE', 'Video bağlantısı alınamadı. Video servisinin açık olduğunu kontrol edin.'); }
       if (!response.ok) {
         await response.body?.cancel();
-        if (response.status === 413) throw new ApiError('PAYLOAD_TOO_LARGE', 'Bağlantıdaki video 100 MB sınırını aşıyor. Daha kısa bir video seçin.');
+        if (response.status === 413) throw new ApiError('PAYLOAD_TOO_LARGE', `Bağlantıdaki video ${mbText(VIDEO_MAX_BYTES)} sınırını aşıyor. Daha kısa bir video seçin.`);
         if (response.status === 429) throw new ApiError('RATE_LIMITED', 'Başka bir video bağlantısı alınıyor. Biraz sonra tekrar deneyin.');
         if (response.status === 504) throw new ApiError('PROVIDER_TIMEOUT', 'Video indirmesi üç dakikada tamamlanamadı. Tekrar deneyin veya dosya yükleyin.');
         throw new ApiError('VALIDATION_ERROR', 'Video indirilemedi. YouTube videosu herkese açık olmalı; Drive için “Bağlantıya sahip herkes” erişimini açın. Giriş isteyen, canlı veya kısıtlı videolar alınamaz. Dosyayı indirip yüklemeyi de deneyebilirsiniz.');
@@ -197,7 +198,7 @@ export class VideosService {
           const { done, value } = await reader.read();
           if (done) break;
           size += value.byteLength;
-          if (size > VIDEO_MAX_BYTES) throw new ApiError('PAYLOAD_TOO_LARGE', 'Video en fazla 100 MB olabilir.');
+          if (size > VIDEO_MAX_BYTES) throw new ApiError('PAYLOAD_TOO_LARGE', `Video en fazla ${mbText(VIDEO_MAX_BYTES)} olabilir.`);
           buffers.push(value);
         }
       } finally { await reader.cancel(); }

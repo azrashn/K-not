@@ -1,6 +1,7 @@
 /** Real SQL and HTTP/auth; retrieval/model boundary is explicitly fake. */
 import { createHash } from "node:crypto";
 import { Harness } from "../support/harness";
+import { STUDY_FILE_MAX_BYTES } from "../../src/common/limits";
 import { FakeAiService } from "../support/fake-ai";
 const h = new Harness();
 const engine = new FakeAiService();
@@ -991,7 +992,7 @@ test("client identity/watch spoofing and oversized file rejected", async () => {
     .http()
     .post(route() + "/materials")
     .set(await h.as("ayse"))
-    .attach("file", Buffer.alloc(2 * 1024 * 1024 + 1), "too-big.txt")
+    .attach("file", Buffer.alloc(STUDY_FILE_MAX_BYTES + 1), "too-big.txt")
     .expect(413);
 });
 test("new original text file survives duplicate upload and is removed with its material", async () => {
@@ -1087,4 +1088,29 @@ test("practice is source-bound, literal feedback is not a mastery claim, deleted
     .set(await h.as("ayse"))
     .send({ answer: "Evaporation" })
     .expect(404);
+});
+test("find searches the text of one material, keeps locations, and is scoped to who may see it", async () => {
+  const list = await h.http().get(`${route()}/materials`).set(await h.as("ayse")).expect(200);
+  const id = list.body.materials.find((m: any) => m.title === "Physics notes").id;
+  const find = (q: string) => `${route()}/materials/${id}/find?q=${encodeURIComponent(q)}`;
+  const hit = await h.http().get(find("EVAPORATION")).set(await h.as("ayse")).expect(200);
+  expect(hit.body.hits).toHaveLength(1);
+  expect(hit.body.hits[0]).toMatchObject({ location: { kind: "text", section: 1 }, count: 1 });
+  expect(hit.body.hits[0].snippet).toContain("Evaporation changes liquid water");
+  expect(hit.body.hits[0].snippet.slice(hit.body.hits[0].match_start, hit.body.hits[0].match_end)).toBe("Evaporation");
+  expect((await h.http().get(find("nothing like this")).set(await h.as("ayse")).expect(200)).body.hits).toEqual([]);
+  await h.http().get(find("a")).set(await h.as("ayse")).expect(422);
+  await h.http().get(`${route()}/materials/${id}/find`).set(await h.as("ayse")).expect(422);
+  // a private material of one student is not searchable by another member
+  await h.http().get(find("evaporation")).set(await h.as("mehmet")).expect(404);
+  await h.http().get(find("evaporation")).expect(401);
+});
+test("the upload limits the server enforces are published to signed-in users", async () => {
+  const res = await h.http().get("/limits").set(await h.as("ayse")).expect(200);
+  expect(res.body).toEqual({
+    document_bytes: expect.any(Number),
+    study_file_bytes: STUDY_FILE_MAX_BYTES,
+    video_bytes: expect.any(Number),
+  });
+  await h.http().get("/limits").expect(401);
 });
