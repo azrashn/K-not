@@ -22,7 +22,7 @@ dependencies = [
 [project.optional-dependencies]
 # Production embedding backend (multilingual). Heavy (torch); install only where embeddings run.
 embeddings = ["sentence-transformers>=3.0"]
-dev = ["pytest>=8"]
+dev = ["pytest>=8", "python-pptx==1.0.2"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

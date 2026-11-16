@@ -1,10 +1,14 @@
 {
-  "name": "temp-app",
+  "name": "k-not",
   "private": true,
   "version": "0.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "setup": "node scripts/setup.mjs",
+    "start:all": "node scripts/dev.mjs start",
+    "stop:all": "node scripts/dev.mjs stop",
+    "status:all": "node scripts/dev.mjs status",
     "dev:all": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev.ps1",
     "dev:stop": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev.ps1 -Stop",
     "dev:status": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev.ps1 -Status",
@@ -37,5 +41,8 @@
     "playwright-core": "^1.56.1",
     "vite": "^8.3.0",
     "vitest": "^3.2.7"
+  },
+  "engines": {
+    "node": ">=20.19"
   }
 }
