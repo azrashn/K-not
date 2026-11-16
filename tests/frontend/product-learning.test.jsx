@@ -1,5 +1,5 @@
 import { beforeAll, beforeEach, afterEach, expect, test, vi } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { CourseEditor, CourseRemoval } from '../../src/components/ProductUI'
 import CourseQuiz from '../../src/pages/CourseQuiz'
@@ -38,9 +38,34 @@ beforeEach(() => {
     { id: 'c', name: 'Physics', documents: { total: 0 }, material_count: 0 },
   ])
   api.quizzes.mockResolvedValue([])
+  api.examStyles.mockResolvedValue([])
   api.knowledgeMaterials.mockResolvedValue({ materials: [] })
 })
 afterEach(() => vi.restoreAllMocks())
+
+test('quiz course list can recover after a temporary backend outage', async () => {
+  api.courses.mockRejectedValueOnce(new Error('offline')).mockResolvedValueOnce([{id:'c',name:'Physics'}]);
+  const user=userEvent.setup();render(<CourseQuiz/>);
+  await user.click(await screen.findByRole('button',{name:'Dersleri yeniden yükle'}));
+  await screen.findByRole('option',{name:'Physics'});
+  expect(screen.queryByRole('alert')).toBeNull();
+});
+
+test('switching courses ignores late quiz generation and clears previous history', async () => {
+  const user=userEvent.setup();
+  api.courses.mockResolvedValue([{id:'c',name:'Physics'},{id:'d',name:'Biology'}]);
+  let complete;
+  api.createQuiz.mockImplementation(()=>new Promise(resolve=>{complete=resolve}));
+  render(<CourseQuiz courseId="c"/>);
+  await screen.findByRole('option',{name:'Biology'});
+  await user.type(screen.getByLabelText('Konu'),'Energy');
+  await user.click(screen.getByRole('button',{name:'Alıştırma hazırla'}));
+  expect(screen.getByRole('status')).toHaveTextContent('denetleniyor');
+  await user.selectOptions(screen.getByLabelText('Ders'),'d');
+  await act(async()=>complete({id:'old',kind:'CLOZE',question:'Old course secret question',options:[]}));
+  expect(screen.queryByText('Old course secret question')).toBeNull();
+  expect(screen.getByLabelText('Ders')).toHaveValue('d');
+});
 test('course editor submits real values and preserves failed edits for retry', async () => {
   const user = userEvent.setup(),
     saved = vi.fn()

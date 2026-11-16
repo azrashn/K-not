@@ -94,6 +94,9 @@ class Extract(StrictModel):
 
 class QuizDraft(Explain):
     kind: Literal["MULTIPLE_CHOICE", "TRUE_FALSE", "CLOZE", "SHORT_ANSWER", "OPEN"]
+    language: Literal["tr", "en"] = "tr"
+    # Server-built exam-style guidance (format and phrasing only); facts still come from evidence.
+    style_hint: str | None = Field(default=None, max_length=1200)
 
 
 def chunk_text(text: str, location: dict) -> list[dict]:
@@ -208,10 +211,14 @@ _QUERY_GLUE = {
 }
 
 
+def technical_terms(text: str) -> set[str]:
+    return {stem(fold(t)) for t in re.findall(r"\b[A-Z][A-Z0-9]{1,9}\b", text)} - _QUERY_GLUE
+
+
 def topics(text: str) -> set[str]:
-    return {
-        stem(t) for t in content_tokens(text) if len(t) >= 4 and not t.isdigit()
-    } - _QUERY_GLUE
+    return ({
+        stem(t) for t in content_tokens(text) if len(t) >= 3 and not t.isdigit()
+    } | technical_terms(text)) - _QUERY_GLUE
 
 
 def duplicate_evidence(a: dict, b: dict) -> bool:
@@ -564,6 +571,7 @@ class UnifiedIndex:
                 )
             pool = {}
             terms = topics(query)
+            anchors = technical_terms(body.question)
 
             def add(ids, docs, metas, distances=None):
                 for n, (sid, text, meta) in enumerate(zip(ids, docs, metas)):
@@ -581,6 +589,10 @@ class UnifiedIndex:
                         continue
                     matches = terms & topics(text)
                     score = 1 - distances[n] if distances else 0.0
+                    if anchors and not (anchors & topics(text)):
+                        excluded.append({"id": sid, "material_id": mat.id,
+                                         "reason": "MISSING_EXPLICIT_TERM"})
+                        continue
                     # Dense cosine is not calibrated truth/relevance. Require
                     # an actual topic anchor; semantic-only matches abstain.
                     if not matches:
@@ -614,8 +626,12 @@ class UnifiedIndex:
                 raw["distances"][0],
             )
             # Indexed lexical channel, bounded records; no full-file extraction at query time.
-            for term in content_tokens(query)[:4]:
-                if len(term) < 4:
+            lexical_terms = list(dict.fromkeys([
+                *sorted(anchors), *(t.upper() for t in sorted(anchors)),
+                *content_tokens(query)[:4],
+            ]))
+            for term in lexical_terms[:12]:
+                if len(term) < 3:
                     continue
                 lex = col.get(
                     where=where, where_document={"$contains": term[:7]}, limit=24

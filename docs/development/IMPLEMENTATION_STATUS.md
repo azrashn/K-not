@@ -1,4 +1,46 @@
+# A1 devam — 5 Kasım 2026
+
+Matematik şıkları, cevap öncesi hedef gizliliği ve ders değişimi yarışları düzeltildi. Gerçek2B soru üretimi yetersiz; 4B indirmesi devam ediyor, model ayarları değiştirilmedi. A1 tamamlanmış değil. Ayrıntı A1_PROGRESS.md. Ara sınav/final talebi plana A2-E ve backlog K60 olarak eklendi.
+
+---
+
+# Güncel uygulama aşaması — 5 Kasım 2026
+
+**A0 yerel uygulama ve doğrulama tamamlandı.** GitHub runner/temiz Windows kurulumu bekliyor; bütün A0 bulguları kapatılmış sayılmaz.
+- Quiz çalışma ağacı SHA256 manifestli yerel yedekte korundu: logs/a0-baseline-2026-11-05.
+- Ayrı QA USER hesabı: gerçek login200 ve sıfır ders; mevcut hesaplar/veriler korunuyor.
+- CI kalite workflow'u: frontend/backend test+build ve Python sözleşmeleri; gerçek AI kabulü ayrı.
+- Windows Python3.14.2 constraints ve pip check temiz. Hash-lock/temiz kurulum henüz kanıtlanmadı.
+- Yeni yerel doğrulama: frontend92/92 (47.14s), backend unit100/100 (29.323s), Python468/468 (109.89s); toplam660. Frontend/backend build PASS. Python39 deprecation ve frontend bundle>500kB uyarıları devam ediyor.
+- 59 bulgu: IMPLEMENTATION_BACKLOG.json. Aşamalar: IMPLEMENTATION_PLAN_2026-11-05.md. Ayrıntı: A0_BASELINE.md.
+**Sıradaki A1:** matematik şıkları, hedefte cevap sızıntısı, ders değişimi yarışı; onaylanan4B indirmesi ve gerçek PDF/video kabulü. Önceki quiz değişiklikleri hâlâ A1 çalışma ağacında; tamamlandı diye sunulmadı.
+
+---
+
 # K-NOT geliştirme ilerlemesi
+
+## Güncel — quiz üretim hatası (2 Kasım 2026)
+
+Ekrandaki genel kalite uyarısının ilk gerçek nedeni `Unverifiable source quote`:
+model alıntıyı değiştiriyor/çeviriyor, birebir kaynak kontrolü soruyu reddediyordu.
+Artık model yalnız sunucunun sunduğu alıntı kimliğini seçer; orijinal metin ve
+kaynak indeksi sunucuda eklenir. Bağımsız cevap/şık denetimi korunur; açık 0 tabanlı
+seçenek kimlikleri gönderilir. Tek düzeltme denemesi toplam 130 saniye bütçesine
+dahildir. Tekrarlama ayarları ve kısa alan talimatları küçük model için düzenlendi.
+Model/bağlantı hataları soru kalitesiyle karıştırılmaz. Form değişince eski hata
+temizlenir; açıklama ve hata mesajları sadeleştirildi.
+
+**Sınır:** Gerçek yerel model + mevcut Algoritma/video kaynağıyla soru üretimi,
+kaynak metadatası, cevap anahtarının gizliliği ve yeniden yükleme HTTP testi geçti
+(12.233 s). Ancak üretilen Türkçe soru ve çeldiriciler insan incelemesinde zayıf;
+pedagojik kalite **PARTIAL**. Model denetimi doğruluk kanıtı değildir. Genel quiz
+kalitesi veya önceki BFS/DFS retrieval sorunu çözülmüş sayılmaz. Yeni model indirilmedi.
+
+Komutlar/başarısız gerçek denemeler ve kanıtlar:
+[QUIZ_SOURCE_BINDING_FIX.md](QUIZ_SOURCE_BINDING_FIX.md). Dal feature/video-integration.
+Bir sonraki adım: iyi hazırlanmış PDF ile gürültülü video transkriptini ayrı
+değerlendirmek; daha güçlü yerel metin modeli gerekiyorsa boyutunu ölçüp onay almak.
+OpenTutor/DocsGPT kaynaklarına ve paylaşılan model sunucusunun ayarlarına dokunulmadı.
 
 ## Güncel — bağlam / ilerleme / quiz düzeltmesi (31 Ekim 2026)
 

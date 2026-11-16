@@ -15,6 +15,9 @@ from knot_rag.generation.providers.openai_compatible import OpenAICompatibleProv
 def test_quiz_rejects_two_correct_options_even_if_global_flags_agree(monkeypatch):
     from knot_rag.quiz_quality import quiz
     from knot_rag.unified import QuizDraft
+    monkeypatch.setattr("knot_rag.quiz_quality.plan_question", lambda *args: {
+        "quote_id": "q1", "answer_phrase": "queue", "objective": "Identify pending element storage."
+    })
 
     draft = {
         "question": "Which structure stores pending elements?",
@@ -52,7 +55,10 @@ def test_quiz_rejects_two_correct_options_even_if_global_flags_agree(monkeypatch
         "complete",
         lambda self, request: LLMResponse(
             text=json.dumps(
-                check if request.system.startswith("Independently solve") else draft
+                check if request.system.startswith("Independently solve") else {
+                    **{k: v for k, v in draft.items() if k not in ("quote", "source_index")},
+                    "quote_id": "q1",
+                }
             )
         ),
     )
@@ -262,7 +268,7 @@ def test_mcq_rejects_duplicate_ambiguous_and_answer_leaking_options():
         {"options": ["queue", "QUEUE", "array", "tree"]},
         {"options": ["queue", "queue structure", "array", "tree"]},
         {"quote": "A fabricated quote."},
-        {"objective": "Learn why queue is the correct answer."},
+        {"question": "Why is queue the correct answer?"},
     ]:
         with pytest.raises(ValueError):
             validate_draft({**d, **changed}, "MULTIPLE_CHOICE", [{"text": d["quote"]}])

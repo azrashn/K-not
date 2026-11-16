@@ -90,6 +90,22 @@ def test_pptx_preserves_logical_slide_order_and_locations():
     assert "Condensation" in out[1]["text"]
 
 
+def test_short_technical_query_retrieves_actual_topic_not_generic_graph_text(index):
+    generic = put(index, "video_generic", "A graph represents nodes and connections.", kind="VIDEO",
+                  loc={"kind": "video", "start_ms": 0, "end_ms": 12000})
+    relevant = put(index, "pdf_topic", "bfs visits vertices using a queue; dfs uses a stack.")
+    result = index.search(Search(course_id="course-a", materials=[generic, relevant],
+                                 question="Graf veri yapılarında BFS ile DFS arasındaki fark"))
+    assert result["evidence"]
+    assert all(e["material_id"] == relevant.id for e in result["evidence"])
+
+
+def test_missing_explicit_technical_topic_does_not_fall_back_to_generic_material(index):
+    generic = put(index, "pdf_generic", "A graph represents nodes and connections.")
+    result = index.search(Search(course_id="course-a", materials=[generic], question="Graf BFS yöntemi"))
+    assert result["evidence"] == []
+
+
 @pytest.mark.parametrize("content", [b"not a zip", b"PK\x03\x04corrupt", b""])
 def test_invalid_presentations_rejected(content):
     with pytest.raises((ValueError, zipfile.BadZipFile)):

@@ -6,6 +6,8 @@ import { ApiError, notFound } from "../common/errors";
 import { AccessService } from "../courses/access.service";
 import { KnowledgeService } from "../knowledge/knowledge.service";
 import { AiServiceClient } from "../ai/ai-client";
+import { validSourceCompletion } from "./quiz-validation";
+import { buildExamProfile, examStyleHint, ExamProfile } from "./exam-style";
 
 @Injectable()
 export class LearningService {
@@ -156,7 +158,7 @@ export class LearningService {
         ? { strategy: "single", active_material_id: b.material_id }
         : {}),
     });
-    const candidates = found.evidence
+    let candidates = found.evidence
       .filter(
         (e: any) =>
           !b.watched_only ||
@@ -165,6 +167,25 @@ export class LearningService {
           ),
       )
       .slice(0, 4);
+    // A selected ready material can be relevant across languages even when the
+    // text retrieval's lexical guard finds no anchor. The source-fact planner
+    // still rejects unrelated topics; never bypass watched-only restrictions.
+    if (!candidates.length && !b.watched_only &&
+        b.scope?.mode === "selected" && b.scope.material_ids?.length) {
+      const materials = await this.knowledge.materials(u, c);
+      for (const id of b.scope.material_ids.slice(0, 4)) {
+        const m = materials.find((m: any) => m.id === id && m.status === "READY");
+        if (!m) continue;
+        const preview = await this.knowledge.preview(u, c, id);
+        for (const segment of preview.segments) {
+          if (!segment.text?.trim()) continue;
+          candidates.push({...segment, material_id:m.id, version:m.version,
+                           title:m.title, kind:m.kind});
+          if (candidates.length >= 4) break;
+        }
+        if (candidates.length >= 4) break;
+      }
+    }
     let source = candidates[0];
     if (!source)
       throw new ApiError(
@@ -173,14 +194,32 @@ export class LearningService {
           ? "Bu konuda tamamen izlenmiş video bölümü bulunamadı. Son oynatma konumu tek başına izleme kanıtı değildir."
           : "Bu konuda soru hazırlamaya uygun kaynak bulunamadı.",
       );
+    const styleHint = await this.styleHintFor(u, c, b.exam_style_id);
     const r = await this.ai.call("POST", "/api/v1/knowledge/quiz", {
-      body: { question: b.topic, kind: b.kind, evidence: candidates },
+      body: {
+        question: b.topic,
+        kind: b.kind,
+        evidence: candidates,
+        ...(styleHint ? { style_hint: styleHint } : {}),
+      },
       timeoutMs: 150000,
     });
+    if (r.kind === "timeout")
+      throw new ApiError(
+        "PROVIDER_TIMEOUT",
+        "Soru hazırlama beklenenden uzun sürdü. Lütfen yeniden deneyin.",
+      );
+    if (r.kind === "unreachable" || (r.kind === "response" && r.status === 503))
+      throw new ApiError(
+        "AI_SERVICE_UNAVAILABLE",
+        "Soru hazırlayan yerel model yanıt veremedi. Lütfen biraz sonra yeniden deneyin.",
+      );
     if (r.kind === "response" && r.status === 422)
       throw new ApiError(
         "VALIDATION_ERROR",
-        "Soru kaynak, açıklık veya seçenek kalite kontrolünden geçmedi; yayınlanmadı. Başka bir bölüm veya soru türü deneyin.",
+        r.body?.detail?.code === "QUIZ_TOPIC_NOT_FOUND"
+          ? "Seçili kaynaklarda bu konuyu açıklayan bir bölüm bulunamadı. Konuyu veya kaynak kapsamını değiştirin."
+          : "Kaynaklara dayalı, net bir soru hazırlanamadı. Konuyu tek bir kavram veya adıma daraltıp yeniden deneyin.",
       );
     if (r.kind !== "response" || r.status !== 200)
       throw new ApiError(
@@ -190,8 +229,8 @@ export class LearningService {
     const q = r.body;
     if (
       !q.quality?.structural_validation ||
-      !q.quality?.independent_model_review ||
-      q.quality?.option_audit_version !== 2 ||
+      (!(q.quality?.independent_model_review && q.quality?.option_audit_version === 2) &&
+        !validSourceCompletion(q,candidates)) ||
       !Number.isInteger(q.source_index) ||
       q.source_index < 1 ||
       q.source_index > candidates.length
@@ -252,14 +291,19 @@ export class LearningService {
       kind: row.kind,
       question: d.question,
       options: d.options,
-      objective: d.objective || null,
+      // A paraphrased objective can disclose the answer despite lexical checks.
+      // Keep detailed objectives server-side until the student has answered.
+      objective: null,
       note: d.note,
       experimental: d.experimental,
       assessment: d.assessment,
+      question_style: d.question_style || "CONCEPTUAL",
       scope: d.scope,
       watched_only: d.watched_only || false,
       quality_state:
-        d.quality?.option_audit_version === 2
+        d.quality?.option_audit_version === 3 && d.quality?.deterministic_source_validation
+          ? "SOURCE_RECALL_CHECKED"
+          : d.quality?.option_audit_version === 2
           ? "MODEL_REVIEWED_UNVERIFIED"
           : "LEGACY_NOT_REVIEWED",
       source: s
@@ -314,7 +358,9 @@ export class LearningService {
         ? "Yanıtın kaydedildi. Açık uçlu yanıt için otomatik doğruluk puanı verilmedi."
         : matched
           ? "Yanıt, bu sorunun kaynakla eşleştirilen cevap anahtarıyla uyumlu."
-          : "Kaynak ifadesini incele; farklı sözcüklerle verilen kısa cevap otomatik yanlış sayılmaz.",
+          : data.options?.length
+            ? "Seçtiğin seçenek cevap anahtarıyla uyuşmuyor. Doğru seçeneği ve kaynak açıklamasını birlikte incele."
+            : "Kaynak ifadesini incele; farklı sözcüklerle verilen kısa cevap otomatik yanlış sayılmaz.",
       expected: reflection
         ? null
         : data.options?.length
@@ -323,6 +369,8 @@ export class LearningService {
       quote: data.quote,
       source: data.source,
       explanation: data.explanation || null,
+      objective: data.objective || null,
+      feedback_mode: data.quality?.feedback_mode || "MODEL_REVIEWED",
       selected_option_feedback: data.options?.length
         ? data.option_feedback?.[Number(response)] || null
         : null,
@@ -333,6 +381,55 @@ export class LearningService {
       data: { quizId: id, userId: u.id, response, outcome, feedback, score },
     });
     return { id: row.id, outcome, score, ...feedback };
+  }
+  private async styleHintFor(u: AuthUser, c: string, id?: string) {
+    if (!id) return null;
+    const row = await this.prisma.examStyle.findFirst({
+      where: { id, courseId: c, ownerId: u.id },
+    });
+    if (!row) throw notFound("Exam style");
+    return examStyleHint(row.profile as unknown as ExamProfile);
+  }
+  private publicExamStyle(row: any) {
+    return {
+      id: row.id,
+      name: row.name,
+      created_at: row.createdAt,
+      profile: row.profile as ExamProfile,
+    };
+  }
+  async examStyles(u: AuthUser, c: string) {
+    await this.access.requireMember(u, c);
+    const rows = await this.prisma.examStyle.findMany({
+      where: { courseId: c, ownerId: u.id },
+      orderBy: { createdAt: "desc" },
+      take: 20,
+    });
+    return rows.map((r) => this.publicExamStyle(r));
+  }
+  async createExamStyle(u: AuthUser, c: string, b: { name: string; text: string }) {
+    await this.access.requireMember(u, c);
+    let profile: ExamProfile;
+    try {
+      profile = buildExamProfile(b.text);
+    } catch {
+      throw new ApiError(
+        "VALIDATION_ERROR",
+        "Sınav soruları numaralandırılmış olmalı (1. … 2. … gibi). Numarasız metinden stil çıkarılamaz.",
+      );
+    }
+    const row = await this.prisma.examStyle.create({
+      data: { id: randomUUID(), courseId: c, ownerId: u.id, name: b.name.trim(), profile: profile as any },
+    });
+    return this.publicExamStyle(row);
+  }
+  async deleteExamStyle(u: AuthUser, c: string, id: string) {
+    await this.access.requireMember(u, c);
+    const removed = await this.prisma.examStyle.deleteMany({
+      where: { id, courseId: c, ownerId: u.id },
+    });
+    if (!removed.count) throw notFound("Exam style");
+    return { deleted: true };
   }
   async quizzes(u: AuthUser, c: string) {
     await this.access.requireMember(u, c);

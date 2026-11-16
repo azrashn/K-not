@@ -6,6 +6,65 @@
 CLAIM → KNOT → SOURCE        ASK → PRACTICE → ANSWER → FEEDBACK → REVIEW
 ```
 
+## Gereksinimler
+
+| Araç | Sürüm | Ne için | Zorunlu? |
+| --- | --- | --- | --- |
+| İşletim sistemi | Windows 10/11, macOS, Linux | `npm run setup` üçünde de çalışır; `scripts/*.ps1` yalnızca Windows | — |
+| **Node.js** | **>= 20.19** (22 LTS önerilir, bkz. `.nvmrc`) | Ön yüz (Vite) ve backend (NestJS 11, Prisma 7) | Evet |
+| **Python** | **3.11 – 3.14** | AI servisi (FastAPI, ChromaDB, pypdf) | Evet |
+| **Docker** (Compose v2) | güncel | MySQL 8 konteyneri; PPTX önizleme görüntüsü | Evet\* |
+| Git | herhangi | — | Evet |
+| Poppler (`pdftoppm`) | herhangi | PDF/PPTX özgün sayfa görüntüsü (yoksa yalnızca metin gösterilir) | Hayır |
+| FFmpeg | 6+ | Yalnızca harici video motoru için (aşağıya bak) | Hayır |
+| Disk / ağ | ~5 GB, ilk kurulumda internet | torch + gömme modeli (`intfloat/multilingual-e5-small`, ~470 MB) | — |
+
+\* Docker yerine kendi MySQL 8'ini kullanabilirsin: `npm run setup -- --no-docker --database-url=<MySQL bağlantı adresi>` (adres `mysql://` ile başlar; kullanıcı, parola, host, port ve veritabanı adını içerir; örnek biçim `backend/.env.example` içindeki `DATABASE_URL`).
+
+Poppler kurulumu: Windows `winget install oschwartz10612.Poppler` (ya da `choco install poppler`), macOS `brew install poppler`, Debian/Ubuntu `sudo apt install poppler-utils`. PATH'te değilse `PDFTOPPM_PATH` ortam değişkenine tam yolu yaz. FFmpeg: `winget install Gyan.FFmpeg` / `brew install ffmpeg` / `sudo apt install ffmpeg`.
+
+> **Video motoru bu repoda yok.** "Ders videoları" özelliği ayrı bir yerel **MomentSearch** motoruna (varsayılan `http://127.0.0.1:7862`, `VIDEO_SERVICE_URL`) bağlanır; motor, Whisper/CLIP/Qdrant/PostgreSQL/Ollama ve FFmpeg ister ve ayrıca kurulur ([docs/video-integration.md](docs/video-integration.md)). Motor çalışmıyorsa uygulamanın geri kalanı (PDF/PPTX/TXT, sohbet, alıştırma, analiz) normal çalışır; yalnızca video yükleme/işleme uçları hata verir.
+
+## Hızlı kurulum (tek komut)
+
+```bash
+git clone https://github.com/azrashn/K-not.git
+cd K-not
+git checkout feature/video-integration
+npm run setup -- --start     # ya da: ./setup.sh --start (macOS/Linux/Git Bash) · setup.bat --start (Windows)
+```
+
+Docker'ın **açık** olduğundan emin ol. Betik (`scripts/setup.mjs`) sırayla: ön koşulları denetler → `.env`, `.env.docker`, `backend/.env`, `ai-service/.env` dosyalarını şablonlardan üretir (rastgele gizli değerler; DB adresi, tokenlar ve `data/storage` yolu servisler arasında eşitlenir) → MySQL'i Docker'da başlatır → `npm ci` (ön yüz + backend) → Python sanal ortamı (`ai-service/.venv`, sürümleri sabit `requirements*.txt`) → migrasyon + seed → backend derlemesi → (`--start` ile) servisleri başlatır. Tekrar çalıştırmak güvenlidir.
+
+Seed hesapları (`admin@knot.local`, `ayse@knot.local`, `mehmet@knot.local`, `m.aydin@knot.local`) için üretilen parolalar ekrana basılmaz; betiğin yazdığı `written to <dosya>` yolundaki geçici dosyada durur (repo dışında). Okuyup sil.
+
+```bash
+npm run start:all     # frontend (5173) + backend (3000) + AI (8100); günlükler logs/
+npm run status:all
+npm run stop:all
+```
+
+Uygulama: http://localhost:5173. İlk açılışta AI servisi gömme modelini indirir (birkaç dakika); `status:all` AI'ı "ÇALIŞIYOR" gösterene kadar bekle. Bayraklar: `--no-embeddings` (torch'suz, yalnızca testler için), `--no-docker`, `--database-url=…`. Windows'ta eski `npm run dev:all` (PowerShell) da çalışır.
+
+## Sorun giderme
+
+| Belirti | Neden / çözüm |
+| --- | --- |
+| `Docker kurulu ama çalışmıyor` | Docker Desktop'ı aç, hazır olunca `npm run setup` tekrar. |
+| `port is already allocated` (3306) | Makinende başka MySQL var: `.env.docker` içinde `MYSQL_HOST_PORT=3307` yap, `npm run setup` tekrar. |
+| `Access denied for user 'knot'` | `.env.docker` parolası, daha önce oluşmuş eski Docker volume'üyle uyuşmuyor. Veriyi kaybetmeyi göze alıyorsan: `docker compose --env-file .env.docker down -v`, sonra `npm run setup`. |
+| `Python 3.11 – 3.14 bulunamadı` | Python 3.15+ için hazır tekerlekler (torch, chromadb) olmayabilir; 3.12/3.13 kur. Farklı yoldaysa `PYTHON=/yol/python npm run setup`. |
+| AI servisi açılmıyor, `localhost:8000` bağlantı hatası | `ai-service/.env` içinde `CHROMA_MODE=persistent` olmalı (`http` ayrı bir `chroma run` sunucusu ister). Şablon artık `persistent`. |
+| Cevap `503 INDEX_VERSION_MISMATCH` / `/ready` → `ai_index` uyuşmuyor | `ai-service/.chroma` başka bir gömme modelinden kalmış. `npm run stop:all`, `ai-service/.chroma` klasörünü sil, `npm run start:all`. Gömme ayarları (`EMBEDDING_*`) değiştirilmemeli. |
+| İlk açılışta AI çok yavaş / model indirilemiyor | `intfloat/multilingual-e5-small` Hugging Face'ten iner; internet/proxy engelini kontrol et. Model inene kadar `logs/ai.err.log` doluyor olabilir. |
+| `JWT_SECRET is required (>= 32 characters)` | `backend/.env` yer tutucu bırakılmış: `npm run setup` yeniden üretir. |
+| Yüklenen PDF "Hazırlanıyor"da kalıyor | `RAG_INTERNAL_API_TOKEN`/`INGEST_CALLBACK_TOKEN`/`STORAGE_ROOT` backend ve ai-service'te aynı olmalı, `INGEST_ENABLED=true` olmalı → `npm run setup` eşitler. |
+| Özgün sayfa görüntüsü yok | Poppler (`pdftoppm`) kur (yukarıda); PPTX için ayrıca Docker açık olmalı. |
+| Video yükleme / "video servisi" hatası | Harici MomentSearch motoru kurulu ve çalışır değil, ya da FFmpeg PATH'te değil. |
+| `Port 5173/3000/8100 in use` | Önce `npm run stop:all`; başka program tutuyorsa onu kapat. |
+| `npm ci` "lock file" uyarısı / eski Node | Node >= 20.19 kullan (`node -v`); `nvm use` (`.nvmrc`). |
+| PowerShell betiği engellendi | `npm run dev:all` zaten `-ExecutionPolicy Bypass` kullanır; `setup.bat`/`npm run setup` PowerShell gerektirmez. |
+
 ## Çalıştırma
 
 ### Video geliştirme dalı
@@ -27,7 +86,7 @@ yere dönme eklendi. [Güncel geliştirme kaydı](docs/development/IMPLEMENTATIO
 tamamlanan işleri, test kanıtlarını ve henüz uygulanmamış hoca beklentilerini ayırır.
 Sonraki işler: [5 kişilik görev dağılımı](docs/video-team-tasks.md).
 
-### Tek komutla (Windows, önerilen)
+### Windows PowerShell betiği (alternatif)
 
 Docker Desktop açıkken:
 
@@ -44,7 +103,7 @@ Aşağıdaki elle adımlar yalnızca betiği kullanmak istemezsen gerekir.
 Ön yüz yalnızca NestJS API'siyle konuşur (`/api` → `backend/`); Python ai-service'e ya da ChromaDB'ye tarayıcıdan erişilmez ve ön yüzde hiçbir iç servis anahtarı yoktur.
 
 ```bash
-npm install
+npm ci
 cp .env.example .env   # VITE_API_BASE_URL=/api, VITE_API_PROXY_TARGET=http://localhost:3000
 npm run dev            # http://localhost:5173 — /api istekleri backend'e aktarılır
 npm run build && npx vite preview   # aynı proxy preview'da da geçerli

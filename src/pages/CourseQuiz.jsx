@@ -6,6 +6,7 @@ import { PageFrame, Btn } from "../components/ui";
 import { MobileBar } from "../components/PageBits";
 import { PageTitle, EmptyState } from "../components/ProductUI";
 import { videoErrorText } from "../lib/video";
+import { describeExamStyle, examStyleProblem } from "../lib/exam-style";
 const labels = {
   MULTIPLE_CHOICE: "Çoktan seçmeli",
   TRUE_FALSE: "Doğru / yanlış",
@@ -30,7 +31,13 @@ export default function CourseQuiz({ courseId }) {
   const [scopeMode, setScopeMode] = useState("course"),
     [selectedMaterials, setSelectedMaterials] = useState([]),
     [watchedOnly, setWatchedOnly] = useState(false);
-  const consumed = useRef(false);
+  const [examStyles, setExamStyles] = useState([]),
+    [examStyleId, setExamStyleId] = useState(""),
+    [examName, setExamName] = useState(""),
+    [examText, setExamText] = useState(""),
+    [examError, setExamError] = useState("");
+  const consumed = useRef(false), requestEpoch = useRef(0);
+  useEffect(() => () => { requestEpoch.current += 1; }, []);
   useEffect(() => {
     if (consumed.current) return;
     consumed.current = true;
@@ -50,6 +57,7 @@ export default function CourseQuiz({ courseId }) {
       api.quizzes(course, abort.signal),
     ])
       .then(([m, h]) => {
+        if (abort.signal.aborted) return;
         setMaterials(m.materials);
         setHistory(h);
       })
@@ -58,9 +66,46 @@ export default function CourseQuiz({ courseId }) {
       });
     return () => abort.abort();
   }, [course]);
+  useEffect(() => {
+    if (!course) return;
+    const abort = new AbortController();
+    api
+      .examStyles(course, abort.signal)
+      .then((list) => {
+        if (!abort.signal.aborted) setExamStyles(list);
+      })
+      .catch(() => {});
+    return () => abort.abort();
+  }, [course]);
+  async function saveExamStyle(e) {
+    e.preventDefault();
+    const problem = examStyleProblem({ name: examName, text: examText });
+    setExamError(problem);
+    if (problem) return;
+    try {
+      const saved = await api.createExamStyle(course, { name: examName.trim(), text: examText });
+      setExamStyles((list) => [saved, ...list]);
+      setExamStyleId(saved.id);
+      setExamName("");
+      setExamText("");
+    } catch (err) {
+      setExamError(videoErrorText(err));
+    }
+  }
+  async function removeExamStyle(id) {
+    try {
+      await api.deleteExamStyle(course, id);
+      setExamStyles((list) => list.filter((x) => x.id !== id));
+      if (examStyleId === id) setExamStyleId("");
+    } catch (err) {
+      setExamError(videoErrorText(err));
+    }
+  }
   async function start(e) {
     e.preventDefault();
+    const epoch = ++requestEpoch.current;
     setBusy(true);
+    setQuiz(null);
     setError("");
     setResult(null);
     setAnswer("");
@@ -75,13 +120,16 @@ export default function CourseQuiz({ courseId }) {
               ? { mode: "selected", material_ids: [material] }
               : { mode: "course" },
         watched_only: watchedOnly,
+        ...(examStyleId ? { exam_style_id: examStyleId } : {}),
       });
+      if (epoch !== requestEpoch.current) return;
       setQuiz(q);
-      setHistory(await api.quizzes(course));
+      const history = await api.quizzes(course);
+      if (epoch === requestEpoch.current) setHistory(history);
     } catch (err) {
-      setError(videoErrorText(err));
+      if (epoch === requestEpoch.current) setError(videoErrorText(err));
     } finally {
-      setBusy(false);
+      if (epoch === requestEpoch.current) setBusy(false);
     }
   }
   return (
@@ -102,9 +150,14 @@ export default function CourseQuiz({ courseId }) {
         Sorular ders kaynaklarına bağlanır. Geri bildirimden ilgili sayfa, slayt
         veya video bölümüne dönebilirsin.
       </PageTitle>
+      {courses.error && <div className="product-error" role="alert">Dersler yüklenemedi. <button className="product-link" onClick={courses.reload}>Dersleri yeniden yükle</button></div>}
       <div className="quiz-layout">
         <aside>
-          <form className="product-panel product-form" onSubmit={start}>
+          <form
+            className="product-panel product-form"
+            onSubmit={start}
+            onChange={() => setError("")}
+          >
             <h2>Çalışma kapsamı</h2>
             <label>
               Ders
@@ -112,7 +165,13 @@ export default function CourseQuiz({ courseId }) {
                 aria-label="Ders"
                 value={course}
                 onChange={(e) => {
+                  requestEpoch.current += 1;
                   setCourse(e.target.value);
+                  setBusy(false);
+                  setAnswer("");
+                  setMaterials([]);
+                  setHistory([]);
+                  setSelectedMaterials([]);
                   setQuiz(null);
                   setResult(null);
                   setMaterial("");
@@ -130,6 +189,7 @@ export default function CourseQuiz({ courseId }) {
               Konu
               <input
                 aria-label="Konu"
+                disabled={busy}
                 value={topic}
                 onChange={(e) => setTopic(e.target.value)}
                 maxLength={200}
@@ -140,6 +200,7 @@ export default function CourseQuiz({ courseId }) {
               Kaynak kapsamı
               <select
                 aria-label="Kaynak kapsamı"
+                disabled={busy}
                 value={scopeMode}
                 onChange={(e) => setScopeMode(e.target.value)}
               >
@@ -153,6 +214,7 @@ export default function CourseQuiz({ courseId }) {
                 Materyal
                 <select
                   aria-label="Quiz materyali"
+                  disabled={busy}
                   value={material}
                   onChange={(e) => setMaterial(e.target.value)}
                 >
@@ -176,6 +238,7 @@ export default function CourseQuiz({ courseId }) {
                     <label className="reference-check" key={m.id}>
                       <input
                         type="checkbox"
+                        disabled={busy}
                         aria-label={`${m.title} quiz kapsamına ekle`}
                         checked={selectedMaterials.includes(m.id)}
                         onChange={(e) =>
@@ -194,6 +257,7 @@ export default function CourseQuiz({ courseId }) {
             <label className="reference-check">
               <input
                 type="checkbox"
+                disabled={busy}
                 checked={watchedOnly}
                 onChange={(e) => setWatchedOnly(e.target.checked)}
               />
@@ -209,6 +273,7 @@ export default function CourseQuiz({ courseId }) {
               Soru türü
               <select
                 aria-label="Soru türü"
+                disabled={busy}
                 value={kind}
                 onChange={(e) => setKind(e.target.value)}
               >
@@ -219,10 +284,26 @@ export default function CourseQuiz({ courseId }) {
                 ))}
               </select>
             </label>
+            <label>
+              Sınav stili (isteğe bağlı)
+              <select
+                aria-label="Sınav stili"
+                disabled={busy}
+                value={examStyleId}
+                onChange={(e) => setExamStyleId(e.target.value)}
+              >
+                <option value="">Genel soru üslubu</option>
+                {examStyles.map((x) => (
+                  <option key={x.id} value={x.id}>
+                    {x.name}
+                  </option>
+                ))}
+              </select>
+            </label>
             <p className="product-note">
-              Sorular kaynak, konu, açıklık ve cevap/şık kontrolünden geçmeden
-              sunulmaz. Yerel model denetimi doğruluk garantisi değildir. Açık
-              uçlu cevaplar otomatik doğru/yanlış puanı almaz.
+              Sorular seçtiğin ders kaynaklarından hazırlanır. Yanıtından sonra
+              açıklamayı ve ilgili kaynağı görebilirsin. Açık uçlu yanıtlar
+              otomatik puanlanmaz.
             </p>
             <Btn
               type="submit"
@@ -238,19 +319,55 @@ export default function CourseQuiz({ courseId }) {
             </Btn>
           </form>
           <div className="section-heading mt-6">
+            <h2>Sınav stilleri</h2>
+          </div>
+          <p className="product-note">
+            Geçmiş sınavını yapıştır: yalnız soru biçimi, üslup ve sık terimler saklanır, sınav metni
+            saklanmaz. Sorular numaralı olmalı (1. … 2. …).
+          </p>
+          {examStyles.map((x) => (
+            <div key={x.id} className="resume-row">
+              <strong>{x.name}</strong>
+              <small>{describeExamStyle(x.profile)}</small>
+              <button type="button" className="product-link" onClick={() => removeExamStyle(x.id)}>
+                Sil
+              </button>
+            </div>
+          ))}
+          <form onSubmit={saveExamStyle} className="grid gap-2 mb-4">
+            <label>
+              Sınav adı
+              <input aria-label="Sınav adı" value={examName} maxLength={120} onChange={(e) => setExamName(e.target.value)} />
+            </label>
+            <label>
+              Sınav metni
+              <textarea aria-label="Sınav metni" rows={6} value={examText} onChange={(e) => setExamText(e.target.value)} />
+            </label>
+            <Btn type="submit" disabled={busy}>Stili kaydet</Btn>
+          </form>
+          {examError && (
+            <p role="alert" className="product-error">
+              {examError}
+            </p>
+          )}
+          <div className="section-heading mt-6">
             <h2>Önceki alıştırmalar</h2>
           </div>
           {history.map((q) => (
             <button
               key={q.id}
               className="resume-row"
+              disabled={busy}
               onClick={async () => {
+                const epoch = ++requestEpoch.current;
                 try {
-                  setQuiz(await api.quiz(course, q.id));
+                  const saved = await api.quiz(course, q.id);
+                  if (epoch !== requestEpoch.current) return;
+                  setQuiz(saved);
                   setResult(null);
                   setAnswer("");
                 } catch (e) {
-                  setError(videoErrorText(e));
+                  if (epoch === requestEpoch.current) setError(videoErrorText(e));
                 }
               }}
             >
@@ -272,7 +389,7 @@ export default function CourseQuiz({ courseId }) {
               {error}
             </p>
           )}
-          {!quiz ? (
+          {busy && !quiz ? <p role="status">Seçtiğin kaynaklardan soru hazırlanıyor ve denetleniyor…</p> : !quiz ? (
             <EmptyState title="Öğrendiklerini dene">
               Bir ders, konu ve soru türü seç. Gerçek kaynak bulunduğunda
               alıştırman burada açılır.
@@ -280,6 +397,7 @@ export default function CourseQuiz({ courseId }) {
           ) : (
             <article className="quiz-question product-panel">
               <span className="source-badge">{labels[quiz.kind]}</span>
+              {quiz.question_style === "SOURCE_COMPLETION" && <p className="product-note">Kaynakta geçen kavramı hatırlama sorusu</p>}
               {quiz.objective && (
                 <p className="product-note">Öğrenme hedefi: {quiz.objective}</p>
               )}
@@ -294,14 +412,18 @@ export default function CourseQuiz({ courseId }) {
                 className="product-form"
                 onSubmit={async (e) => {
                   e.preventDefault();
+                  const epoch = ++requestEpoch.current;
                   setBusy(true);
                   try {
-                    setResult(await api.answerQuiz(course, quiz.id, answer));
-                    setHistory(await api.quizzes(course));
+                    const result = await api.answerQuiz(course, quiz.id, answer);
+                    if (epoch !== requestEpoch.current) return;
+                    setResult(result);
+                    const history = await api.quizzes(course);
+                    if (epoch === requestEpoch.current) setHistory(history);
                   } catch (err) {
-                    setError(videoErrorText(err));
+                    if (epoch === requestEpoch.current) setError(videoErrorText(err));
                   } finally {
-                    setBusy(false);
+                    if (epoch === requestEpoch.current) setBusy(false);
                   }
                 }}
               >
@@ -352,7 +474,8 @@ export default function CourseQuiz({ courseId }) {
                         : "Yanıtın kaydedildi"}
                   </span>
                   <p>{result.message}</p>
-                  {result.explanation && <p>{result.explanation}</p>}
+                  {result.objective && <p>Öğrenme hedefi: {result.objective}</p>}
+                  {result.explanation && result.explanation !== result.quote && <p>{result.explanation}</p>}
                   {result.selected_option_feedback && (
                     <p>Seçtiğin yanıt: {result.selected_option_feedback}</p>
                   )}
