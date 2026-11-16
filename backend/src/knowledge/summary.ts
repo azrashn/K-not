@@ -20,7 +20,8 @@ export function verifiedSummaryItems(
   raw: any,
   picked: SummarySegment[],
 ): SummaryItem[] {
-  const proposed = focus === "concepts" ? raw?.concepts : raw?.points;
+  // The AI service answers {focus, items: [...]} with items it already checked against the sources.
+  const proposed = raw?.items;
   if (!Array.isArray(proposed)) return [];
   const out: SummaryItem[] = [];
   for (const item of proposed.slice(0, MAX_ITEMS)) {
