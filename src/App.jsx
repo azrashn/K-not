@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { lazy, Suspense, useEffect } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import { X } from '@phosphor-icons/react'
 import { AppProvider, useApp, pathFor } from './app/store'
@@ -9,13 +9,19 @@ import Login from './pages/Login'
 import { EASE_DRAWER, EASE_OUT } from './lib/motion'
 import Home from './pages/HomeDashboard'
 import Courses from './pages/Courses'
-import CourseDetail from './pages/CourseDetail'
-import Workspace from './pages/Workspace'
-import Quiz from './pages/CourseQuiz'
-import CourseExams from './pages/CourseExams'
-import Analytics from './pages/LearningAnalytics'
-import Videos from './pages/Videos'
-import LearningWorkspace from './pages/LearningWorkspace'
+
+// Ağır sayfalar ilk açılışta yüklenmez; rota açılınca ayrı parça olarak gelir.
+const CourseDetail = lazy(() => import('./pages/CourseDetail'))
+const Workspace = lazy(() => import('./pages/Workspace'))
+const Quiz = lazy(() => import('./pages/CourseQuiz'))
+const CourseExams = lazy(() => import('./pages/CourseExams'))
+const Analytics = lazy(() => import('./pages/LearningAnalytics'))
+const Videos = lazy(() => import('./pages/Videos'))
+const LearningWorkspace = lazy(() => import('./pages/LearningWorkspace'))
+
+function PageLoading() {
+  return <div role="status" aria-live="polite" className="p-6 text-sm text-ink-2">Yükleniyor…</div>
+}
 
 // Rota prop olarak donar: çıkış animasyonundaki eski sayfa yeni rotayı okuyup erken oluşmaz.
 function Page({ route }) {
@@ -56,7 +62,7 @@ function Shell() {
             animate={{ opacity: 1, y: 0, filter: 'blur(0px)', transition: { duration: reduce ? 0.1 : 0.24, ease: EASE_OUT } }}
             exit={{ opacity: 0, transition: { duration: reduce ? 0.06 : 0.1, ease: EASE_OUT } }}
           >
-            <Page route={route} />
+            <Suspense fallback={<PageLoading />}><Page route={route} /></Suspense>
           </motion.div>
         </AnimatePresence>
       </main>
