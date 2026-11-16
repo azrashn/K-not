@@ -28,6 +28,7 @@ export const api = {
   knowledgeSource: (courseId, id, segment, signal) => request('GET', `/courses/${enc(courseId)}/knowledge/materials/${enc(id)}/sources/${enc(segment)}`, { signal }),
   knowledgeAnswer: (courseId, body, signal) => request('POST', `/courses/${enc(courseId)}/knowledge/answers`, { body, signal }),
   knowledgePractice: (courseId, conversation) => request('POST', `/courses/${enc(courseId)}/knowledge/practice`, { body: { conversation_id: conversation } }),
+  materialSummary: (courseId, materialId, focus, signal) => request('POST', `/courses/${enc(courseId)}/knowledge/materials/${enc(materialId)}/summary`, { body: { focus }, signal }),
   knowledgeGrade: (courseId, id, answer) => request('POST', `/courses/${enc(courseId)}/knowledge/practice/${enc(id)}/answers`, { body: { answer } }),
   knowledgeRemove: (courseId, id) => request('DELETE', `/courses/${enc(courseId)}/knowledge/materials/${enc(id)}`),
   knowledgeRename: (course,id,title) => request('PATCH',`/courses/${enc(course)}/knowledge/materials/${enc(id)}`,{body:{title}}),

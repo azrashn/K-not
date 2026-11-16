@@ -102,6 +102,9 @@ class Question {
 class Practice {
   @IsUUID() conversation_id!: string;
 }
+class SummaryRequest {
+  @IsIn(["summary", "concepts"]) focus!: "summary" | "concepts";
+}
 class PracticeAnswer {
   @IsString() @MaxLength(300) answer!: string;
 }
@@ -172,6 +175,16 @@ export class KnowledgeController {
     @Param("materialId") id: string,
   ) {
     return this.knowledge.preview(u, c, id);
+  }
+  @Post("materials/:materialId/summary")
+  @HttpCode(200)
+  summarize(
+    @CurrentUser() u: AuthUser,
+    @Param("courseId") c: string,
+    @Param("materialId") id: string,
+    @Body() b: SummaryRequest,
+  ) {
+    return this.knowledge.summarize(u, c, id, b.focus);
   }
   @Get("materials/:materialId/visual/:page") async visual(
     @CurrentUser() u: AuthUser,

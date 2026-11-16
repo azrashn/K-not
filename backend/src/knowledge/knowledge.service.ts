@@ -12,6 +12,7 @@ import { classifyLearning } from "../videos/learning-state";
 import { RateLimiter } from "../common/rate-limit";
 import { LearningHistoryService } from "../learning/history.service";
 import { resolveScope, validateViewport, inViewport } from "./context";
+import { pickSpread, verifiedSummaryItems, SummaryFocus } from "./summary";
 
 const hash = (value: string) =>
   createHash("sha256").update(value).digest("hex");
@@ -477,6 +478,69 @@ export class KnowledgeService {
         source_id: m.source_id,
       },
       segments: await this.segments(user, course, m),
+    };
+  }
+  async summarize(
+    user: AuthUser,
+    course: string,
+    materialId: string,
+    focus: SummaryFocus,
+  ) {
+    if (!this.limiter.take(user.id))
+      throw new ApiError("RATE_LIMITED", "Biraz bekleyin.");
+    const preview = await this.preview(user, course, materialId);
+    const usable = preview.segments.filter(
+      (s: any) => typeof s.text === "string" && s.text.trim(),
+    );
+    if (!usable.length)
+      throw new ApiError(
+        "VALIDATION_ERROR",
+        "Bu materyalde özetlenecek metin yok.",
+      );
+    const picked = pickSpread(usable, 8);
+    const r = await this.ai.call("POST", "/api/v1/knowledge/summary", {
+      body: {
+        focus,
+        language: "tr",
+        evidence: picked.map((s: any) => ({
+          id: s.id,
+          text: s.text,
+          location: s.location,
+        })),
+      },
+      timeoutMs: 120000,
+    });
+    if (r.kind === "timeout")
+      throw new ApiError(
+        "PROVIDER_TIMEOUT",
+        "Özet beklenenden uzun sürdü. Lütfen yeniden deneyin.",
+      );
+    if (
+      r.kind === "unreachable" ||
+      (r.kind === "response" && r.status === 503)
+    )
+      throw new ApiError(
+        "AI_SERVICE_UNAVAILABLE",
+        "Özeti hazırlayan yerel model yanıt veremedi. Lütfen biraz sonra yeniden deneyin.",
+      );
+    if (r.kind === "response" && r.status === 422)
+      throw new ApiError(
+        "VALIDATION_ERROR",
+        "Kaynaklara dayalı, doğrulanabilir bir özet çıkarılamadı. Farklı bir materyal deneyin.",
+      );
+    if (r.kind !== "response" || r.status !== 200)
+      throw new ApiError("GENERATION_FAILED", "Özet hazırlanamadı.");
+    const items = verifiedSummaryItems(focus, r.body, picked as any);
+    if (!items.length)
+      throw new ApiError(
+        "GENERATION_FAILED",
+        "Özet kaynak doğrulamasından geçmedi; yayınlanmadı.",
+      );
+    return {
+      material: preview.material,
+      focus,
+      status: "SOURCE_VERIFIED",
+      items,
     };
   }
   async visual(user: AuthUser, course: string, id: string, page: number) {
