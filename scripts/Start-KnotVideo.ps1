@@ -1,4 +1,13 @@
-param([string]$MomentSearchRoot = (Join-Path $env:USERPROFILE 'Documents\Codex\MomentSearch'))
+param([string]$MomentSearchRoot = '')
+# Engine folder order: -MomentSearchRoot > $env:MOMENTSEARCH_ROOT > ..\MomentSearch next to K-not > legacy default.
+# Engine: https://github.com/azrashn/momentsearch (branch local/windows-dev); `npm run setup -- --with-video` clones it.
+if (-not $MomentSearchRoot) {
+    $candidates = @($env:MOMENTSEARCH_ROOT,
+        (Join-Path (Split-Path $PSScriptRoot -Parent | Split-Path -Parent) 'MomentSearch'),
+        (Join-Path $env:USERPROFILE 'Documents\Codex\MomentSearch')) | Where-Object { $_ }
+    $MomentSearchRoot = ($candidates | Where-Object { Test-Path -LiteralPath (Join-Path $_ 'Start-MomentSearch.ps1') } | Select-Object -First 1)
+    if (-not $MomentSearchRoot) { $MomentSearchRoot = $candidates | Select-Object -First 1 }
+}
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
 Set-Location -LiteralPath $root
@@ -51,7 +60,7 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Backend build failed.' }
 } finally { Pop-Location }
 $videoRoot = $MomentSearchRoot
-if (-not (Test-Path -LiteralPath (Join-Path $videoRoot 'Start-MomentSearch.ps1'))) { throw 'MomentSearch installation is missing. See docs/video-integration.md.' }
+if (-not (Test-Path -LiteralPath (Join-Path $videoRoot 'Start-MomentSearch.ps1'))) { throw "MomentSearch not found at '$videoRoot'. Clone https://github.com/azrashn/momentsearch (branch local/windows-dev), finish its LOCAL_SETUP.md, then set MOMENTSEARCH_ROOT or pass -MomentSearchRoot. See docs/video-integration.md." }
 & (Join-Path $videoRoot 'Start-MomentSearch.ps1')
 Set-Location -LiteralPath $root
 # Runtime secrets are read from the ignored local file, never literals in source.

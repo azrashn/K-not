@@ -10,6 +10,7 @@
  *   --no-docker           Docker kullanma; MySQL 8'i kendin sağla (--database-url ile ver)
  *   --database-url=URL    --no-docker ile: MySQL bağlantı adresi (biçim: backend/.env.example → DATABASE_URL)
  *   --no-embeddings       torch / sentence-transformers kurma (yalnızca testler; gerçek model gerekmez)
+ *   --with-video          harici MomentSearch video motorunu klonlar (kurulumunu yapmaz; bkz. LOCAL_SETUP.md)
  *   --help
  *
  * Betik tekrar çalıştırılabilir (idempotent): var olan .env değerlerini ezmez, yalnızca eksik
@@ -35,7 +36,7 @@ if (has('--help') || has('-h')) {
   process.exit(0)
 }
 function readHeader() {
-  return 'Kullanım: npm run setup [-- --start] [--no-docker --database-url=mysql://...] [--no-embeddings]\nAyrıntı: scripts/setup.mjs başındaki açıklama ve README.md "Kurulum".'
+  return 'Kullanım: npm run setup [-- --start] [--no-docker --database-url=mysql://...] [--no-embeddings] [--with-video]\nAyrıntı: scripts/setup.mjs başındaki açıklama ve README.md "Kurulum".'
 }
 
 const info = (m) => console.log(`\n==> ${m}`)
@@ -84,7 +85,7 @@ if (useDocker) {
 }
 // Zorunlu olmayan harici araçlar: eksikse yalnızca ilgili özellik çalışmaz.
 if (!which('pdftoppm')) warn('Poppler (pdftoppm) yok → PDF/PPTX özgün sayfa görüntüleri çalışmaz (metin araması çalışır). Kurulum: README "Gereksinimler".')
-if (!which('ffmpeg')) warn('FFmpeg yok → yalnızca harici video motoru (MomentSearch) için gerekir; bu repodaki uygulama onsuz çalışır.')
+if (!which('ffmpeg')) warn('FFmpeg yok → yalnızca harici video motoru (MomentSearch, --with-video) için gerekir; bu repodaki uygulama onsuz çalışır.')
 
 // ── 1. Ortam dosyaları ───────────────────────────────────────────────────────
 info('Ortam dosyaları hazırlanıyor ve eşitleniyor')
@@ -158,7 +159,21 @@ run('npm', ['run', 'db:seed:local', '--', 'scripts/seed.example.json'], BACKEND)
 info('Backend derleniyor')
 run('npm', ['run', 'build'], BACKEND)
 
-// ── 5. Bitti ─────────────────────────────────────────────────────────────────
+// ── 5. Video motoru (isteğe bağlı) ───────────────────────────────────────────
+if (has('--with-video')) {
+  info('Video motoru (MomentSearch) klonlanıyor')
+  const engine = process.env.MOMENTSEARCH_ROOT || path.resolve(ROOT, '..', 'MomentSearch')
+  if (existsSync(path.join(engine, 'Start-MomentSearch.ps1'))) ok(`Motor zaten var: ${engine}`)
+  else if (!capture('git', ['--version'])) warn('git bulunamadı; motoru elle klonla.')
+  else run('git', ['clone', '--branch', 'local/windows-dev', 'https://github.com/azrashn/momentsearch.git', engine], ROOT)
+  if (existsSync(engine)) {
+    ok(`Motor klasörü: ${engine}`)
+    warn('Motorun KENDİ kurulumu ayrıdır (Windows 10/11, ~12 GB, Docker, Python 3.11, FFmpeg, Ollama + qwen3-vl:2b-instruct, 3 HF modeli;')
+    warn('Qwen için GPU önerilir). Adımlar: ' + path.join(engine, 'LOCAL_SETUP.md') + ' → "Sıfırdan kurulum". Bittikten sonra: .\\scripts\\Start-KnotVideo.ps1')
+  }
+}
+
+// ── 6. Bitti ─────────────────────────────────────────────────────────────────
 console.log('\nKurulum tamamlandı.')
 console.log('  • Giriş hesapları (admin@knot.local, ayse@knot.local, …): yukarıda "written to <dosya>" satırındaki geçici dosyada;')
 console.log('    ilk girişten sonra dosyayı sil. (Seed tekrar çalışınca mevcut kullanıcılara yeni parola üretmez.)')

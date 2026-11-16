@@ -34,23 +34,32 @@ OpenTutor 3001/8100 ve DocsGPT 5173/7091 kullanılmaz veya durdurulmaz.
 
 ## Video motoru bağımlılığı
 
-Bu ilk sürüm mevcut hazırlanmış yerel MomentSearch kurulumunu kullanır:
-`C:\Users\ASUS\Documents\Codex\MomentSearch`, `local/windows-dev` dalı.
-Knot kaynak koduna model veya üçüncü taraf repo kopyalanmadı; REST adaptörü var.
-`VIDEO_SERVICE_URL` NestJS tarafından okunur, tarayıcıya gönderilmez.
+Video, ayrı bir yerel **MomentSearch** motoru kullanır: https://github.com/azrashn/momentsearch
+(dal `local/windows-dev`, upstream `traversaal-ai/momentsearch`'in Apache-2.0 fork'u). Knot kaynak
+koduna model veya üçüncü taraf repo kopyalanmadı; REST adaptörü var. `VIDEO_SERVICE_URL` NestJS
+tarafından okunur, tarayıcıya gönderilmez.
 
-Motor 7862'de, kendine ait Qdrant 16433, PostgreSQL 15433 ve Ollama 11436 ile
-çalışır. Whisper base, E5 small, CLIP ve Qwen3-VL 2B Instruct yereldir;
-ücretli API çağrısı yapılmaz. Motorun bağımsız başlatıcısı çalıştırılır.
+Kurulum (Windows 10/11):
 
-Standart bulut odaklı upstream MomentSearch doğrudan tak-çalıştır değildir:
-önceki Windows yerel runner/ASR/embedding profilimiz gerekir. Ek köprü ucu
-`GET /api/local/frames/{video_id}` gerçek `(idx, ms)` çiftlerini okur. Bu küçük
-ek kaynak değişikliği MomentSearch reposunda `c53a8e9` commit'inde sürümlenir. Başka makinede
-kurulum için hem Knot dalı hem hazırlanmış motor profili gerekir; otomatik
-kurulumcu veya yayımlanmış Docker dağıtımı bu sürümün parçası değildir.
-YouTube/Drive indiricisi ve konuşmasız video düzeltmesi motorun `7c59ecf`
-commit'indedir; bağlantı özelliği için bu sürüm de gereklidir.
+1. Knot klasöründe `npm run setup -- --with-video` motoru `../MomentSearch` klasörüne klonlar
+   (`MOMENTSEARCH_ROOT` ile başka klasör seçilebilir). Elle: `git clone --branch local/windows-dev https://github.com/azrashn/momentsearch.git`.
+2. Motorun `LOCAL_SETUP.md` → **Sıfırdan kurulum** bölümünü uygula (Python 3.11 venv, FFmpeg, Ollama +
+   `qwen3-vl:2b-instruct`, Whisper base / multilingual-e5-small / CLIP ViT-B/32 çevrimdışı önbelleği,
+   `python -m src.check_local_models` çıkış kodu 0). Yaklaşık 12 GB. **Not:** bu adımlar yazarın makinesinden
+   çıkarıldı, temiz bir makinede baştan sona denenmedi.
+3. `.\scripts\Start-KnotVideo.ps1` motoru ve Knot video profilini başlatır; motor klasörü sırayla
+   `-MomentSearchRoot`, `MOMENTSEARCH_ROOT`, `..\MomentSearch` içinde aranır.
+
+Motor 7862'de, kendine ait Qdrant 16433, PostgreSQL 15433 ve Ollama 11436 ile çalışır. Whisper base,
+E5 small, CLIP ve Qwen3-VL 2B Instruct yereldir; ücretli API çağrısı yapılmaz. Görsel cevap modeli GPU
+ister; GPU'suz makinede çok yavaş olabilir (süre ölçülmedi). Motor yalnızca Windows için hazırlandı.
+
+Upstream (`traversaal-ai/momentsearch`) tek başına yetmez: Knot'un çağırdığı `/api/local/*` uçları
+(`frames`, `metadata`, `video-evidence`, `video-explanation`, `import-file`) yalnızca yerel dalda var.
+Gereken motor commit'leri: `c53a8e9` (frames), `7c59ecf` (bağlantıdan ekleme, konuşmasız video),
+`7abba5b` (izleme farkında soru-cevap), `2e6b587` (advisory lock).
+YouTube/Drive ekleme için `POST /api/local/import-file` ve yt-dlp-ejs 0.8.0 gerekir
+(motorun `requirements.windows.lock.txt` dosyasında kilitlidir, Node zaten kuruludur).
 
 ## Yetki ve veri sözleşmesi
 

@@ -23,7 +23,7 @@ CLAIM → KNOT → SOURCE        ASK → PRACTICE → ANSWER → FEEDBACK → RE
 
 Poppler kurulumu: Windows `winget install oschwartz10612.Poppler` (ya da `choco install poppler`), macOS `brew install poppler`, Debian/Ubuntu `sudo apt install poppler-utils`. PATH'te değilse `PDFTOPPM_PATH` ortam değişkenine tam yolu yaz. FFmpeg: `winget install Gyan.FFmpeg` / `brew install ffmpeg` / `sudo apt install ffmpeg`.
 
-> **Video motoru bu repoda yok.** "Ders videoları" özelliği ayrı bir yerel **MomentSearch** motoruna (varsayılan `http://127.0.0.1:7862`, `VIDEO_SERVICE_URL`) bağlanır; motor, Whisper/CLIP/Qdrant/PostgreSQL/Ollama ve FFmpeg ister ve ayrıca kurulur ([docs/video-integration.md](docs/video-integration.md)). Motor çalışmıyorsa uygulamanın geri kalanı (PDF/PPTX/TXT, sohbet, alıştırma, analiz) normal çalışır; yalnızca video yükleme/işleme uçları hata verir.
+> **Video motoru ayrı bir repo.** "Ders videoları" özelliği yerel **MomentSearch** motoruna (`http://127.0.0.1:7862`, `VIDEO_SERVICE_URL`) bağlanır: [azrashn/momentsearch](https://github.com/azrashn/momentsearch), dal `local/windows-dev` (upstream: traversaal-ai/momentsearch'in yerel kullanım için değiştirilmiş hali). Motorun kurulumu **Windows 10/11'e özeldir** ve ayrıdır (~12 GB; Docker, Python 3.11, FFmpeg, Ollama + `qwen3-vl:2b-instruct`, 3 Hugging Face modeli). Görsel cevap modeli için **GPU** gerekir, GPU'suz makinede çok yavaştır (süre ölçülmedi). Klonlamak için `npm run setup -- --with-video`; ardından motorun `LOCAL_SETUP.md` → "Sıfırdan kurulum" adımlarını uygula ve `scripts\Start-KnotVideo.ps1` ile başlat ([docs/video-integration.md](docs/video-integration.md)). Motor çalışmıyorsa uygulamanın geri kalanı (PDF/PPTX/TXT, sohbet, alıştırma, analiz) normal çalışır; yalnızca video yükleme/işleme uçları hata verir.
 
 ## Hızlı kurulum (tek komut)
 
@@ -44,7 +44,7 @@ npm run status:all
 npm run stop:all
 ```
 
-Uygulama: http://localhost:5173. İlk açılışta AI servisi gömme modelini indirir (birkaç dakika); `status:all` AI'ı "ÇALIŞIYOR" gösterene kadar bekle. Bayraklar: `--no-embeddings` (torch'suz, yalnızca testler için), `--no-docker`, `--database-url=…`. Windows'ta eski `npm run dev:all` (PowerShell) da çalışır.
+Uygulama: http://localhost:5173. İlk açılışta AI servisi gömme modelini indirir (birkaç dakika); `status:all` AI'ı "ÇALIŞIYOR" gösterene kadar bekle. Bayraklar: `--no-embeddings` (torch'suz, yalnızca testler için), `--no-docker`, `--database-url=…`, `--with-video` (MomentSearch motorunu `../MomentSearch` klasörüne klonlar; kurulumunu yapmaz). Windows'ta eski `npm run dev:all` (PowerShell) da çalışır.
 
 ## Sorun giderme
 
@@ -60,7 +60,7 @@ Uygulama: http://localhost:5173. İlk açılışta AI servisi gömme modelini in
 | `JWT_SECRET is required (>= 32 characters)` | `backend/.env` yer tutucu bırakılmış: `npm run setup` yeniden üretir. |
 | Yüklenen PDF "Hazırlanıyor"da kalıyor | `RAG_INTERNAL_API_TOKEN`/`INGEST_CALLBACK_TOKEN`/`STORAGE_ROOT` backend ve ai-service'te aynı olmalı, `INGEST_ENABLED=true` olmalı → `npm run setup` eşitler. |
 | Özgün sayfa görüntüsü yok | Poppler (`pdftoppm`) kur (yukarıda); PPTX için ayrıca Docker açık olmalı. |
-| Video yükleme / "video servisi" hatası | Harici MomentSearch motoru kurulu ve çalışır değil, ya da FFmpeg PATH'te değil. |
+| Video yükleme / "video servisi" hatası | MomentSearch motoru kurulu/çalışır değil (`http://127.0.0.1:7862/api/health` yanıt vermeli). Klonla: `npm run setup -- --with-video`, sonra motorun `LOCAL_SETUP.md` adımları; klasör farklıysa `MOMENTSEARCH_ROOT` ayarla. |
 | `Port 5173/3000/8100 in use` | Önce `npm run stop:all`; başka program tutuyorsa onu kapat. |
 | `npm ci` "lock file" uyarısı / eski Node | Node >= 20.19 kullan (`node -v`); `nvm use` (`.nvmrc`). |
 | PowerShell betiği engellendi | `npm run dev:all` zaten `-ExecutionPolicy Bypass` kullanır; `setup.bat`/`npm run setup` PowerShell gerektirmez. |
