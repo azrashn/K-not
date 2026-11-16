@@ -143,12 +143,22 @@ export default function CourseQuiz({ courseId }) {
         eyebrow="Kaynakla çalış, geri bildirim al"
         title="Alıştırmalar"
         actions={
-          <button
-            className="product-link"
-            onClick={() => navigate("/analitik")}
-          >
-            Sonuçlarım →
-          </button>
+          <>
+            {course && (
+              <button
+                className="product-link"
+                onClick={() => navigate(`/dersler/${course}/sinavlar`)}
+              >
+                Sınav hazırla →
+              </button>
+            )}
+            <button
+              className="product-link"
+              onClick={() => navigate("/analitik")}
+            >
+              Sonuçlarım →
+            </button>
+          </>
         }
       >
         Sorular ders kaynaklarına bağlanır. Geri bildirimden ilgili sayfa, slayt

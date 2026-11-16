@@ -9,6 +9,7 @@ import { AiServiceClient } from "../ai/ai-client";
 import { validSourceCompletion } from "./quiz-validation";
 import { quizHistoryItem } from "./quiz-history";
 import { buildExamProfile, examStyleHint, ExamProfile } from "./exam-style";
+import { matchAnswer, rubricCoverage, rubricTerms } from "./answer-match";
 
 @Injectable()
 export class LearningService {
@@ -343,9 +344,20 @@ export class LearningService {
       );
     const norm = (s: string) =>
       s.trim().toLocaleLowerCase("tr").normalize("NFC");
-    const reflection = q.kind === "OPEN",
-      matched = norm(response) === norm(data.expected);
+    const reflection = q.kind === "OPEN";
+    // Typed answers (cloze, short answer) accept safe equivalents: another case, Turkish
+    // diacritics, the same words reordered, a one-letter slip in a long word. Choices stay exact.
+    const typed = ["CLOZE", "SHORT_ANSWER"].includes(q.kind);
+    const matchMode = typed ? matchAnswer(data.expected, response) : null;
+    const matched = typed
+      ? matchMode !== null
+      : norm(response) === norm(data.expected);
     const exact = ["MULTIPLE_CHOICE", "TRUE_FALSE", "CLOZE"].includes(q.kind);
+    // Key-term coverage is shown for short answers that did not match; it never grades.
+    const rubric =
+      q.kind === "SHORT_ANSWER" && !matched && typeof data.expected === "string"
+        ? rubricCoverage(rubricTerms(data.expected), response)
+        : null;
     const score = reflection ? null : matched ? 1 : exact ? 0 : null;
     const outcome = reflection
       ? "REFLECTION_SAVED"
@@ -376,6 +388,8 @@ export class LearningService {
         ? data.option_feedback?.[Number(response)] || null
         : null,
       feedback_experimental: Boolean(data.experimental),
+      match_mode: matchMode,
+      rubric: rubric && rubric.terms.length ? rubric : null,
       mastery_estimated: false,
     };
     const row = await this.prisma.learningQuizAttempt.create({

@@ -18,7 +18,8 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "node tests/e2e/run-e2e.mjs"
+    "test:e2e": "node tests/e2e/run-e2e.mjs",
+    "test:e2e:exam": "node tests/e2e/exam-flow.mjs"
   },
   "dependencies": {
     "@phosphor-icons/react": "^2.1.10",

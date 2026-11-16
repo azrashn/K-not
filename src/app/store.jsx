@@ -6,6 +6,7 @@ export function parseHash(hash) {
   const parts = hash.replace(/^#\/?/, '').split('/').filter(Boolean)
   if (parts[0] === 'dersler') {
     if (parts[1] && parts[2] === 'quiz') return { section:'quiz',view:'quiz',courseId:parts[1] }
+    if (parts[1] && parts[2] === 'sinavlar') return { section: 'quiz', view: 'exams', courseId: parts[1] }
     if (parts[1] && parts[2] === 'ogrenme') return { section: 'courses', view: 'learning', courseId: parts[1] }
     if (parts[1] && parts[2] === 'videolar') return { section: 'courses', view: 'videos', courseId: parts[1] }
     if (parts[1] && parts[2] === 'calisma') return { section: 'courses', view: 'workspace', courseId: parts[1] }

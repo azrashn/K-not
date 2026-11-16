@@ -1352,3 +1352,141 @@
     min-width: 160px;
   }
 }
+
+/* Exam builder: lists, the printable sheet and its print rules. */
+.exam-modes {
+  display: flex;
+  gap: 0;
+  margin: 12px 0;
+  border: 1px solid var(--color-line);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.exam-modes button {
+  flex: 1;
+  padding: 8px 10px;
+  font-size: 13px;
+  background: var(--color-surface);
+  border-right: 1px solid var(--color-line);
+}
+.exam-modes button:last-child {
+  border-right: 0;
+}
+.exam-modes button:hover {
+  background: var(--color-paper);
+}
+.exam-modes button[aria-pressed="true"] {
+  background: var(--color-accent-tint);
+  color: var(--color-accent-deep);
+  font-weight: 550;
+}
+.exam-list {
+  margin-bottom: 20px;
+  border: 1px solid var(--color-hair);
+  border-radius: 8px;
+  background: var(--color-surface);
+}
+.exam-list .resume-row {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+}
+.exam-list .resume-row:hover {
+  background: var(--color-paper);
+}
+.exam-list .resume-row.active {
+  border-left: 2px solid var(--color-accent);
+}
+.exam-open {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  text-align: left;
+  flex: 1;
+}
+.exam-print {
+  border: 1px solid var(--color-line-strong);
+  border-radius: 6px;
+  padding: 8px 14px;
+  font-size: 13px;
+  background: var(--color-surface);
+}
+.exam-print:hover {
+  border-color: var(--color-accent);
+  color: var(--color-accent-deep);
+}
+.exam-sheet {
+  margin-top: 20px;
+  padding: 24px;
+  border: 1px solid var(--color-hair);
+  border-radius: 6px;
+  background: #fff;
+}
+.exam-sheet-title {
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+}
+.exam-sheet-meta {
+  margin: 8px 0 20px;
+  font-size: 13px;
+  color: var(--color-ink-3);
+}
+.exam-questions {
+  padding-left: 22px;
+  display: grid;
+  gap: 18px;
+}
+.exam-stem {
+  font-weight: 550;
+  margin-bottom: 8px;
+}
+.exam-options {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+  font-size: 14px;
+}
+.exam-lines i {
+  display: block;
+  height: 32px;
+  border-bottom: 1px solid var(--color-line);
+}
+.exam-meta {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 8px;
+}
+.exam-key {
+  margin-top: 28px;
+  padding-top: 16px;
+  border-top: 1px solid var(--color-line-strong);
+  break-before: page;
+}
+.exam-print-root {
+  display: none;
+}
+@media print {
+  /* The app shell clips to the window; print only the paper that is rendered next to it. */
+  #root {
+    display: none !important;
+  }
+  .exam-print-root {
+    display: block !important;
+    padding: 0;
+    background: #fff;
+    color: #000;
+  }
+  .exam-print-sheet {
+    width: 100%;
+  }
+  .exam-questions li {
+    break-inside: avoid;
+  }
+  .exam-lines i {
+    border-bottom-color: #000;
+  }
+}

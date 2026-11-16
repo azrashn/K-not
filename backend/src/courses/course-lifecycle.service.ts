@@ -97,6 +97,13 @@ export class CourseLifecycleService {
         this.prisma.learningActivity.deleteMany({
           where: { courseId: id, userId: user.id },
         }),
+        // Generated exams reference saved styles, so they go first.
+        this.prisma.generatedExam.deleteMany({
+          where: { courseId: id, userId: user.id },
+        }),
+        this.prisma.examStyle.deleteMany({
+          where: { courseId: id, ownerId: user.id },
+        }),
         this.prisma.course.update({
           where: { id },
           data: {

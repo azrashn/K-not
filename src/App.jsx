@@ -12,6 +12,7 @@ import Courses from './pages/Courses'
 import CourseDetail from './pages/CourseDetail'
 import Workspace from './pages/Workspace'
 import Quiz from './pages/CourseQuiz'
+import CourseExams from './pages/CourseExams'
 import Analytics from './pages/LearningAnalytics'
 import Videos from './pages/Videos'
 import LearningWorkspace from './pages/LearningWorkspace'
@@ -26,6 +27,7 @@ function Page({ route }) {
     case 'learning': return <LearningWorkspace key={courseId} courseId={courseId} />
     case 'videos': return <Videos courseId={courseId} />
     case 'quiz': return <Quiz courseId={courseId} />
+    case 'exams': return <CourseExams key={courseId} courseId={courseId} />
     case 'analytics': return <Analytics />
     default: return <Home />
   }

@@ -92,6 +92,11 @@ class Extract(StrictModel):
     content: str = Field(max_length=3_000_000)
 
 
+class ExamFile(StrictModel):
+    kind: Literal["PDF", "DOCX", "TXT"]
+    content: str = Field(max_length=8_000_000)
+
+
 class Summary(StrictModel):
     focus: Literal["summary", "concepts"] = "summary"
     language: Literal["tr", "en"] = "tr"
@@ -771,6 +776,20 @@ def install(app, components, auth):
         from knot_rag.explanations import explain as generate_explanation
 
         return generate_explanation(body)
+
+    @router.post("/exam-text")
+    def exam_text(body: ExamFile):
+        from knot_rag.exam_text import extract_exam_text
+
+        try:
+            raw = base64.b64decode(body.content, validate=True)
+            return {"text": extract_exam_text(body.kind, raw)}
+        except (ValueError, zipfile.BadZipFile, KeyError, ET.ParseError, UnicodeError) as exc:
+            raise HTTPException(422, "Exam file could not be read") from exc
+        except Exception as exc:  # pypdf raises its own error types for damaged PDFs
+            if type(exc).__module__.startswith("pypdf"):
+                raise HTTPException(422, "Exam file could not be read") from exc
+            raise
 
     @router.post("/summary")
     def summary(body: Summary):
