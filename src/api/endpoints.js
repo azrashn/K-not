@@ -18,7 +18,7 @@ export const api = {
   conversations: (course,signal) => request('GET',`/courses/${enc(course)}/knowledge/conversations`,{signal}),
   conversation: (course,id,signal) => request('GET',`/courses/${enc(course)}/knowledge/conversations/${enc(id)}`,{signal}),
   quizzes: (course,signal) => request('GET',`/courses/${enc(course)}/quizzes`,{signal}),
-  createQuiz: (course,body) => request('POST',`/courses/${enc(course)}/quizzes`,{body}),
+  createQuiz: (course,body,signal) => request('POST',`/courses/${enc(course)}/quizzes`,{body,signal}),
   examStyles: (course,signal) => request('GET',`/courses/${enc(course)}/exam-styles`,{signal}),
   createExamStyle: (course,body) => request('POST',`/courses/${enc(course)}/exam-styles`,{body}),
   uploadExamStyleFile: (course,file,name) => { const form = new FormData(); if (name) form.append('name', name); form.append('file', file, file.name); return request('POST',`/courses/${enc(course)}/exam-styles/file`,{form}) },

@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import RichText, { RichInline } from "../components/RichText";
 import { api } from "../api/endpoints";
 import { useResource } from "../hooks/useApi";
 import { useApp } from "../app/store";
@@ -6,7 +7,6 @@ import { PageFrame, Btn } from "../components/ui";
 import { MobileBar } from "../components/PageBits";
 import { PageTitle, EmptyState } from "../components/ProductUI";
 import { videoErrorText } from "../lib/video";
-import { describeExamStyle, examStyleProblem } from "../lib/exam-style";
 import { HISTORY_FILTERS, filterHistory, historyLabel, summarizeHistory } from "../lib/quiz-history";
 const labels = {
   MULTIPLE_CHOICE: "Çoktan seçmeli",
@@ -34,19 +34,54 @@ export default function CourseQuiz({ courseId }) {
     [selectedMaterials, setSelectedMaterials] = useState([]),
     [watchedOnly, setWatchedOnly] = useState(false);
   const [examStyles, setExamStyles] = useState([]),
-    [examStyleId, setExamStyleId] = useState(""),
-    [examName, setExamName] = useState(""),
-    [examText, setExamText] = useState(""),
-    [examError, setExamError] = useState("");
+    [examStyleId, setExamStyleId] = useState("");
+  const [advancedOpen, setAdvancedOpen] = useState(false),
+    [scopeNote, setScopeNote] = useState(""),
+    [elapsed, setElapsed] = useState(0);
+  const abortRef = useRef(null);
   const summary = summarizeHistory(history);
   const visibleHistory = filterHistory(history, historyFilter);
   const consumed = useRef(false), requestEpoch = useRef(0);
+  // Topic ideas: what was practised before and what the course materials are called.
+  const suggestions = useMemo(() => {
+    const names = materials
+      .filter((m) => m.status === "READY")
+      .map((m) => String(m.title || "").replace(/\.[A-Za-z0-9]+$/, ""));
+    return [...new Set([...history.slice(0, 3).map((h) => h.topic), ...names.slice(0, 3)].map((t) => String(t || "").trim()).filter(Boolean))]
+      .filter((t) => t !== topic.trim())
+      .slice(0, 5);
+  }, [history, materials, topic]);
+  const advancedSummary = [
+    scopeMode === "course" ? "Tüm ders kaynakları" : scopeMode === "active" ? "Bir materyal" : `${selectedMaterials.length} materyal`,
+    watchedOnly ? "izlenen bölümler" : null,
+    examStyleId ? "sınav stili" : null,
+  ].filter(Boolean).join(" · ");
+  // Preparation can take minutes on a local model: show how long, and let the student stop waiting.
+  useEffect(() => {
+    if (!busy) return;
+    setElapsed(0);
+    const timer = setInterval(() => setElapsed((n) => n + 1), 1000);
+    return () => clearInterval(timer);
+  }, [busy]);
+  function cancel() {
+    requestEpoch.current += 1;
+    abortRef.current?.abort();
+    setBusy(false);
+    setError("Hazırlama iptal edildi. Sunucu soruyu yine de tamamlayabilir; bittiyse “Önceki alıştırmalar” içinde görünür.");
+  }
   useEffect(() => () => { requestEpoch.current += 1; }, []);
   useEffect(() => {
     if (consumed.current) return;
     consumed.current = true;
     const intent = takeIntent?.();
     if (intent?.topic) setTopic(intent.topic.slice(0, 200));
+    if (intent?.materialId) {
+      // Started from the study screen: keep the quiz on the material the student was looking at.
+      setScopeMode("active");
+      setMaterial(intent.materialId);
+      setAdvancedOpen(true);
+      setScopeNote(`Çalışma ekranındaki materyalden başlatıldı${intent.materialTitle ? `: ${intent.materialTitle}` : ""}. Kapsamı “Gelişmiş ayarlar” içinden değiştirebilirsin.`);
+    }
     if (intent?.quizId && courseId)
       api
         .quiz(courseId, intent.quizId)
@@ -81,38 +116,17 @@ export default function CourseQuiz({ courseId }) {
       .catch(() => {});
     return () => abort.abort();
   }, [course]);
-  async function saveExamStyle(e) {
-    e.preventDefault();
-    const problem = examStyleProblem({ name: examName, text: examText });
-    setExamError(problem);
-    if (problem) return;
-    try {
-      const saved = await api.createExamStyle(course, { name: examName.trim(), text: examText });
-      setExamStyles((list) => [saved, ...list]);
-      setExamStyleId(saved.id);
-      setExamName("");
-      setExamText("");
-    } catch (err) {
-      setExamError(videoErrorText(err));
-    }
-  }
-  async function removeExamStyle(id) {
-    try {
-      await api.deleteExamStyle(course, id);
-      setExamStyles((list) => list.filter((x) => x.id !== id));
-      if (examStyleId === id) setExamStyleId("");
-    } catch (err) {
-      setExamError(videoErrorText(err));
-    }
-  }
   async function start(e) {
-    e.preventDefault();
+    e?.preventDefault?.();
     const epoch = ++requestEpoch.current;
     setBusy(true);
     setQuiz(null);
     setError("");
     setResult(null);
     setAnswer("");
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
     try {
       const q = await api.createQuiz(course, {
         topic: topic.trim(),
@@ -125,7 +139,7 @@ export default function CourseQuiz({ courseId }) {
               : { mode: "course" },
         watched_only: watchedOnly,
         ...(examStyleId ? { exam_style_id: examStyleId } : {}),
-      });
+      }, controller.signal);
       if (epoch !== requestEpoch.current) return;
       setQuiz(q);
       const history = await api.quizzes(course);
@@ -172,7 +186,7 @@ export default function CourseQuiz({ courseId }) {
             onSubmit={start}
             onChange={() => setError("")}
           >
-            <h2>Çalışma kapsamı</h2>
+            <h2>Yeni alıştırma</h2>
             <label>
               Ders
               <select
@@ -210,6 +224,58 @@ export default function CourseQuiz({ courseId }) {
                 placeholder="Kaynaklarında geçen bir konu yaz"
               />
             </label>
+            {suggestions.length > 0 && (
+              <div className="topic-suggestions" role="group" aria-label="Konu önerileri">
+                {suggestions.map((t) => (
+                  <button key={t} type="button" disabled={busy} onClick={() => setTopic(t)}>
+                    {t}
+                  </button>
+                ))}
+              </div>
+            )}
+            <label>
+              Soru türü
+              <select
+                aria-label="Soru türü"
+                disabled={busy}
+                value={kind}
+                onChange={(e) => setKind(e.target.value)}
+              >
+                {Object.entries(labels).map(([id, label]) => (
+                  <option key={id} value={id}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {scopeNote && <p className="product-note">{scopeNote}</p>}
+            <div className="quiz-actions">
+              <Btn
+                type="submit"
+                disabled={
+                  busy ||
+                  !course ||
+                  !topic.trim() ||
+                  (scopeMode === "active" && !material) ||
+                  (scopeMode === "selected" && !selectedMaterials.length)
+                }
+              >
+                {busy ? `Hazırlanıyor… ${elapsed} sn` : "Alıştırma hazırla"}
+              </Btn>
+              {busy && (
+                <button type="button" className="product-link" onClick={cancel}>
+                  İptal
+                </button>
+              )}
+            </div>
+            <details
+              className="quiz-advanced"
+              open={advancedOpen}
+              onToggle={(e) => setAdvancedOpen(e.currentTarget.open)}
+            >
+              <summary>
+                Gelişmiş ayarlar <small>{advancedSummary}</small>
+              </summary>
             <label>
               Kaynak kapsamı
               <select
@@ -283,87 +349,38 @@ export default function CourseQuiz({ courseId }) {
                 sarılan veya izleme kaydı olmayan bölüm dahil edilmez.
               </p>
             )}
-            <label>
-              Soru türü
-              <select
-                aria-label="Soru türü"
-                disabled={busy}
-                value={kind}
-                onChange={(e) => setKind(e.target.value)}
-              >
-                {Object.entries(labels).map(([id, label]) => (
-                  <option key={id} value={id}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Sınav stili (isteğe bağlı)
-              <select
-                aria-label="Sınav stili"
-                disabled={busy}
-                value={examStyleId}
-                onChange={(e) => setExamStyleId(e.target.value)}
-              >
-                <option value="">Genel soru üslubu</option>
-                {examStyles.map((x) => (
-                  <option key={x.id} value={x.id}>
-                    {x.name}
-                  </option>
-                ))}
-              </select>
-            </label>
+              <label>
+                Sınav stili (isteğe bağlı)
+                <select
+                  aria-label="Sınav stili"
+                  disabled={busy}
+                  value={examStyleId}
+                  onChange={(e) => setExamStyleId(e.target.value)}
+                >
+                  <option value="">Genel soru üslubu</option>
+                  {examStyles.map((x) => (
+                    <option key={x.id} value={x.id}>
+                      {x.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {course && (
+                <button
+                  type="button"
+                  className="product-link"
+                  onClick={() => navigate(`/dersler/${course}/sinavlar`)}
+                >
+                  Geçmiş sınav ekle / yeni sınav hazırla →
+                </button>
+              )}
+            </details>
             <p className="product-note">
               Sorular seçtiğin ders kaynaklarından hazırlanır. Yanıtından sonra
               açıklamayı ve ilgili kaynağı görebilirsin. Açık uçlu yanıtlar
               otomatik puanlanmaz.
             </p>
-            <Btn
-              type="submit"
-              disabled={
-                busy ||
-                !course ||
-                !topic.trim() ||
-                (scopeMode === "active" && !material) ||
-                (scopeMode === "selected" && !selectedMaterials.length)
-              }
-            >
-              {busy ? "Kaynaklı soru hazırlanıyor…" : "Alıştırma hazırla"}
-            </Btn>
           </form>
-          <div className="section-heading mt-6">
-            <h2>Sınav stilleri</h2>
-          </div>
-          <p className="product-note">
-            Geçmiş sınavını yapıştır: yalnız soru biçimi, üslup ve sık terimler saklanır, sınav metni
-            saklanmaz. Sorular numaralı olmalı (1. … 2. …).
-          </p>
-          {examStyles.map((x) => (
-            <div key={x.id} className="resume-row">
-              <strong>{x.name}</strong>
-              <small>{describeExamStyle(x.profile)}</small>
-              <button type="button" className="product-link" onClick={() => removeExamStyle(x.id)}>
-                Sil
-              </button>
-            </div>
-          ))}
-          <form onSubmit={saveExamStyle} className="grid gap-2 mb-4">
-            <label>
-              Sınav adı
-              <input aria-label="Sınav adı" value={examName} maxLength={120} onChange={(e) => setExamName(e.target.value)} />
-            </label>
-            <label>
-              Sınav metni
-              <textarea aria-label="Sınav metni" rows={6} value={examText} onChange={(e) => setExamText(e.target.value)} />
-            </label>
-            <Btn type="submit" disabled={busy}>Stili kaydet</Btn>
-          </form>
-          {examError && (
-            <p role="alert" className="product-error">
-              {examError}
-            </p>
-          )}
           <div className="section-heading mt-6">
             <h2>Önceki alıştırmalar</h2>
           </div>
@@ -418,7 +435,12 @@ export default function CourseQuiz({ courseId }) {
         <section>
           {error && (
             <p role="alert" className="product-error">
-              {error}
+              {error}{" "}
+              {!busy && course && topic.trim() && (
+                <button type="button" className="product-link" onClick={() => start()}>
+                  Yeniden dene
+                </button>
+              )}
             </p>
           )}
           {busy && !quiz ? <p role="status">Seçtiğin kaynaklardan soru hazırlanıyor ve denetleniyor…</p> : !quiz ? (
@@ -438,7 +460,7 @@ export default function CourseQuiz({ courseId }) {
                   Bu eski alıştırma yeni kalite kontrolünden geçmemiştir.
                 </p>
               )}
-              <h2>{quiz.question}</h2>
+              <h2><RichInline text={quiz.question} /></h2>
               {quiz.note && <p className="product-note mb-5">{quiz.note}</p>}
               <form
                 className="product-form"
@@ -474,7 +496,7 @@ export default function CourseQuiz({ courseId }) {
                           checked={answer === String(i)}
                           onChange={() => setAnswer(String(i))}
                         />
-                        <span>{option}</span>
+                        <span><RichInline text={option} /></span>
                       </label>
                     ))}
                   </fieldset>
@@ -507,7 +529,7 @@ export default function CourseQuiz({ courseId }) {
                   </span>
                   <p>{result.message}</p>
                   {result.objective && <p>Öğrenme hedefi: {result.objective}</p>}
-                  {result.explanation && result.explanation !== result.quote && <p>{result.explanation}</p>}
+                  {result.explanation && result.explanation !== result.quote && <RichText text={result.explanation} />}
                   {result.selected_option_feedback && (
                     <p>Seçtiğin yanıt: {result.selected_option_feedback}</p>
                   )}

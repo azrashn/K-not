@@ -11,6 +11,9 @@ import { MaterialRename } from "../components/ProductUI";
 import MaterialSummary from "../components/MaterialSummary";
 import ClaimSupport from "../components/ClaimSupport";
 import MaterialFind from "../components/MaterialFind";
+import WorkspaceStart from "../components/WorkspaceStart";
+import RichText from "../components/RichText";
+import { lastMaterial, rememberMaterial } from "../lib/last-material";
 import { mb, useLimits } from "../lib/limits";
 
 const locationLabel = (l) =>
@@ -345,6 +348,7 @@ export default function LearningWorkspace({ courseId }) {
       initialSeek.current = false;
     }
     setSelected(material);
+    rememberMaterial(courseId, material.id);
     if (scopeMode === "active")
       setReferences((rs) => rs.filter((r) => r.material_id === material.id));
     setViewport(null);
@@ -660,6 +664,7 @@ export default function LearningWorkspace({ courseId }) {
             onClick={() =>
               navigate(`/dersler/${courseId}/quiz`, {
                 topic: question || turns.at(-1)?.question,
+                ...(selected ? { materialId: selected.id, materialTitle: selected.title } : {}),
               })
             }
           >
@@ -892,15 +897,11 @@ export default function LearningWorkspace({ courseId }) {
             <h2>{selected?.title || "Kaynağın burada açılacak"}</h2>
           </header>
           {!selected && (
-            <div className="viewer-empty">
-              <span aria-hidden>▤</span>
-              <h3>Bir materyalle başla</h3>
-              <p>
-                Soldan bir kaynak seç veya materyal ekle. Yanıttaki kaynak
-                bağlantıları da ilgili sayfa, slayt ve zaman aralığını burada
-                açar.
-              </p>
-            </div>
+            <WorkspaceStart
+              materials={materials}
+              lastId={lastMaterial(courseId)}
+              onOpen={(m) => select(m)}
+            />
           )}
           {selected?.status === "READY" &&
             ["PDF", "PPTX"].includes(selected.kind) && (
@@ -1250,7 +1251,7 @@ export default function LearningWorkspace({ courseId }) {
                           Kopyala
                         </button>
                       </div>
-                      <p className="answer-text">{t.answer}</p>
+                      <RichText className="answer-text" text={t.answer} />
                       <ClaimSupport claims={t.claims} />
                       {t.visual_analysis?.status === "IMAGE_PROVIDED" && (
                         <p className="product-note">
@@ -1362,6 +1363,7 @@ export default function LearningWorkspace({ courseId }) {
                             onClick={() =>
                               navigate(`/dersler/${courseId}/quiz`, {
                                 topic: t.question,
+                                ...(selected ? { materialId: selected.id, materialTitle: selected.title } : {}),
                               })
                             }
                           >

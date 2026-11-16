@@ -11,6 +11,7 @@ import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { PASSWORD, startStack } from './lib/stack.mjs'
 import { makeDocx } from './lib/docx.mjs'
+import { scan } from './lib/a11y.mjs'
 
 const results = []
 const check = (cond, msg) => { if (!cond) throw new Error(msg) }
@@ -212,6 +213,39 @@ async function main() {
       check(limits.status === 200 && limits.body.study_file_bytes === 20 * 1024 * 1024, `limits: ${JSON.stringify(limits.body)}`)
       await page.getByText('PPTX ve TXT: 20 MB').waitFor()
     })
+
+    await step('practice form: the main action is visible and reachable by keyboard at 1280×720', async () => {
+      await page.setViewportSize({ width: 1280, height: 720 })
+      await page.goto(`${web}/#/dersler/${courseId}/quiz`)
+      await page.getByLabel('Konu', { exact: true }).waitFor()
+      await page.waitForTimeout(500)
+      const box = await page.getByRole('button', { name: 'Alıştırma hazırla' }).boundingBox()
+      check(box && box.y + box.height <= 720, `button bottom at ${box && box.y + box.height}px`)
+      await page.getByLabel('Konu', { exact: true }).fill('BFS')
+      await page.getByLabel('Soru türü').focus()
+      await page.keyboard.press('Tab')
+      const focused = await page.evaluate(() => document.activeElement?.textContent?.trim())
+      check(focused === 'Alıştırma hazırla', `Tab from the kind selector reached "${focused}"`)
+      await page.setViewportSize({ width: 1440, height: 900 })
+    })
+
+    // Automated accessibility scan of the main screens (serious and critical findings fail the run).
+    const screens = [
+      ['courses list', async () => { await page.goto(`${web}/#/dersler`); await page.getByText('Veri Yapıları', { exact: true }).first().waitFor() }],
+      ['study screen, nothing open', async () => { await page.goto(`${web}/#/dersler/${courseId}/ogrenme`); await page.getByText('Buradan başla').waitFor() }],
+      ['study screen with a material', async () => { await page.getByRole('button', { name: 'Birlikte öğren' }).click(); await page.getByRole('region', { name: 'Kaynaklı özet' }).waitFor() }],
+      ['practice page', async () => { await page.goto(`${web}/#/dersler/${courseId}/quiz`); await page.getByLabel('Konu', { exact: true }).waitFor() }],
+      ['exam builder with an exam', async () => { await page.goto(`${web}/#/dersler/${courseId}/sinavlar`); await page.getByRole('button', { name: /yeni sınav/ }).first().click(); await page.locator('.exam-sheet').waitFor() }],
+    ]
+    for (const [name, open] of screens) {
+      await step(`accessibility: ${name}`, async () => {
+        await open()
+        await page.waitForTimeout(900)
+        await shot(`a11y-${name.replace(/[^a-z]+/gi, '-')}`)
+        const found = await scan(page)
+        if (found.length) throw new Error(found.map((f) => `${f.impact} ${f.id} ×${f.count}: ${f.help} → ${f.where.join(' | ')}${f.colors ? '\n      ' + f.colors.join('\n      ') : ''}`).join('\n    '))
+      })
+    }
 
     console.log(`\nEND-TO-END PASSED (${results.length} steps). Artifacts: ${work}`)
   } catch (e) {

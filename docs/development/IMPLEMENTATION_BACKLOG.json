@@ -297,9 +297,13 @@
       "action": "Ders özeti, önerilen başlangıç/son konum ve belirgin “Birlikte öğren” girişi sun.",
       "accept": "İlk kullanıcı 30 saniyede bir materyal veya rehberli öğrenme adımı başlatabilsin.",
       "source": "src/pages/LearningWorkspace.jsx",
-      "status": "PLANLANDI",
-      "evidence_paths": [],
-      "verification": "Kabul testi henüz tamamlanmadı"
+      "status": "UYGULANDI_DOGRULAMA_BEKLIYOR",
+      "evidence_paths": [
+        "src/components/WorkspaceStart.jsx",
+        "src/lib/last-material.js",
+        "tests/frontend/workspace-start.test.jsx"
+      ],
+      "verification": "Çalışma ekranı boşken \"Buradan başla\": son kalınan (yoksa ilk hazır) materyal önerilir ve tek tıkla \"Birlikte öğren\" açılır; son materyal yalnızca bu tarayıcıda hatırlanır. Ders özeti (konu haritası) hâlâ yok; 30 sn kabul ölçümü gerçek kullanıcıyla yapılmadı."
     },
     {
       "id": "K20",
@@ -312,9 +316,13 @@
       "action": "Konu önerileriyle sade başlangıç, gelişmiş ayarların açılır alanı ve görünür ana eylem tasarla.",
       "accept": "720px yükseklikte ilk eylem açıkça görünür ve klavyeyle erişilebilir olsun.",
       "source": "src/pages/CourseQuiz.jsx",
-      "status": "PLANLANDI",
-      "evidence_paths": [],
-      "verification": "Kabul testi henüz tamamlanmadı"
+      "status": "UYGULANDI_DOGRULAMA_BEKLIYOR",
+      "evidence_paths": [
+        "src/pages/CourseQuiz.jsx",
+        "tests/frontend/quiz-form-ux.test.jsx",
+        "tests/e2e/exam-flow.mjs"
+      ],
+      "verification": "Form temel alanlara (ders, konu, tür) ve açılır \"Gelişmiş ayarlar\"a ayrıldı; geçmiş ve materyal adlarından konu önerileri var; 1280×720 görüntüde ana düğme görünür ve klavyeyle erişilir (gerçek tarayıcı testi)."
     },
     {
       "id": "K21",
@@ -327,9 +335,12 @@
       "action": "Tek LearningContext sözleşmesini quiz intent ve sunucu kapsamına aktar.",
       "accept": "PDF4 veya video12:46 üzerinden başlatılan quiz belirtilen bağlama bağlı olsun; kapsam kullanıcıya gösterilsin.",
       "source": "src/pages/LearningWorkspace.jsx",
-      "status": "PLANLANDI",
-      "evidence_paths": [],
-      "verification": "Kabul testi henüz tamamlanmadı"
+      "status": "KISMEN_UYGULANDI",
+      "evidence_paths": [
+        "src/pages/LearningWorkspace.jsx",
+        "tests/frontend/quiz-form-ux.test.jsx"
+      ],
+      "verification": "Çalışma ekranından \"Alıştırma yap\" artık açık materyali taşır; quiz bu materyale bağlanır ve kapsam kullanıcıya gösterilir. Sayfa/slayt/video zamanı sunucu kapsamına taşınmıyor: soru materyalin tamamından üretilir."
     },
     {
       "id": "K22",
@@ -344,9 +355,10 @@
       "source": "src/pages/CourseQuiz.jsx",
       "status": "KISMEN_UYGULANDI",
       "evidence_paths": [
-        "docs/development/A1_PROGRESS.md"
+        "src/pages/CourseQuiz.jsx",
+        "tests/frontend/quiz-form-ux.test.jsx"
       ],
-      "verification": "Odaklı otomatik testler geçti; gerçek model/UI kabulü bekliyor"
+      "verification": "Soru hazırlanırken geçen süre görünür, İptal ve Yeniden dene var. İptal yalnızca tarayıcıyı bekletmeyi bırakır; sunucu soruyu yine tamamlayabilir (bu açıkça söylenir). Sunucu tarafı iptali yok."
     },
     {
       "id": "K23",
@@ -361,7 +373,7 @@
       "source": "src/product.css",
       "status": "PLANLANDI",
       "evidence_paths": [],
-      "verification": "Kabul testi henüz tamamlanmadı"
+      "verification": "Yapılmadı: panel boyutlarının kullanıcı tarafından ayarlanması (P2)."
     },
     {
       "id": "K24",
@@ -374,9 +386,13 @@
       "action": "Güvenli Markdown, matematik, tablo ve kod gösterimi; atıfları cümleyle ilişkilendir.",
       "accept": "Formül, kod ve kaynak bağlantıları erişilebilir ve taşma yapmadan gösterilsin.",
       "source": "src/pages/LearningWorkspace.jsx",
-      "status": "PLANLANDI",
-      "evidence_paths": [],
-      "verification": "Kabul testi henüz tamamlanmadı"
+      "status": "KISMEN_UYGULANDI",
+      "evidence_paths": [
+        "src/lib/rich-text.js",
+        "src/components/RichText.jsx",
+        "tests/frontend/rich-text.test.jsx"
+      ],
+      "verification": "Cevap, soru, şık ve açıklamalarda kod blokları, satır içi kod ve basit LaTeX (üst/alt simge, kök, kesir, Yunan harfleri, işleçler) gösterilir; HTML basılmaz. Tam LaTeX/KaTeX yok (yeni paket eklenmedi); desteklenmeyen komut olduğu gibi görünür."
     },
     {
       "id": "K25",
@@ -389,9 +405,12 @@
       "action": "Klavye alternatifi, odak sırası, canlı durum duyuruları ve kontrast denetimi yap.",
       "accept": "Klavye ve ekran okuyucu ile ana öğrenme/quiz akışı tamamlanabilsin.",
       "source": "src/components/DocumentCanvas.jsx",
-      "status": "PLANLANDI",
-      "evidence_paths": [],
-      "verification": "Kabul testi henüz tamamlanmadı"
+      "status": "KISMEN_UYGULANDI",
+      "evidence_paths": [
+        "tests/e2e/lib/a11y.mjs",
+        "tests/e2e/exam-flow.mjs"
+      ],
+      "verification": "Gerçek Chromium'da axe-core (WCAG 2 A/AA, renk kontrastı dahil) ile beş ana ekran taranır ve ciddi/kritik bulgu başarısızlık sayılır; klavye ile ana eylem erişimi denendi. Ekran okuyucuyla elle kabul, mobil ve diğer ekranlar (analiz, video) taranmadı."
     },
     {
       "id": "K26",
