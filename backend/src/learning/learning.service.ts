@@ -8,6 +8,7 @@ import { KnowledgeService } from "../knowledge/knowledge.service";
 import { AiServiceClient } from "../ai/ai-client";
 import { validSourceCompletion } from "./quiz-validation";
 import { quizHistoryItem } from "./quiz-history";
+import { buildExamProfile, examStyleHint, ExamProfile } from "./exam-style";
 
 @Injectable()
 export class LearningService {

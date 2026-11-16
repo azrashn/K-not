@@ -6,6 +6,7 @@ import { PageFrame, Btn } from "../components/ui";
 import { MobileBar } from "../components/PageBits";
 import { PageTitle, EmptyState } from "../components/ProductUI";
 import { videoErrorText } from "../lib/video";
+import { describeExamStyle, examStyleProblem } from "../lib/exam-style";
 import { HISTORY_FILTERS, filterHistory, historyLabel, summarizeHistory } from "../lib/quiz-history";
 const labels = {
   MULTIPLE_CHOICE: "Çoktan seçmeli",
@@ -32,6 +33,11 @@ export default function CourseQuiz({ courseId }) {
   const [scopeMode, setScopeMode] = useState("course"),
     [selectedMaterials, setSelectedMaterials] = useState([]),
     [watchedOnly, setWatchedOnly] = useState(false);
+  const [examStyles, setExamStyles] = useState([]),
+    [examStyleId, setExamStyleId] = useState(""),
+    [examName, setExamName] = useState(""),
+    [examText, setExamText] = useState(""),
+    [examError, setExamError] = useState("");
   const summary = summarizeHistory(history);
   const visibleHistory = filterHistory(history, historyFilter);
   const consumed = useRef(false), requestEpoch = useRef(0);

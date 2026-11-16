@@ -19,6 +19,7 @@ beforeEach(() => {
   api.courses.mockResolvedValue([{ id: 'c', name: 'Algoritma' }])
   api.knowledgeMaterials.mockResolvedValue({ materials: [] })
   api.quizzes.mockResolvedValue(items)
+  api.examStyles.mockResolvedValue([])
 })
 
 test('labels separate unanswered questions from answered ones', () => {
