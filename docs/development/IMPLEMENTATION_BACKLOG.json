@@ -833,9 +833,12 @@
       "action": "Kullanılan yolları açık işaretle; testlerden sonra gereksiz kodu aşamalı kaldır, tek sözleşmeye taşı.",
       "accept": "Aktif rota haritası ve kaldırılacak modüller belirli olsun; gerçek eski kullanıcı akışı bozulmasın.",
       "source": "src/App.jsx",
-      "status": "PLANLANDI",
-      "evidence_paths": [],
-      "verification": "Kabul testi henüz tamamlanmadı"
+      "status": "KISMEN",
+      "evidence_paths": [
+        "docs/development/ROUTE_MAP.md",
+        "scripts/unused-modules.mjs"
+      ],
+      "verification": "Ulaşılamayan 15 modül (eski Home/Quiz/Analytics, mock.js, Toast, Diagrams…) ve eski analytics testi kaldırıldı; rota haritası docs/development/ROUTE_MAP.md. Store örnek durumu (data/academic) hâlâ canlı ekranlarca kullanılıyor, kaldırılmadı."
     },
     {
       "id": "K52",
@@ -893,11 +896,12 @@
       "action": "Hafif otomatik test/build kapısı ve isteğe bağlı gerçek model kabul hattı kur.",
       "accept": "Her PR temel testleri; sürüm adayı gerçek yerel model kabulünü geçsin.",
       "source": ".github/workflows/secret-scan.yml",
-      "status": "A0_YEREL_UYGULANDI_DOGRULAMA_BEKLIYOR",
+      "status": "KISMEN",
       "evidence_paths": [
+        ".github/workflows/quality-linux.yml",
         "docs/development/A0_BASELINE.md"
       ],
-      "verification": "Kabul testi henüz tamamlanmadı"
+      "verification": ".github/workflows/quality-linux.yml: gerçek MySQL ile API testleri, Python, arayüz, derleme, 2 tarayıcı E2E. GitHub üzerinde henüz çalıştırılmadı; gerçek model kabulü hâlâ isteğe bağlı elle koşu."
     },
     {
       "id": "K56",
@@ -961,11 +965,12 @@
       "action": "Uyarıları önemine göre sınıflandır; doğrulanmış Python lock/constraints ve uyumluluk profili oluştur.",
       "accept": "Yeni kritik uyarı eklenmesin; temiz Windows kurulumunda aynı bağımlılık setiyle testler geçsin.",
       "source": "ai-service/pyproject.toml",
-      "status": "A0_YEREL_UYGULANDI_DOGRULAMA_BEKLIYOR",
+      "status": "KISMEN",
       "evidence_paths": [
-        "docs/development/A0_BASELINE.md"
+        "docs/development/A0_BASELINE.md",
+        "src/App.jsx"
       ],
-      "verification": "Kabul testi henüz tamamlanmadı"
+      "verification": "Ana paket 598→422 kB (sayfa bazlı yükleme), derleme boyut uyarısı kalktı. Oxlint uyarıları ve Python constraints/lock çalışması yapılmadı."
     },
     {
       "id": "K60",
