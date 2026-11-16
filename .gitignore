@@ -54,3 +54,12 @@ seed_output*
 # Browser QA artifacts can contain private course/session data.
 .playwright-cli/
 /output/playwright/
+
+# ── Python (ai-service/.gitignore ile aynı; kökten çalıştırılan araçlar için) ──
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.egg-info/
+.chroma/

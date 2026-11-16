@@ -7,13 +7,13 @@
  *
  * Requires an EMPTY, dedicated MySQL 8 database at E2E_DATABASE_URL (migrations are applied with the
  * non-destructive `migrate deploy`; the run refuses to start if documents already exist), Python with the
- * ai-service requirements, and a Chromium (CHROMIUM_PATH, default /opt/pw-browsers/chromium).
+ * ai-service requirements, and a Chromium (CHROMIUM_PATH, default: Playwright Chromium, or /opt/pw-browsers/chromium).
  * Embeddings use the deterministic `hashing` backend so the run needs no model download; the
  * IndexVersion seeded below carries the same configuration, so the backend index guard passes.
  * The answer provider is the extractive baseline (not an LLM).
  */
 import { spawn, spawnSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, openSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
@@ -26,7 +26,8 @@ const BACKEND = path.join(ROOT, 'backend')
 const AI = path.join(ROOT, 'ai-service')
 const FIXTURES = path.join(AI, 'tests/ingest/fixtures')
 const DB = process.env.E2E_DATABASE_URL ?? 'mysql://knot:knot-dev-password@localhost:3306/knot_e2e'
-const CHROMIUM = process.env.CHROMIUM_PATH ?? '/opt/pw-browsers/chromium'
+// CHROMIUM_PATH verilmezse Playwright'ın kendi Chromium'una düşer (npx playwright-core install chromium); yoksa /opt/pw-browsers/chromium denenir.
+const CHROMIUM = process.env.CHROMIUM_PATH ?? (existsSync('/opt/pw-browsers/chromium') ? '/opt/pw-browsers/chromium' : undefined)
 const PYTHON = process.env.PYTHON ?? 'python3'
 const PASSWORD = 'e2e-password-123'
 const RAG_TOKEN = 'e2e-rag-internal-token'
@@ -143,7 +144,7 @@ async function main() {
   await waitFor('vite preview', async () => (await fetch(web)).ok)
 
   // 5) Browser.
-  const browser = await chromium.launch({ executablePath: CHROMIUM })
+  const browser = await chromium.launch(CHROMIUM ? { executablePath: CHROMIUM } : {})
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } })
   const browserHosts = new Set()
   page.on('request', (r) => browserHosts.add(new URL(r.url()).host))

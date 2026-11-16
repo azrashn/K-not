@@ -2,8 +2,8 @@
 
 Tarih: 31 Ekim 2026. Başlangıç: feature/video-integration / 769941a.
 Yeni özellik kapsamı genişletilmedi; mevcut video, ilerleme ve QA yolları bağlandı.
-Knot kökü: `C:/Users/ASUS/K-not`. Motor kökü:
-`C:/Users/ASUS/Documents/Codex/MomentSearch`.
+Knot kökü: `<K-not klasörü>`. Motor kökü:
+`<MomentSearch klasörü>` (kendi makinendeki yol; bkz. docs/video-integration.md).
 
 ## Kök nedenler — dokuz sorunun kod karşılığı
 
