@@ -3,7 +3,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import Videos from '../../src/pages/Videos'
 import { validateVideoFile, videoTime, videoErrorText } from '../../src/lib/video'
 import { api } from '../../src/api/endpoints'
-vi.mock('../../src/api/endpoints', () => ({ api: { videos: vi.fn(), videoTranscript: vi.fn(), videoFrames: vi.fn(), videoFile: vi.fn(), videoFrame: vi.fn(), videoAnswer: vi.fn(), importVideoLink: vi.fn(), removeVideo: vi.fn(), videoProgress: vi.fn(), saveVideoProgress: vi.fn(), limits: vi.fn() } }))
+vi.mock('../../src/api/endpoints', () => ({ api: { videos: vi.fn(), videoTranscript: vi.fn(), videoFrames: vi.fn(), videoFile: vi.fn(), videoFrame: vi.fn(), videoAnswer: vi.fn(), importVideoLink: vi.fn(), removeVideo: vi.fn(), videoProgress: vi.fn(), saveVideoProgress: vi.fn(), limits: vi.fn(), correctTranscript: vi.fn(), revertTranscript: vi.fn() } }))
 vi.mock('../../src/app/store', () => ({ useApp: () => ({ navigate: vi.fn() }) }))
 vi.mock('../../src/components/PageBits', () => ({ MobileBar: () => null }))
 beforeEach(() => {
@@ -132,4 +132,21 @@ test('unknown without a reliable timestamp does not manufacture jump/explain but
   await screen.findByText('İzlenme durumu belirsiz')
   expect(screen.queryByRole('button', { name: 'İlgili bölüme git' })).not.toBeInTheDocument()
   expect(screen.queryByRole('button', { name: 'Şimdi açıkla' })).not.toBeInTheDocument()
+})
+test('a transcript fix is saved for the selected video and the line updates in place', async () => {
+  api.videoTranscript.mockResolvedValue({ chunks: [{ index: 0, text: 'bfs kuyruk', start_seconds: 0, end_seconds: 5, corrected: false }], stale_corrections: [] })
+  api.correctTranscript.mockResolvedValue({ index: 0, text: 'BFS kuyruk', original_text: 'bfs kuyruk', corrected: true, start_seconds: 0, end_seconds: 5 })
+  render(<Videos courseId="course-1" />)
+  fireEvent.click(await screen.findByRole('button', { name: 'Düzelt' }))
+  fireEvent.change(screen.getByLabelText('Düzeltilmiş metin'), { target: { value: 'BFS kuyruk' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Kaydet' }))
+  await waitFor(() => expect(api.correctTranscript).toHaveBeenCalledWith('course-1', 'video-1', 0, 'BFS kuyruk'))
+  expect(await screen.findByText('Düzeltildi')).toBeInTheDocument()
+  expect(screen.getByText(/yeni haliyle girer/)).toBeInTheDocument()
+})
+
+test('fixes that no longer apply after a reprocess are announced', async () => {
+  api.videoTranscript.mockResolvedValue({ chunks: [{ index: 0, text: 'yeni metin', start_seconds: 0, end_seconds: 5, corrected: false }], stale_corrections: [0, 3] })
+  render(<Videos courseId="course-1" />)
+  expect(await screen.findByText('2 düzeltme, video yeniden işlendiği için uygulanmadı.')).toBeInTheDocument()
 })

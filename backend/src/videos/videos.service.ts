@@ -13,6 +13,8 @@ import { PrismaService, isUniqueViolation } from '../prisma/prisma.service';
 import { canonicalVideoLink } from './video-link';
 
 import { VIDEO_MAX_BYTES, mbText } from '../common/limits';
+import { randomUUID } from 'node:crypto';
+import { EngineChunk, applyCorrections, cleanCorrection, pushHistory, sha256 } from './transcript-corrections';
 export { VIDEO_MAX_BYTES };
 const ENGINE_ID = /^up_[a-f0-9]{10}$/;
 export interface EngineVideo { id: string; status: string; frame_count?: number; progress?: number; error?: string; transcript_note?: string }
@@ -216,12 +218,44 @@ export class VideosService {
     await this.json(`/api/videos/${row.engineVideoId}/retry`, {});
     return this.describe(row);
   }
-  async transcript(user: AuthUser, courseId: string, id: string) {
-    const row = await this.owned(user, courseId, id);
+  private async engineChunks(row: { engineVideoId: string }): Promise<EngineChunk[]> {
     const t = await this.json(`/api/transcript/${row.engineVideoId}`);
     if (t.video_id !== row.engineVideoId || !Array.isArray(t.chunks)) throw new ApiError('INTERNAL_ERROR', 'Geçersiz transkript.');
-    return { video_id: id, chunks: t.chunks.map((c: any) => ({ text: String(c.text || ''),
-      start_seconds: Number(c.t_start), end_seconds: Number(c.t_end) })) };
+    return t.chunks.map((c: any) => ({ text: String(c.text || ''), start_seconds: Number(c.t_start), end_seconds: Number(c.t_end) }));
+  }
+  /** The transcript with the student's fixes laid over the engine's text (the engine's text is untouched). */
+  async transcript(user: AuthUser, courseId: string, id: string) {
+    const row = await this.owned(user, courseId, id);
+    const engine = await this.engineChunks(row);
+    const fixes = await this.prisma.transcriptCorrection.findMany({
+      where: { videoId: id }, select: { chunkIndex: true, originalSha: true, text: true },
+    });
+    const applied = applyCorrections(engine, fixes);
+    return { video_id: id, chunks: applied.chunks, stale_corrections: applied.stale };
+  }
+  async correctTranscript(user: AuthUser, courseId: string, id: string, index: number, text: unknown) {
+    const row = await this.owned(user, courseId, id);
+    const clean = cleanCorrection(text);
+    if (!clean) throw new ApiError('VALIDATION_ERROR', 'Düzeltme 1-3000 karakter arasında bir metin olmalı.');
+    const chunk = (await this.engineChunks(row))[index];
+    if (!chunk) throw notFound('Transcript chunk');
+    if (clean === chunk.text.replace(/\s+/g, ' ').trim()) return this.revertTranscript(user, courseId, id, index);
+    const existing = await this.prisma.transcriptCorrection.findUnique({ where: { videoId_chunkIndex: { videoId: id, chunkIndex: index } } });
+    if (!existing && (await this.prisma.transcriptCorrection.count({ where: { videoId: id } })) >= 500)
+      throw new ApiError('VALIDATION_ERROR', 'Bir videoda en fazla 500 düzeltme yapılabilir.');
+    await this.prisma.transcriptCorrection.upsert({
+      where: { videoId_chunkIndex: { videoId: id, chunkIndex: index } },
+      create: { id: randomUUID(), videoId: id, chunkIndex: index, originalSha: sha256(chunk.text), text: clean, history: pushHistory([], chunk.text) },
+      update: { text: clean, originalSha: sha256(chunk.text), history: pushHistory(existing?.history, existing?.text ?? chunk.text) },
+    });
+    return { index, text: clean, original_text: chunk.text, corrected: true, start_seconds: chunk.start_seconds, end_seconds: chunk.end_seconds };
+  }
+  async revertTranscript(user: AuthUser, courseId: string, id: string, index: number) {
+    const row = await this.owned(user, courseId, id);
+    const chunk = (await this.engineChunks(row))[index];
+    if (!chunk) throw notFound('Transcript chunk');
+    await this.prisma.transcriptCorrection.deleteMany({ where: { videoId: id, chunkIndex: index } });
+    return { index, text: chunk.text, corrected: false, start_seconds: chunk.start_seconds, end_seconds: chunk.end_seconds };
   }
   async frames(user: AuthUser, courseId: string, id: string) {
     const row = await this.owned(user, courseId, id);

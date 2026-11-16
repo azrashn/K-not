@@ -14,6 +14,7 @@ import { LearningHistoryService } from "../learning/history.service";
 import { resolveScope, validateViewport, inViewport } from "./context";
 import { pickSpread, verifiedSummaryItems, SummaryFocus } from "./summary";
 import { FIND_MIN, findInSegments } from "./find";
+import { correctionsDigest } from "../videos/transcript-corrections";
 import { STUDY_FILE_MAX_BYTES, mbText } from "../common/limits";
 
 const hash = (value: string) =>
@@ -107,6 +108,16 @@ export class KnowledgeService {
         take: 101,
       }),
     ]);
+    // One digest per video of its transcript fixes (empty when there are none).
+    const corrections = new Map<string, string>();
+    if (videos.length) {
+      const rows = await this.prisma.transcriptCorrection.findMany({
+        where: { videoId: { in: videos.map((v) => v.id) } },
+        select: { videoId: true, chunkIndex: true, text: true },
+      });
+      for (const v of videos)
+        corrections.set(v.id, correctionsDigest(rows.filter((r) => r.videoId === v.id)));
+    }
     let videoStates: Record<string, string> = {};
     if (videos.length) {
       try {
@@ -144,7 +155,12 @@ export class KnowledgeService {
         title: v.title,
         source_id: v.id,
         status: videoStates[v.id] || "UNAVAILABLE",
-        version: hash(v.contentSha256 + ":video-text-v1"),
+        // A transcript fix changes the text the index holds, so it changes the version: the video is
+        // indexed again and answers that cited the old words are marked as changed, not rewritten.
+        version: hash(
+          v.contentSha256 + ":video-text-v1" +
+            (corrections.get(v.id) ? ":" + corrections.get(v.id) : ""),
+        ),
         row: v,
       })),
       ...files.map((f) => ({

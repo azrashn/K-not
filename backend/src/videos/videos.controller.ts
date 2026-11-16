@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, ParseIntPipe, Post, Res, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Param, ParseIntPipe, Post, Put, Res, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { IsBoolean, IsInt, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, MinLength } from 'class-validator';
 import type { Response } from 'express';
@@ -18,6 +18,8 @@ class Question {
   @IsOptional() @IsBoolean() explain_now?: boolean;
   @IsOptional() @IsUUID() evidence_id?: string;
 }
+class ChunkParam extends VideoParam { @Matches(/^\d{1,5}$/) index!: string }
+class Correction { @IsString() @MinLength(1) @MaxLength(3000) @Matches(/\S/) text!: string }
 class VideoLink { @IsString() @MinLength(1) @MaxLength(2048) url!: string }
 
 @Controller('courses/:courseId/videos')
@@ -36,6 +38,8 @@ export class VideosController {
   @Post(':videoId/retry') @HttpCode(202)
   retry(@CurrentUser() u: AuthUser, @Param() p: VideoParam) { return this.videos.retry(u, p.courseId, p.videoId); }
   @Get(':videoId/transcript') transcript(@CurrentUser() u: AuthUser, @Param() p: VideoParam) { return this.videos.transcript(u, p.courseId, p.videoId); }
+  @Put(':videoId/transcript/:index') correct(@CurrentUser() u: AuthUser, @Param() p: ChunkParam, @Body() b: Correction) { return this.videos.correctTranscript(u, p.courseId, p.videoId, Number(p.index), b.text); }
+  @Delete(':videoId/transcript/:index') revert(@CurrentUser() u: AuthUser, @Param() p: ChunkParam) { return this.videos.revertTranscript(u, p.courseId, p.videoId, Number(p.index)); }
   @Get(':videoId/frames') frames(@CurrentUser() u: AuthUser, @Param() p: VideoParam) { return this.videos.frames(u, p.courseId, p.videoId); }
   @Post(':videoId/answers') @HttpCode(200)
   ask(@CurrentUser() u: AuthUser, @Param() p: VideoParam, @Body() b: Question) { return this.learning.ask(u, p.courseId, p.videoId, b.question.trim(), b); }

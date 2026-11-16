@@ -59,6 +59,8 @@ export const api = {
   videoProgress: (courseId, videoId, signal) => request('GET', `/courses/${enc(courseId)}/videos/${enc(videoId)}/progress`, { signal }),
   saveVideoProgress: (courseId, videoId, body, signal, keepalive = false) => request('PUT', `/courses/${enc(courseId)}/videos/${enc(videoId)}/progress`, { body, signal, keepalive }),
   videoTranscript: (courseId, videoId, signal) => request('GET', `/courses/${enc(courseId)}/videos/${enc(videoId)}/transcript`, { signal }),
+  correctTranscript: (courseId, videoId, index, text) => request('PUT', `/courses/${enc(courseId)}/videos/${enc(videoId)}/transcript/${enc(index)}`, { body: { text } }),
+  revertTranscript: (courseId, videoId, index) => request('DELETE', `/courses/${enc(courseId)}/videos/${enc(videoId)}/transcript/${enc(index)}`),
   videoFrames: (courseId, videoId, signal) => request('GET', `/courses/${enc(courseId)}/videos/${enc(videoId)}/frames`, { signal }),
   videoFile: (courseId, videoId, signal) => request('GET', `/courses/${enc(courseId)}/videos/${enc(videoId)}/file`, { as: 'blob', signal }),
   videoFrame: (courseId, videoId, index, signal) => request('GET', `/courses/${enc(courseId)}/videos/${enc(videoId)}/frames/${enc(index)}`, { as: 'blob', signal }),

@@ -553,7 +553,7 @@
       "source": "../Documents/Codex/MomentSearch/src/ingest/local_asr.py",
       "status": "PLANLANDI",
       "evidence_paths": [],
-      "verification": "Kabul testi henüz tamamlanmadı"
+      "verification": "Yapılmadı: ASR motoru (faster-whisper) bu repoda değil, MomentSearch içinde; yükleme başına dil seçimi, teknik kelime listesi ve WER/CER seti o projede yapılmalı. Burada yalnızca düzeltme (K36) sonrası metin iyileştirilebilir."
     },
     {
       "id": "K36",
@@ -566,9 +566,14 @@
       "action": "Özgün/düzeltilmiş transkript, edit geçmişi, yeniden indeks ve eski atıf geçerliliğini tasarla.",
       "accept": "Düzeltmeden sonra yeni cevap düzeltilmiş sürümü kullansın; eski alıntı sessizce değişmesin.",
       "source": "docs/development/REMAINING_WORK.md",
-      "status": "PLANLANDI",
-      "evidence_paths": [],
-      "verification": "Kabul testi henüz tamamlanmadı"
+      "status": "KISMEN_UYGULANDI",
+      "evidence_paths": [
+        "backend/src/videos/transcript-corrections.ts",
+        "backend/test/api/transcript-corrections.spec.ts",
+        "src/components/TranscriptChunk.jsx",
+        "tests/frontend/transcript-chunk.test.jsx"
+      ],
+      "verification": "Transkript satırı düzeltilebilir ve geri alınır; motorun metni değişmez, düzeltme üstüne bindirilir ve yalnızca düzeltilen özgün metin hâlâ aynıysa uygulanır (yeniden işlemede bayat düzeltme uygulanmaz, bildirilir). Düzeltme video sürümünü değiştirir: indeks yeniden kurulur, eski cevaplardaki alıntılar kaynak değişmiş olarak işaretlenir. Düzenleme geçmişi son 20 sürümle saklanır; geçmiş arayüzde gösterilmez."
     },
     {
       "id": "K37",
@@ -637,9 +642,16 @@
       "action": "Kullanıcı/video ayrımlı IndexedDB outbox, idempotency ve logout temizliği ekle.",
       "accept": "Offline izle → kapat → aç → online senaryosunda aralıklar bir kez işlensin.",
       "source": "src/hooks/useVideoProgress.js",
-      "status": "PLANLANDI",
-      "evidence_paths": [],
-      "verification": "Kabul testi henüz tamamlanmadı"
+      "status": "UYGULANDI_DOGRULAMA_BEKLIYOR",
+      "evidence_paths": [
+        "src/lib/progress-outbox.js",
+        "src/lib/outbox-sync.js",
+        "src/hooks/useVideoProgress.js",
+        "tests/frontend/progress-outbox.test.js",
+        "tests/frontend/video-progress-outbox.test.jsx",
+        "tests/e2e/outbox-browser.mjs"
+      ],
+      "verification": "Başarısız izleme kayıtları kullanıcıya özgü IndexedDB kuyruğunda saklanır; bağlantı gelince (online olayı, oturum açılışı, uygulama açılışı) video başına birleştirilip bir kez gönderilir. Açık videonun sunucudaki konumu eski kuyruk konumuyla geri alınmaz. Açık çıkışta temizlenir, oturum süresi dolunca korunur. Gerçek Chromium IndexedDB testi ve kanca testi geçti; gerçek video oynatımıyla çevrimdışı senaryo (MomentSearch gerekir) denenmedi."
     },
     {
       "id": "K41",

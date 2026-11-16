@@ -120,6 +120,7 @@ model Video {
   createdAt        DateTime @default(now())
   durationMs       Int?
   progress         VideoProgress[]
+  transcriptCorrections TranscriptCorrection[]
   course           Course   @relation(fields: [courseId], references: [id])
   owner            User     @relation(fields: [ownerId], references: [id])
 
@@ -128,6 +129,22 @@ model Video {
 }
 
 // Media observation only. Watched time is not a measurement of topic mastery.
+// A student's fix of one transcript chunk. The engine's transcript is never changed: the fix is laid
+// over it and only applies while the engine's text for that chunk is still the one that was corrected.
+model TranscriptCorrection {
+  id          String   @id
+  videoId     String
+  chunkIndex  Int
+  originalSha String   @db.Char(64)
+  text        String   @db.Text
+  history     Json
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  video       Video    @relation(fields: [videoId], references: [id], onDelete: Cascade)
+
+  @@unique([videoId, chunkIndex])
+}
+
 model VideoProgress {
   videoId    String
   userId     String

@@ -5,6 +5,7 @@ import { Btn, PageFrame } from '../components/ui'
 import { MobileBar } from '../components/PageBits'
 import { validateVideoFile, videoTime, videoErrorText as errorText } from '../lib/video'
 import { mb, useLimits } from '../lib/limits'
+import TranscriptChunk from '../components/TranscriptChunk'
 import { useVideoProgress } from '../hooks/useVideoProgress'
 
 const STATES = { pending: 'Sırada', queued: 'Sırada', fetching: 'Video okunuyor', sampling: 'Kareler çıkarılıyor',
@@ -43,6 +44,7 @@ export default function Videos({ courseId }) {
   const [fileUrl, setFileUrl] = useState(null)
   const [mediaLoading, setMediaLoading] = useState(false)
   const [chunks, setChunks] = useState([])
+  const [stale, setStale] = useState([])
   const [frames, setFrames] = useState([])
   const [showAll, setShowAll] = useState(false)
   const [question, setQuestion] = useState('')
@@ -80,7 +82,7 @@ export default function Videos({ courseId }) {
     let url
     setMediaLoading(true)
     Promise.all([api.videoTranscript(courseId, selected, controller.signal), api.videoFrames(courseId, selected, controller.signal)])
-      .then(([t, f]) => { if (!controller.signal.aborted) { setChunks(t.chunks); setFrames(f.frames) } })
+      .then(([t, f]) => { if (!controller.signal.aborted) { setChunks(t.chunks); setStale(t.stale_corrections || []); setFrames(f.frames) } })
       .catch(e => { if (e.name !== 'AbortError') setError(errorText(e)) })
     api.videoFile(courseId, selected, controller.signal).then(blob => {
       if (!controller.signal.aborted) { url = URL.createObjectURL(blob); setFileUrl({ videoId: selected, url }) }
@@ -237,11 +239,12 @@ export default function Videos({ courseId }) {
             <section aria-label="Zaman damgalı transkript" className="max-h-[30rem] overflow-y-auto border border-hair">
               <h2 className="sticky top-0 border-b border-hair bg-paper p-3 text-sm font-medium">Transkript</h2>
               {!chunks.length && <p className="p-3 text-sm text-ink-3">Bu video için transkript bulunamadı.</p>}
-              {chunks.map((c, i) => <button key={i} onClick={() => seek(c.start_seconds)}
-                className={`block w-full border-b border-hair p-3 text-left hover:bg-ink/[0.04] ${time >= c.start_seconds && time < c.end_seconds ? 'bg-accent-tint' : ''}`}>
-                <span className="font-mono text-xs text-accent">{videoTime(c.start_seconds)}</span>
-                <span className="mt-1 block text-sm leading-relaxed">{c.text}</span>
-              </button>)}
+              {stale.length > 0 && <p role="status" className="border-b border-hair p-3 text-xs text-ink-3">{stale.length} düzeltme, video yeniden işlendiği için uygulanmadı.</p>}
+              {chunks.some((c) => c.corrected) && <p className="border-b border-hair p-3 text-xs text-ink-3">Düzeltilen satırlar sorulara ve alıştırmalara yeni haliyle girer; eski cevaplardaki alıntılar “kaynak değişmiş” sayılır.</p>}
+              {chunks.map((c) => <TranscriptChunk key={c.index} chunk={c} active={time >= c.start_seconds && time < c.end_seconds}
+                onSeek={() => seek(c.start_seconds)}
+                onSave={async (index, text) => { const next = await api.correctTranscript(courseId, selected, index, text); setChunks((list) => list.map((x) => (x.index === index ? { ...x, ...next } : x))) }}
+                onRevert={async (index) => { const next = await api.revertTranscript(courseId, selected, index); setChunks((list) => list.map((x) => { if (x.index !== index) return x; const { original_text, ...rest } = x; return { ...rest, ...next } })) }} />)}
             </section>
           </div>
           <section aria-label="Videoya soru sor" className="border border-hair p-5">

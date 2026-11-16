@@ -2,6 +2,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api/endpoints";
 import { videoErrorText } from "../lib/video";
 import { createWatchTracker, mergeObserved } from "../lib/watch-tracker";
+import * as auth from "../api/session";
+import { isTransient, outbox } from "../lib/progress-outbox";
+import { drainProgressOutbox } from "../lib/outbox-sync";
 
 export function useVideoProgress(courseId, videoId, ready, player) {
   const [state, setState] = useState({
@@ -109,10 +112,26 @@ export function useVideoProgress(courseId, videoId, ready, player) {
         current.failed = false;
         update({ progress: result, error: "" });
       } catch (error) {
-        current.pending = mergeObserved([...batch, ...current.pending]);
-        current.dirty = true;
-        current.failed = true;
-        update({ error: videoErrorText(error) });
+        // No connection or server trouble: keep the observations on this device so they survive a
+        // closed tab, and send them when the network is back. Anything else stays in memory as before.
+        const userId = auth.get()?.user?.id;
+        const stored =
+          isTransient(error) && userId
+            ? await outbox.enqueue({ userId, courseId, videoId, position_ms: position, intervals: batch })
+            : false;
+        if (stored) {
+          current.queued = true;
+          current.failed = true;
+          update({
+            error:
+              "Bağlantı yok: izleme kaydı bu cihazda saklandı, bağlantı gelince gönderilecek.",
+          });
+        } else {
+          current.pending = mergeObserved([...batch, ...current.pending]);
+          current.dirty = true;
+          current.failed = true;
+          update({ error: videoErrorText(error) });
+        }
       } finally {
         current.sending = false;
         current.flight = null;
@@ -132,6 +151,26 @@ export function useVideoProgress(courseId, videoId, ready, player) {
     }
     current.sample = sample;
     current.flush = flush;
+    // Send what an earlier offline session left behind. For the open video the position that the
+    // server already holds is kept, so an old queued position never moves the resume point back.
+    async function drainOutbox() {
+      if (current.draining || !auth.get()?.user?.id) return;
+      current.draining = true;
+      try {
+        const result = await drainProgressOutbox({
+          positionFor: (c, v) => (c === courseId && v === videoId && current.progress ? current.progress.position_ms : null),
+        });
+        if (!result) return;
+        current.queued = result.waiting > 0;
+        if (result.sent && current.active) {
+          await loadProgress();
+          if (!current.queued) update({ error: "" });
+        }
+      } finally {
+        current.draining = false;
+      }
+    }
+    current.drain = drainOutbox;
     function loadProgress() {
       return api
         .videoProgress(courseId, videoId, load.signal)
@@ -147,11 +186,14 @@ export function useVideoProgress(courseId, videoId, ready, player) {
         });
     }
     current.retry = () => (current.progress ? flush() : loadProgress());
-    void loadProgress();
+    void loadProgress().then(() => drainOutbox());
     const timer = setInterval(() => {
       sample();
       void flush();
+      if (current.queued) void drainOutbox();
     }, 5000);
+    const online = () => void drainOutbox();
+    window.addEventListener("online", online);
     const leaving = () => {
       sample();
       current.tracker.reset();
@@ -171,6 +213,7 @@ export function useVideoProgress(courseId, videoId, ready, player) {
       clearInterval(timer);
       window.removeEventListener("pagehide", leaving);
       document.removeEventListener("visibilitychange", hidden);
+      window.removeEventListener("online", online);
       current.tracker.reset();
       void flush(true);
       if (session.current === current) session.current = null;

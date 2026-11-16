@@ -1573,3 +1573,47 @@
   color: var(--color-accent-deep);
   padding: 0 1px;
 }
+
+/* Transcript lines that can be corrected. */
+.transcript-chunk {
+  border-bottom: 1px solid var(--color-hair);
+}
+.transcript-chunk.active {
+  background: var(--color-accent-tint);
+}
+.transcript-seek {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 12px 12px 4px;
+}
+.transcript-seek:hover {
+  background: rgba(0, 0, 0, 0.03);
+}
+.transcript-actions {
+  display: flex;
+  gap: 14px;
+  padding: 0 12px 10px;
+  font-size: 12px;
+}
+.transcript-original {
+  padding: 0 12px 6px;
+  font-size: 12px;
+  color: var(--color-ink-3);
+}
+.transcript-edit {
+  padding: 4px 12px 8px;
+  display: grid;
+  gap: 8px;
+}
+.transcript-edit textarea {
+  width: 100%;
+  border: 1px solid var(--color-line);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 13px;
+}
+.transcript-edit textarea:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
