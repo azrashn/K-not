@@ -95,6 +95,8 @@ class Extract(StrictModel):
 class QuizDraft(Explain):
     kind: Literal["MULTIPLE_CHOICE", "TRUE_FALSE", "CLOZE", "SHORT_ANSWER", "OPEN"]
     language: Literal["tr", "en"] = "tr"
+    # Server-built exam-style guidance (format and phrasing only); facts still come from evidence.
+    style_hint: str | None = Field(default=None, max_length=1200)
 
 
 def chunk_text(text: str, location: dict) -> list[dict]:

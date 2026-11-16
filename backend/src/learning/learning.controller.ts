@@ -1,6 +1,7 @@
-import { Body, Controller, Get, HttpCode, Param, Post } from "@nestjs/common";
+import { Body, Controller, Delete, Get, HttpCode, Param, Post } from "@nestjs/common";
 import {
   IsIn,
+  IsUUID,
   IsOptional,
   IsString,
   Matches,
@@ -26,6 +27,11 @@ class Start {
   @Type(() => KnowledgeScope)
   scope?: KnowledgeScope;
   @IsOptional() @IsBoolean() watched_only?: boolean;
+  @IsOptional() @IsUUID() exam_style_id?: string;
+}
+class ExamStyleBody {
+  @IsString() @MinLength(1) @MaxLength(120) @Matches(/\S/) name!: string;
+  @IsString() @MinLength(20) @MaxLength(20000) @Matches(/\S/) text!: string;
 }
 class Answer {
   @IsString() @MaxLength(2000) @Matches(/\S/) response!: string;
@@ -61,6 +67,26 @@ export class LearningController {
     @Body() b: Start,
   ) {
     return this.learning.start(u, c, b);
+  }
+  @Get("courses/:courseId/exam-styles") examStyles(
+    @CurrentUser() u: AuthUser,
+    @Param("courseId") c: string,
+  ) {
+    return this.learning.examStyles(u, c);
+  }
+  @Post("courses/:courseId/exam-styles") createExamStyle(
+    @CurrentUser() u: AuthUser,
+    @Param("courseId") c: string,
+    @Body() b: ExamStyleBody,
+  ) {
+    return this.learning.createExamStyle(u, c, b);
+  }
+  @Delete("courses/:courseId/exam-styles/:id") deleteExamStyle(
+    @CurrentUser() u: AuthUser,
+    @Param("courseId") c: string,
+    @Param("id") id: string,
+  ) {
+    return this.learning.deleteExamStyle(u, c, id);
   }
   @Get("courses/:courseId/quizzes/:id") quiz(
     @CurrentUser() u: AuthUser,

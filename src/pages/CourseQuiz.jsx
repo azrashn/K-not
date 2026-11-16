@@ -6,6 +6,7 @@ import { PageFrame, Btn } from "../components/ui";
 import { MobileBar } from "../components/PageBits";
 import { PageTitle, EmptyState } from "../components/ProductUI";
 import { videoErrorText } from "../lib/video";
+import { describeExamStyle, examStyleProblem } from "../lib/exam-style";
 const labels = {
   MULTIPLE_CHOICE: "Çoktan seçmeli",
   TRUE_FALSE: "Doğru / yanlış",
@@ -30,6 +31,11 @@ export default function CourseQuiz({ courseId }) {
   const [scopeMode, setScopeMode] = useState("course"),
     [selectedMaterials, setSelectedMaterials] = useState([]),
     [watchedOnly, setWatchedOnly] = useState(false);
+  const [examStyles, setExamStyles] = useState([]),
+    [examStyleId, setExamStyleId] = useState(""),
+    [examName, setExamName] = useState(""),
+    [examText, setExamText] = useState(""),
+    [examError, setExamError] = useState("");
   const consumed = useRef(false), requestEpoch = useRef(0);
   useEffect(() => () => { requestEpoch.current += 1; }, []);
   useEffect(() => {
@@ -60,6 +66,41 @@ export default function CourseQuiz({ courseId }) {
       });
     return () => abort.abort();
   }, [course]);
+  useEffect(() => {
+    if (!course) return;
+    const abort = new AbortController();
+    api
+      .examStyles(course, abort.signal)
+      .then((list) => {
+        if (!abort.signal.aborted) setExamStyles(list);
+      })
+      .catch(() => {});
+    return () => abort.abort();
+  }, [course]);
+  async function saveExamStyle(e) {
+    e.preventDefault();
+    const problem = examStyleProblem({ name: examName, text: examText });
+    setExamError(problem);
+    if (problem) return;
+    try {
+      const saved = await api.createExamStyle(course, { name: examName.trim(), text: examText });
+      setExamStyles((list) => [saved, ...list]);
+      setExamStyleId(saved.id);
+      setExamName("");
+      setExamText("");
+    } catch (err) {
+      setExamError(videoErrorText(err));
+    }
+  }
+  async function removeExamStyle(id) {
+    try {
+      await api.deleteExamStyle(course, id);
+      setExamStyles((list) => list.filter((x) => x.id !== id));
+      if (examStyleId === id) setExamStyleId("");
+    } catch (err) {
+      setExamError(videoErrorText(err));
+    }
+  }
   async function start(e) {
     e.preventDefault();
     const epoch = ++requestEpoch.current;
@@ -79,6 +120,7 @@ export default function CourseQuiz({ courseId }) {
               ? { mode: "selected", material_ids: [material] }
               : { mode: "course" },
         watched_only: watchedOnly,
+        ...(examStyleId ? { exam_style_id: examStyleId } : {}),
       });
       if (epoch !== requestEpoch.current) return;
       setQuiz(q);
@@ -242,6 +284,22 @@ export default function CourseQuiz({ courseId }) {
                 ))}
               </select>
             </label>
+            <label>
+              Sınav stili (isteğe bağlı)
+              <select
+                aria-label="Sınav stili"
+                disabled={busy}
+                value={examStyleId}
+                onChange={(e) => setExamStyleId(e.target.value)}
+              >
+                <option value="">Genel soru üslubu</option>
+                {examStyles.map((x) => (
+                  <option key={x.id} value={x.id}>
+                    {x.name}
+                  </option>
+                ))}
+              </select>
+            </label>
             <p className="product-note">
               Sorular seçtiğin ders kaynaklarından hazırlanır. Yanıtından sonra
               açıklamayı ve ilgili kaynağı görebilirsin. Açık uçlu yanıtlar
@@ -260,6 +318,38 @@ export default function CourseQuiz({ courseId }) {
               {busy ? "Kaynaklı soru hazırlanıyor…" : "Alıştırma hazırla"}
             </Btn>
           </form>
+          <div className="section-heading mt-6">
+            <h2>Sınav stilleri</h2>
+          </div>
+          <p className="product-note">
+            Geçmiş sınavını yapıştır: yalnız soru biçimi, üslup ve sık terimler saklanır, sınav metni
+            saklanmaz. Sorular numaralı olmalı (1. … 2. …).
+          </p>
+          {examStyles.map((x) => (
+            <div key={x.id} className="resume-row">
+              <strong>{x.name}</strong>
+              <small>{describeExamStyle(x.profile)}</small>
+              <button type="button" className="product-link" onClick={() => removeExamStyle(x.id)}>
+                Sil
+              </button>
+            </div>
+          ))}
+          <form onSubmit={saveExamStyle} className="grid gap-2 mb-4">
+            <label>
+              Sınav adı
+              <input aria-label="Sınav adı" value={examName} maxLength={120} onChange={(e) => setExamName(e.target.value)} />
+            </label>
+            <label>
+              Sınav metni
+              <textarea aria-label="Sınav metni" rows={6} value={examText} onChange={(e) => setExamText(e.target.value)} />
+            </label>
+            <Btn type="submit" disabled={busy}>Stili kaydet</Btn>
+          </form>
+          {examError && (
+            <p role="alert" className="product-error">
+              {examError}
+            </p>
+          )}
           <div className="section-heading mt-6">
             <h2>Önceki alıştırmalar</h2>
           </div>

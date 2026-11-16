@@ -7,6 +7,7 @@ import { AccessService } from "../courses/access.service";
 import { KnowledgeService } from "../knowledge/knowledge.service";
 import { AiServiceClient } from "../ai/ai-client";
 import { validSourceCompletion } from "./quiz-validation";
+import { buildExamProfile, examStyleHint, ExamProfile } from "./exam-style";
 
 @Injectable()
 export class LearningService {
@@ -193,8 +194,14 @@ export class LearningService {
           ? "Bu konuda tamamen izlenmiş video bölümü bulunamadı. Son oynatma konumu tek başına izleme kanıtı değildir."
           : "Bu konuda soru hazırlamaya uygun kaynak bulunamadı.",
       );
+    const styleHint = await this.styleHintFor(u, c, b.exam_style_id);
     const r = await this.ai.call("POST", "/api/v1/knowledge/quiz", {
-      body: { question: b.topic, kind: b.kind, evidence: candidates },
+      body: {
+        question: b.topic,
+        kind: b.kind,
+        evidence: candidates,
+        ...(styleHint ? { style_hint: styleHint } : {}),
+      },
       timeoutMs: 150000,
     });
     if (r.kind === "timeout")
@@ -374,6 +381,55 @@ export class LearningService {
       data: { quizId: id, userId: u.id, response, outcome, feedback, score },
     });
     return { id: row.id, outcome, score, ...feedback };
+  }
+  private async styleHintFor(u: AuthUser, c: string, id?: string) {
+    if (!id) return null;
+    const row = await this.prisma.examStyle.findFirst({
+      where: { id, courseId: c, ownerId: u.id },
+    });
+    if (!row) throw notFound("Exam style");
+    return examStyleHint(row.profile as unknown as ExamProfile);
+  }
+  private publicExamStyle(row: any) {
+    return {
+      id: row.id,
+      name: row.name,
+      created_at: row.createdAt,
+      profile: row.profile as ExamProfile,
+    };
+  }
+  async examStyles(u: AuthUser, c: string) {
+    await this.access.requireMember(u, c);
+    const rows = await this.prisma.examStyle.findMany({
+      where: { courseId: c, ownerId: u.id },
+      orderBy: { createdAt: "desc" },
+      take: 20,
+    });
+    return rows.map((r) => this.publicExamStyle(r));
+  }
+  async createExamStyle(u: AuthUser, c: string, b: { name: string; text: string }) {
+    await this.access.requireMember(u, c);
+    let profile: ExamProfile;
+    try {
+      profile = buildExamProfile(b.text);
+    } catch {
+      throw new ApiError(
+        "VALIDATION_ERROR",
+        "Sınav soruları numaralandırılmış olmalı (1. … 2. … gibi). Numarasız metinden stil çıkarılamaz.",
+      );
+    }
+    const row = await this.prisma.examStyle.create({
+      data: { id: randomUUID(), courseId: c, ownerId: u.id, name: b.name.trim(), profile: profile as any },
+    });
+    return this.publicExamStyle(row);
+  }
+  async deleteExamStyle(u: AuthUser, c: string, id: string) {
+    await this.access.requireMember(u, c);
+    const removed = await this.prisma.examStyle.deleteMany({
+      where: { id, courseId: c, ownerId: u.id },
+    });
+    if (!removed.count) throw notFound("Exam style");
+    return { deleted: true };
   }
   async quizzes(u: AuthUser, c: string) {
     await this.access.requireMember(u, c);
