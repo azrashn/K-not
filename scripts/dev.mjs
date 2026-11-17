@@ -28,10 +28,19 @@ const alive = (pid) => { try { process.kill(pid, 0); return true } catch { retur
 // Windows'ta Vite yalnızca "localhost" (IPv6) üzerinde dinleyebilir, API'ler 127.0.0.1'de: ikisini de dene.
 async function reachable(url) { try { return (await fetch(url, { signal: AbortSignal.timeout(3000) })).status < 500 } catch { return false } }
 async function up(url) { return (await reachable(url.replace('localhost', '127.0.0.1'))) || (await reachable(url)) }
+// İlk istek (ör. Vite'ın ilk derlemesi) yavaş olabilir: yanıt gelmese bile port dinleniyorsa servis ayaktadır.
+async function stillUp(name) {
+  for (let i = 0; i < 3; i++) {
+    if (await up(URLS[name])) return true
+    if ((await tcpReachable('127.0.0.1', PORTS[name], 1500)) || (await tcpReachable('::1', PORTS[name], 1500))) return true
+    await new Promise((r) => setTimeout(r, 2000))
+  }
+  return false
+}
 function tailLog(name, lines = 12) {
   const file = path.join(LOGS, `${name}.err.log`)
   if (!existsSync(file)) return ''
-  return readFileSync(file, 'utf8').split(/\r?\n/).filter(Boolean).slice(-lines).map((l) => `      ${l}`).join('\n')
+  return readFileSync(file, 'utf8').split(/\r?\n/).filter((l) => l && !/Both esbuild and oxc options/.test(l)).slice(-lines).map((l) => `      ${l}`).join('\n')
 }
 async function waitFor(name, seconds) {
   const until = Date.now() + seconds * 1000
@@ -101,7 +110,7 @@ async function start() {
   if (Object.values(results).every(Boolean)) {
     await new Promise((r) => setTimeout(r, 4000))
     for (const name of Object.keys(PORTS)) {
-      if (await up(URLS[name])) continue
+      if (await stillUp(name)) continue
       results[name] = false
       console.log(`  ✗ ${name.padEnd(9)} açıldıktan sonra kapandı. Son hata satırları:\n${tailLog(name) || '      (günlük boş; ayrıntı: npm run doctor)'}`)
     }
