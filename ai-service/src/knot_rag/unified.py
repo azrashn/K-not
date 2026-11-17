@@ -121,6 +121,11 @@ class QuizDraft(Explain):
     language: Literal["tr", "en"] = "tr"
     # Server-built exam-style guidance (format and phrasing only); facts still come from evidence.
     style_hint: str | None = Field(default=None, max_length=1200)
+    # Practice-set planning: what the question measures, how hard it is, and what must not repeat.
+    focus: Literal["definition", "relation", "difference", "application", "scenario", "code_output"] | None = None
+    difficulty: Literal["easy", "medium", "hard"] | None = None
+    avoid_focus_texts: list[str] = Field(default_factory=list, max_length=25)
+    avoid_questions: list[str] = Field(default_factory=list, max_length=25)
 
 
 def chunk_text(text: str, location: dict) -> list[dict]:

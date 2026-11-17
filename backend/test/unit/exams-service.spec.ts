@@ -198,7 +198,7 @@ describe('reading an exam', () => {
   test('removing an exam only removes the caller\'s own', async () => {
     const { svc, prisma } = make();
     await svc.remove(u, 'c', 'x1');
-    expect(prisma.generatedExam.deleteMany).toHaveBeenCalledWith({ where: { id: 'x1', courseId: 'c', userId: 'u' } });
+    expect(prisma.generatedExam.deleteMany).toHaveBeenCalledWith({ where: { id: 'x1', courseId: 'c', userId: 'u', purpose: 'EXAM' } });
   });
   test('after a restart, runs that were generating are marked failed', async () => {
     const { svc, prisma } = make();

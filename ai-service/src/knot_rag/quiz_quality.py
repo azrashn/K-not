@@ -12,6 +12,7 @@ from knot_rag.quiz_payload import normalize_choice_payload, parse_quiz_payload
 from knot_rag.quiz_planning import plan_question
 from knot_rag.quiz_feedback import review_feedback
 from knot_rag.quiz_completion import completion_plan, write_completion, source_feedback, validated_completion, review_completion_options
+from knot_rag.quiz_focus import focus_instruction, looks_like_code
 from knot_rag.text import fold
 
 
@@ -168,6 +169,13 @@ def quiz(body):
     excerpts = source_excerpts(evidence)
     if not excerpts:
         raise HTTPException(422, "No source for quiz")
+    if body.focus == "code_output" and not looks_like_code(" ".join(item.get("text", "") for item in evidence)):
+        raise HTTPException(422, "Selected sources contain no code to base a code question on")
+    focus_text = focus_instruction(body.focus, body.difficulty)
+    avoid_focus = [t[:400] for t in body.avoid_focus_texts if t.strip()][:25]
+    avoid_questions = [t[:400] for t in body.avoid_questions if t.strip()][:25]
+    # Source completion (recall of an exact phrase) is only for definition questions.
+    recall_allowed = body.focus in (None, "definition")
     spec = {
         "MULTIPLE_CHOICE": "4 concise plausible named options A/B/C/D and exactly one correct option; expected is its LETTER.",
         "TRUE_FALSE": "A clear conceptual statement and options [Doğru,Yanlış]; expected 0 if true, 1 if false.",
@@ -189,12 +197,12 @@ def quiz(body):
             try:
                 if deadline - time.monotonic() < 8:
                     break
-                plan = (plan_question(provider, body, excerpts, deadline, failure, rejected_facts)
+                plan = (plan_question(provider, body, excerpts, deadline, failure, rejected_facts, avoid_focus)
                         if body.kind == "MULTIPLE_CHOICE" else None)
                 selected_excerpts = ({plan["quote_id"]: excerpts[plan["quote_id"]]} if plan else excerpts)
                 language = "Turkish" if body.language == "tr" else "English"
                 completion = completion_plan(provider, plan, body.question, deadline, language,
-                                             excerpts[plan['quote_id']]['quote']) if plan and attempt > 0 else None
+                                             excerpts[plan['quote_id']]['quote']) if plan and attempt > 0 and recall_allowed else None
                 if completion:
                     selected=excerpts[plan['quote_id']]
                     draft=write_completion(provider,plan,completion,selected['quote'],deadline,language,failure)
@@ -214,6 +222,7 @@ def quiz(body):
                     LLMRequest(
                         system=f"Write the question, objective, options and explanations in {language}. Keep copied technical answer terms faithful to the original source. "
                         + (f"{body.style_hint} " if getattr(body, "style_hint", None) else "")
+                        + (f"{focus_text} " if focus_text else "")
                         + "Create ONE educational question about the specified topic using only these source excerpts. "
                         + spec
                         + " Return JSON {quote_id,question,objective,options,expected,explanation,option_feedback}. "
@@ -246,6 +255,7 @@ def quiz(body):
                                 ],
                                 **({"plan": plan} if plan else {}),
                                 **({'source_completion':completion} if completion else {}),
+                                **({"already_asked": avoid_questions} if avoid_questions else {}),
                                 **({"previous_rejection": failure,
                                     "instruction": "Create a different, simpler question resolving this issue."}
                                    if failure else {}),
@@ -348,6 +358,9 @@ def quiz(body):
                     "experimental": True,
                     "llm_used": True,
                     "question_style": "SOURCE_COMPLETION" if completion else "CONCEPTUAL",
+                    "focus": body.focus,
+                    "difficulty": body.difficulty,
+                    "focus_text": plan["focus_text"] if plan else None,
                     "assessment": (
                         "REFLECTION_NOT_AUTOGRADED"
                         if body.kind == "OPEN"

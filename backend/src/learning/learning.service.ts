@@ -203,6 +203,10 @@ export class LearningService {
         kind: b.kind,
         evidence: candidates,
         ...(styleHint ? { style_hint: styleHint } : {}),
+        ...(b.focus ? { focus: b.focus } : {}),
+        ...(b.difficulty ? { difficulty: b.difficulty } : {}),
+        ...(b.avoid_focus_texts?.length ? { avoid_focus_texts: b.avoid_focus_texts } : {}),
+        ...(b.avoid_questions?.length ? { avoid_questions: b.avoid_questions } : {}),
       },
       timeoutMs: 150000,
     });
@@ -278,6 +282,10 @@ export class LearningService {
           source,
           scope: b.scope || { mode: b.material_id ? "active" : "course" },
           watched_only: Boolean(b.watched_only),
+          // Target difficulty and focus are what the set asked for; the stored
+          // focus_text stays server-side (it is the source sentence the question tests).
+          difficulty: b.difficulty ?? null,
+          focus: b.focus ?? null,
         },
       },
     });
@@ -300,6 +308,8 @@ export class LearningService {
       experimental: d.experimental,
       assessment: d.assessment,
       question_style: d.question_style || "CONCEPTUAL",
+      difficulty: d.difficulty ?? null,
+      focus: d.focus ?? null,
       scope: d.scope,
       watched_only: d.watched_only || false,
       quality_state:

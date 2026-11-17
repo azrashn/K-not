@@ -1,5 +1,7 @@
 import { Body, Controller, Delete, Get, HttpCode, Param, Post } from "@nestjs/common";
 import {
+  ArrayMaxSize,
+  IsArray,
   IsIn,
   IsUUID,
   IsOptional,
@@ -28,6 +30,11 @@ class Start {
   scope?: KnowledgeScope;
   @IsOptional() @IsBoolean() watched_only?: boolean;
   @IsOptional() @IsUUID() exam_style_id?: string;
+  // Practice-set planning (set by the practice service and by clients that build sets themselves).
+  @IsOptional() @IsIn(["easy", "medium", "hard"]) difficulty?: string;
+  @IsOptional() @IsIn(["definition", "relation", "difference", "application", "scenario", "code_output"]) focus?: string;
+  @IsOptional() @IsArray() @ArrayMaxSize(25) @IsString({ each: true }) @MaxLength(400, { each: true }) avoid_focus_texts?: string[];
+  @IsOptional() @IsArray() @ArrayMaxSize(25) @IsString({ each: true }) @MaxLength(400, { each: true }) avoid_questions?: string[];
 }
 class ExamStyleBody {
   @IsString() @MinLength(1) @MaxLength(120) @Matches(/\S/) name!: string;

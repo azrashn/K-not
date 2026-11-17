@@ -31,6 +31,8 @@ import { LearningController } from './learning/learning.controller';
 import { ExamsController } from './learning/exams.controller';
 import { LimitsController } from './common/limits.controller';
 import { ExamsService } from './learning/exams.service';
+import { PracticeController } from './learning/practice.controller';
+import { PracticeService } from './learning/practice.service';
 import { UploadAccessGuard } from './documents/upload-access.guard';
 import { LocalStorage, Storage } from './storage/storage';
 
@@ -64,13 +66,14 @@ export class AppModule implements NestModule {
     return {
       module: AppModule,
       imports: [CoreModule.forRoot(config), DocumentsModule, VideosModule, TtsModule],
-      controllers: [HealthController, AuthController, CoursesController, AnswersController, InternalCallbacksController, KnowledgeController,LearningController,ExamsController,LimitsController],
+      controllers: [HealthController, AuthController, CoursesController, AnswersController, InternalCallbacksController, KnowledgeController,LearningController,ExamsController,PracticeController,LimitsController],
       providers: [
         RagService,
         KnowledgeService,
         CourseLifecycleService,
         LearningService,
         ExamsService,
+        PracticeService,
         UploadAccessGuard,
         SchedulerService,
         { provide: APP_GUARD, useClass: JwtAuthGuard },

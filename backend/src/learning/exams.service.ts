@@ -9,6 +9,7 @@ import { LearningService } from "./learning.service";
 import { commonReason, examTopics, groundTopics, planExamKinds } from "./exam-plan";
 import { KnowledgeService } from "../knowledge/knowledge.service";
 import type { ExamProfile } from "./exam-style";
+import { loadSourceTexts } from "./source-texts";
 
 type Item = { quiz_id: string; kind: string; topic: string };
 type Failure = { topic: string; kind: string; reason: string };
@@ -103,7 +104,7 @@ export class ExamsService implements OnModuleInit {
         "Sınav için en az bir konu gerekli. Konuları yazın; sınav stilinde yeterli terim bulunamadı.",
       );
     const running = await this.prisma.generatedExam.count({
-      where: { courseId: c, userId: u.id, status: "GENERATING" },
+      where: { courseId: c, userId: u.id, status: "GENERATING", purpose: "EXAM" },
     });
     if (running)
       throw new ApiError("JOB_ALREADY_RUNNING", "Bu ders için bir sınav zaten hazırlanıyor. Bitmesini bekleyin.");
@@ -129,20 +130,8 @@ export class ExamsService implements OnModuleInit {
     return this.summary(row);
   }
 
-  /** Text of the ready materials in scope (bounded), used only to pick answerable topics. */
-  private async sourceTexts(u: AuthUser, c: string, scope: any): Promise<{ title: string; text: string }[]> {
-    const materials = (await this.knowledge.materials(u, c)).filter((m: any) => m.status === "READY");
-    const ids = scope?.mode === "selected" && Array.isArray(scope.material_ids) ? new Set<string>(scope.material_ids) : null;
-    const out: { title: string; text: string }[] = [];
-    for (const m of materials.filter((m: any) => !ids || ids.has(m.id)).slice(0, 8)) {
-      try {
-        const p = await this.knowledge.preview(u, c, m.id);
-        for (const seg of (p.segments || []).slice(0, 400)) if (seg.text?.trim()) out.push({ title: m.title, text: String(seg.text).slice(0, 2000) });
-      } catch {
-        /* an unreadable material only gives no topics */
-      }
-    }
-    return out;
+  private sourceTexts(u: AuthUser, c: string, scope: any) {
+    return loadSourceTexts(this.knowledge, u, c, scope);
   }
 
   private async run(
@@ -220,7 +209,7 @@ export class ExamsService implements OnModuleInit {
   async list(u: AuthUser, c: string) {
     await this.access.requireMember(u, c);
     const rows = await this.prisma.generatedExam.findMany({
-      where: { courseId: c, userId: u.id },
+      where: { courseId: c, userId: u.id, purpose: "EXAM" },
       orderBy: { createdAt: "desc" },
       take: 20,
     });
@@ -229,7 +218,7 @@ export class ExamsService implements OnModuleInit {
 
   private async own(u: AuthUser, c: string, id: string) {
     await this.access.requireMember(u, c);
-    const row = await this.prisma.generatedExam.findFirst({ where: { id, courseId: c, userId: u.id } });
+    const row = await this.prisma.generatedExam.findFirst({ where: { id, courseId: c, userId: u.id, purpose: "EXAM" } });
     if (!row) throw notFound("Exam");
     return row;
   }
@@ -281,7 +270,7 @@ export class ExamsService implements OnModuleInit {
 
   async remove(u: AuthUser, c: string, id: string) {
     await this.access.requireMember(u, c);
-    const removed = await this.prisma.generatedExam.deleteMany({ where: { id, courseId: c, userId: u.id } });
+    const removed = await this.prisma.generatedExam.deleteMany({ where: { id, courseId: c, userId: u.id, purpose: "EXAM" } });
     if (!removed.count) throw notFound("Exam");
     return { deleted: true };
   }

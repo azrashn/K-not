@@ -12,9 +12,26 @@ from fastapi import HTTPException
 from knot_rag.generation.providers.base import LLMRequest
 from knot_rag.quiz_payload import parse_quiz_payload
 from knot_rag.structured import quiz_plan_schema
+from knot_rag.text import fold
 
 
-def plan_question(provider, body, excerpts, deadline, failure="", excluded_facts=()):
+def _tokens(text):
+    return {t for t in re.findall(r"\w+", fold(text)) if len(t) > 2}
+
+
+def is_repeat_of(text, avoided):
+    """True when a fact restates an already used one (most of its content words are shared)."""
+    mine = _tokens(text)
+    if not mine:
+        return False
+    for other in avoided:
+        theirs = _tokens(other)
+        if theirs and len(mine & theirs) / min(len(mine), len(theirs)) >= 0.7:
+            return True
+    return False
+
+
+def plan_question(provider, body, excerpts, deadline, failure="", excluded_facts=(), avoid_focus_texts=()):
     language = "Turkish" if body.language == "tr" else "English"
     facts = {}
     for key, item in excerpts.items():
@@ -25,6 +42,10 @@ def plan_question(provider, body, excerpts, deadline, failure="", excluded_facts
             }
     remaining = {key: value for key, value in facts.items() if key not in excluded_facts}
     facts = remaining or facts
+    # Practice sets: a fact already taught by an earlier question of the set is not asked again.
+    fresh = {key: value for key, value in facts.items() if not is_repeat_of(value["text"], avoid_focus_texts)}
+    if fresh:
+        facts = fresh
     response = provider.complete(LLMRequest(
         system=(
             "Plan one question; do not write the question or options yet. "

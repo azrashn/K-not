@@ -290,20 +290,25 @@ model ExamStyle {
 
 // A new exam written from a saved exam style. Each question is an ordinary LearningQuiz row (so
 // answering, source links and history work unchanged); this row keeps their order and what failed.
+// purpose EXAM: a generated exam from a saved style. purpose PRACTICE: a practice set of 5-25 quiz
+// questions the student answers together; `result` keeps the graded summary once submitted.
 model GeneratedExam {
-  id         String    @id
-  courseId   String
-  userId     String
-  styleId    String?
-  title      String    @db.VarChar(160)
-  status     String    @db.VarChar(16)
-  requested  Int
-  topics     Json
-  items      Json
-  failures   Json
-  note       String?   @db.VarChar(300)
-  createdAt  DateTime  @default(now())
-  finishedAt DateTime?
+  id          String    @id
+  courseId    String
+  userId      String
+  styleId     String?
+  purpose     String    @default("EXAM") @db.VarChar(16)
+  title       String    @db.VarChar(160)
+  status      String    @db.VarChar(16)
+  requested   Int
+  topics      Json
+  items       Json
+  failures    Json
+  note        String?   @db.VarChar(300)
+  result      Json?
+  createdAt   DateTime  @default(now())
+  finishedAt  DateTime?
+  submittedAt DateTime?
   course     Course    @relation(fields: [courseId], references: [id])
   user       User      @relation(fields: [userId], references: [id])
   style      ExamStyle? @relation(fields: [styleId], references: [id], onDelete: SetNull)
