@@ -57,7 +57,7 @@ def test_each_claim_is_checked_only_against_the_sources_it_cites():
     ]
     checked, summary = check_claims(claims, evidence)
     assert [c["support"]["label"] for c in checked] == ["SUPPORTED", "UNSUPPORTED"]
-    assert summary == {"SUPPORTED": 1, "PARTIAL": 0, "UNSUPPORTED": 1, "total": 2, "method": "lexical-v2", "verified": False}
+    assert summary == {"SUPPORTED": 1, "PARTIAL": 0, "UNSUPPORTED": 1, "UNCHECKED": 0, "total": 2, "method": "lexical-v3", "verified": False}
     assert "support" not in claims[0]  # input is not mutated
 
 
@@ -77,3 +77,17 @@ def test_light_words_do_not_hide_a_genuinely_missing_term():
     assert "quantum" in out["missing_terms"] and "encryption" in out["missing_terms"]
     assert out["label"] != "SUPPORTED"
     assert "enable" not in out["missing_terms"] and "using" not in out["missing_terms"]
+
+
+def test_a_turkish_claim_over_an_english_source_is_not_called_unsupported():
+    source = "Transport layer provides logical communication between application processes running on different hosts."
+    claim = "Taşıma katmanı, farklı bilgisayarlarda çalışan uygulama süreçleri arasında mantıksal iletişim sağlar."
+    out = check_claim(claim, [source])
+    assert out["label"] == "UNCHECKED" and out["reason"] == "DIFFERENT_LANGUAGE"
+
+
+def test_a_translated_claim_still_has_its_numbers_checked():
+    source = "TCP uses a three-way handshake and a 20 byte header."
+    claim = "TCP üç yönlü el sıkışma ve 40 baytlık başlık kullanır."
+    out = check_claim(claim, [source])
+    assert out["label"] == "PARTIAL" and out["unmatched_numbers"] == ["40"]

@@ -37,3 +37,14 @@ test('it never claims the answer is verified', () => {
   render(<ClaimSupport claims={[claim('Kuyruk FIFO çalışır.', 'SUPPORTED')]} />)
   expect(screen.getByText(/doğruluğunu kanıtlamaz/)).toBeInTheDocument()
 })
+
+
+test('a translated answer is shown as "different language", not as unsupported', () => {
+  render(<ClaimSupport claims={[
+    claim('Taşıma katmanı süreçler arası iletişim sağlar.', 'UNCHECKED', { reason: 'DIFFERENT_LANGUAGE' }),
+    claim('Ağ katmanı ana bilgisayarlar arası iletişim sağlar.', 'UNCHECKED', { reason: 'DIFFERENT_LANGUAGE' }),
+  ]} />)
+  expect(screen.getByText('Kaynak kontrolü: 2 iddia — 2 farklı dilde (kontrol edilemedi)')).toBeInTheDocument()
+  expect(screen.queryByRole('note')).not.toBeInTheDocument()
+  expect(screen.getAllByText(/farklı dilde \(çeviri\)/).length).toBe(2)
+})

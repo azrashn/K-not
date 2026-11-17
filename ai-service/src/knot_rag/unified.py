@@ -434,7 +434,7 @@ class UnifiedIndex:
             }
             contextual = bool(
                 re.search(
-                    r"\b(burada|az önce|şu an|bu bölüm\w*|bu sayfa\w*|bu slayt\w*|this section|this page|this step|just now)\b",
+                    r"\b(burada|buray\w*|bura\w*|az önce|şu an|bu bölüm\w*|bu sayfa\w*|bu slayt\w*|this section|this page|this step|just now)\b",
                     fold(body.question),
                 )
             )
@@ -449,7 +449,21 @@ class UnifiedIndex:
                         "yukar",
                         "aşağ",
                         "burad",
+                        "buray",
+                        "buras",
                         "şurad",
+                        "şuray",
+                        "bunu",
+                        "şunu",
+                        "bölüm",
+                        "sayfa",
+                        "slayt",
+                        "seçil",
+                        "seçt",
+                        "here",
+                        "above",
+                        "below",
+                        "selected",
                         "göster",
                         "işaret",
                         "izledi",

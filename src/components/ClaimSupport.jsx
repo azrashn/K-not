@@ -4,6 +4,7 @@ const SUPPORT_LABELS = {
   SUPPORTED: "Kaynakla örtüşüyor",
   PARTIAL: "Kısmen örtüşüyor",
   UNSUPPORTED: "Kaynakta karşılığı zayıf",
+  UNCHECKED: "Farklı dilde, sözcük kontrolü yapılamadı",
 };
 const REASONS = {
   NEGATION_MISMATCH: "Olumlu/olumsuz anlamı kaynaktakiyle uyuşmuyor.",
@@ -11,6 +12,7 @@ const REASONS = {
   NUMBER_NOT_IN_SOURCE: "Sayı kaynakta yok.",
   TERMS_NOT_IN_SOURCE: "Bazı terimler kaynakta yok.",
   TOO_SHORT_TO_CHECK: "Kontrol edilemeyecek kadar kısa.",
+  DIFFERENT_LANGUAGE: "Yanıt ile kaynak farklı dilde (çeviri), kelime karşılaştırması yapılamaz. Kaynağı açıp kontrol et.",
 };
 
 export default function ClaimSupport({ claims }) {
@@ -18,12 +20,14 @@ export default function ClaimSupport({ claims }) {
   if (!checked.length) return null;
   const ok = checked.filter((c) => c.support.label === "SUPPORTED").length;
   const weak = checked.filter((c) => c.support.label === "UNSUPPORTED").length;
-  const partial = checked.length - ok - weak;
+  const unchecked = checked.filter((c) => c.support.label === "UNCHECKED").length;
+  const partial = checked.length - ok - weak - unchecked;
   // "0/3" gibi bir sayı, kısmen örtüşen iddiaları yok sayıp yanıtın yanlış olduğunu düşündürürdü:
   // gerçek dağılımı yaz.
   const parts = [
     ok > 0 && `${ok} örtüşüyor`,
     partial > 0 && `${partial} kısmen örtüşüyor`,
+    unchecked > 0 && `${unchecked} farklı dilde (kontrol edilemedi)`,
     weak > 0 && `${weak} kaynakta zayıf`,
   ].filter(Boolean);
   return (

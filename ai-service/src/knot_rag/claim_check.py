@@ -14,7 +14,7 @@ SUPPORTED_COVERAGE = 0.7
 PARTIAL_COVERAGE = 0.35
 MAX_MISSING_FOR_SUPPORTED = 1
 MIN_TERMS = 3
-METHOD = "lexical-v2"
+METHOD = "lexical-v3"
 # Linking verbs and fillers a writer adds when rephrasing a source sentence ("services include ...",
 # "such as", "using"). They carry no claim of their own, so a source lacking them is not evidence against it.
 LIGHT_WORDS = frozenset(
@@ -34,6 +34,18 @@ def _collapsed(text):
     """Source text with every separator removed, so `e-commerce` / `multi-media` still contain
     `commerce` / `multimedia`."""
     return re.sub(r"\W+", "", fold(text))
+
+
+_TR_CHARS = re.compile(r"[çğıöşüÇĞİÖŞÜ]")
+_TR_STOP = frozenset(fold(w) for w in "ve bir bu için ile olarak gibi daha çok olan her ise ama veya de da".split())
+_EN_STOP = frozenset("the and of to in is are for with that this as by on it be an".split())
+
+
+def _is_turkish(text):
+    words = re.findall(r"\w+", fold(text))
+    tr = sum(w in _TR_STOP for w in words) + 2 * len(_TR_CHARS.findall(text))
+    en = sum(w in _EN_STOP for w in words)
+    return tr > en
 
 
 def _sentences(text):
@@ -65,6 +77,13 @@ def check_claim(claim_text, cited_texts):
         source_stems |= stem_set(text)
         source_numbers |= numbers(text)
         collapsed += " " + _collapsed(text)
+    if cited_texts and _is_turkish(claim_text) != _is_turkish(" ".join(cited_texts)):
+        # A translated claim shares almost no words with its source: a word comparison would call every
+        # correct translation "unsupported". Only language-independent things (numbers) can still be checked.
+        unmatched = sorted(n for n in numbers(claim_text) if n not in source_numbers)
+        label, reason = ("PARTIAL", "NUMBER_NOT_IN_SOURCE") if unmatched else ("UNCHECKED", "DIFFERENT_LANGUAGE")
+        return {**base, "label": label, "reason": reason, "coverage": None, "missing_terms": [],
+                "unmatched_numbers": unmatched[:4], "negation_mismatch": False}
     missing = [t for t in words
                if not stem_in(stem(t), source_stems) and not (len(t) >= _MIN_SUBSTRING and t in collapsed)]
     coverage = round(1 - len(missing) / len(words), 2)
@@ -92,5 +111,5 @@ def check_claims(claims, evidence):
     for claim in claims:
         cited = [evidence[n - 1]["text"] for n in sorted(set(claim["sources"])) if 1 <= n <= len(evidence)]
         out.append({**claim, "support": check_claim(claim["text"], cited)})
-    summary = {k: sum(1 for c in out if c["support"]["label"] == k) for k in ("SUPPORTED", "PARTIAL", "UNSUPPORTED")}
+    summary = {k: sum(1 for c in out if c["support"]["label"] == k) for k in ("SUPPORTED", "PARTIAL", "UNSUPPORTED", "UNCHECKED")}
     return out, {**summary, "total": len(out), "method": METHOD, "verified": False}

@@ -9,6 +9,25 @@ from knot_rag.generation.providers.policy import is_local_endpoint
 from knot_rag.visual_context import prepare_image
 from knot_rag.claim_check import check_claims
 from knot_rag.structured import explanation_schema, visual_review_schema
+from knot_rag.text import fold
+
+_TR_CHARS = re.compile(r"[çğıöşüÇĞİÖŞÜ]")
+_TR_STRONG = frozenset("turkce nedir nasil nasildir neden acikla aciklar aciklayin misin musun anlat anlatir ornek burayi bunu sunu kisaca".split())
+_TR_WEAK = frozenset("bu bir ve icin ile gibi mi mu mi daha".split())
+
+
+def question_language(question):
+    """'tr' or 'en'. An explicit request wins ("Türkçe açıkla", "in English"); otherwise Turkish letters
+    or words decide. Unknown text is treated as English (the source language of most course material)."""
+    text = fold(question or "")
+    tokens = re.findall(r"\w+", text)
+    if "ingilizce" in tokens or "english" in tokens:
+        return "en"
+    if "turkce" in tokens or _TR_CHARS.search(question or ""):
+        return "tr"
+    if any(t in _TR_STRONG for t in tokens):
+        return "tr"
+    return "tr" if sum(t in _TR_WEAK for t in tokens) >= 2 else "en"
 
 STYLES = {
     "default": ("Give up to 3 concise teaching claims.", 3, 140),
@@ -33,6 +52,16 @@ STYLES = {
         260,
     ),
 }
+
+
+def language_rule(lang):
+    if lang == "tr":
+        return (
+            "Write every claim in TURKISH, even when the source excerpts are in English. "
+            "Translate explanations naturally; keep a standard technical term in its original form in parentheses "
+            "on first use (e.g. taşıma katmanı (transport layer)). Never switch back to English."
+        )
+    return "Write every claim in the same language as the question."
 
 
 def explain(body):
@@ -90,7 +119,8 @@ def explain(body):
     with httpx.Client() as client:
         try:
             request = LLMRequest(
-                system="Answer in the question language using ONLY the numbered source excerpts and the attached ORIGINAL source image, if any. "
+                system=language_rule(question_language(body.question))
+                + " Answer using ONLY the numbered source excerpts and the attached ORIGINAL source image, if any. "
                 "Return a JSON object with claims (array of objects with actual text and sources: an integer array), and clarification (an actual question, or empty string). Never copy schema descriptions into your answer. "
                 f"{style} At most {word_limit} words total. Every claim must cite actual source numbers. Never embed citation numbers in claim text; use the sources field. "
                 "For images distinguish observed labels and connections from assumptions. Never invent unreadable symbols, arrow directions, start conditions, ordering rules or missing links. "
@@ -102,6 +132,7 @@ def explain(body):
                 user=json.dumps(
                     {
                         "question": body.question,
+                        "answer_language": "Turkish" if question_language(body.question) == "tr" else "same as the question",
                         "response_mode": mode,
                         # Keep saved context for repetition checks below, but
                         # don't invite a small model to critique its old answer

@@ -276,6 +276,9 @@ def test_viewport_reference_does_not_depend_on_exact_phrase_or_text_overlap(inde
         "Alttaki örnekte BFS ve DFS sırası ne olur?",
         "Yukarıdaki bağlantıları yorumla",
         "İşaretlediğim kısımda ne var?",
+        "burayı türkçe açıklar mısın?",
+        "Bunu daha basit anlat",
+        "Seçtiğim bölümü özetle",
     ]:
         r = index.search(
             Search(
@@ -477,3 +480,28 @@ def test_local_voice_routes_need_auth_report_status_and_degrade_cleanly(monkeypa
         assert c.post("/api/v1/knowledge/tts", json={"text": "Merhaba"}, headers=auth).status_code == 503
         assert c.post("/api/v1/knowledge/tts", json={"text": ""}, headers=auth).status_code == 422
         assert c.post("/api/v1/knowledge/tts", json={"text": "x" * 1300}, headers=auth).status_code == 422
+
+
+@pytest.mark.parametrize("question,expects_turkish", [("burayı türkçe açıklar mısın?", True), ("What does this section say?", False)])
+def test_the_model_is_told_which_language_to_answer_in(monkeypatch, question, expects_turkish):
+    monkeypatch.setenv("UNIFIED_LLM_BASE_URL", "http://127.0.0.1:11436/v1")
+    monkeypatch.setenv("UNIFIED_LLM_MODEL", "test-model")
+    seen = []
+
+    def complete(self, request):
+        seen.append(request)
+        return LLMResponse(text='{"claims":[{"text":"Su ısınınca buhar haline gelerek gaz fazına geçer ve havaya karışır.","sources":[1]}]}')
+
+    monkeypatch.setattr(OpenAICompatibleProvider, "complete", complete)
+    app = create_app(build_components(Settings(internal_api_token="unified-test-token", embedding_backend="hashing", chroma_mode="memory")))
+    with TestClient(app) as c:
+        result = c.post(
+            "/api/v1/knowledge/explain",
+            headers={"Authorization": "Bearer unified-test-token"},
+            json={"question": question, "evidence": [{"id": "a" * 64, "text": "Water changes to vapour.", "kind": "PDF", "location": {"page": 1}}]},
+        )
+    assert result.status_code == 200
+    assert ("TURKISH" in seen[0].system) is expects_turkish
+    claims = result.json().get("claims") or []
+    if expects_turkish and claims:
+        assert claims[0]["support"]["label"] == "UNCHECKED"  # a Turkish claim over an English source is not "unsupported"
