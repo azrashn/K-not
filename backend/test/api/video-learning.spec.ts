@@ -55,3 +55,21 @@ test('browser cannot send watched data or identity; foreign users cannot generat
   await h.http().post(route()).set(await h.as('mehmet')).send({ question: 'test' }).expect(404);
   expect(engine.requests).toHaveLength(0);
 });
+test('a watched explanation carries evidence steps from the cited transcript; guidance gets none', async () => {
+  await progress([{ start_ms: 100000, end_ms: 120000 }]);
+  const r = await h.http().post(route()).set(await h.as('ayse')).send({ question: 'Dijkstra nedir?' }).expect(200);
+  expect(r.body.status).toBe('EXPLANATION');
+  expect(r.body.answer).toBe('Kaynaklı açıklama [1]');
+  expect(r.body.steps_status).toBe('EVIDENCE');
+  expect(r.body.steps).toEqual([{ board: 'Dijkstra tek kaynaktan en kısa yolları bulur', speech: citation.transcript, formula: null, mark: null,
+    sources: ['01:40'], source_ids: [1], quote: citation.transcript }]);
+  await h.reset(); engine.reset();
+  await h.prisma.video.create({ data: { id: vid, ownerId: h.world.users.ayse, courseId: h.world.courses.vy,
+    engineVideoId: engineId, title: 'Lesson', originalFilename: 'test.mp4', contentSha256: 'a'.repeat(64), durationMs: 200000 } });
+  engine.on('POST', '/api/local/video-evidence', () => ({ status: 200, body: evidence }));
+  await progress([]);
+  const guided = await h.http().post(route()).set(await h.as('ayse')).send({ question: 'Dijkstra nedir?' }).expect(200);
+  expect(guided.body.status).toBe('GUIDANCE');
+  expect(guided.body.steps).toEqual([]);
+  expect(guided.body.steps_status).toBe('NONE');
+});

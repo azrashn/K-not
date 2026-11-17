@@ -8,6 +8,7 @@ import { AccessService } from '../courses/access.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { classifyLearning, type LearningState } from './learning-state';
 import type { EngineCitation } from './videos.service';
+import { boardSteps, clock } from '../board/steps';
 
 export interface LearningQuestion { current_time_ms?: number; explain_now?: boolean; evidence_id?: string }
 interface Selection { ownerId: string; courseId: string; videoId: string; engineId: string; question: string;
@@ -103,7 +104,7 @@ export class VideoLearningService {
         start_seconds: c.t_start, end_seconds: c.t_end, frame_index: c.idx ?? null, transcript: c.transcript })),
       source_warnings: (Array.isArray(raw.source_warnings) ? raw.source_warnings : []).map((w: any) => ({ code: String(w.code), message: String(w.message) })),
       background_references: this.background(raw), context_resolution: String(raw.reason || 'UNKNOWN'),
-      support_confirmed: false, experimental: true,
+      support_confirmed: false, experimental: true, steps: [] as unknown[], steps_status: 'NONE',
       note: 'Deneysel video açıklaması. Kaynak otomatik transkript olabilir; kaynak göstermek doğruluk kanıtı değildir.' };
     if (!first) return { ...common, status: 'NO_RELIABLE_EVIDENCE', answer: 'Bu soru için güvenilir bir video zaman aralığı bulamadım. Konuyu veya oynatma konumunu netleştir.', llm_used: false };
     if (!options.explain_now && learning.state !== 'WATCHED') {
@@ -113,7 +114,9 @@ export class VideoLearningService {
       selection_id: raw.selection_id, learning_state: learning.state }, 190000);
     const confirmed = this.citations(explanation, video.engineVideoId, raw.duration_ms);
     if (JSON.stringify(confirmed) !== JSON.stringify(citations)) throw new ApiError('INTERNAL_ERROR', 'Açıklama seçilen kaynaklarla eşleşmiyor.');
-    return { ...common, status: 'EXPLANATION', answer: String(explanation.answer || ''), llm_used: Boolean(explanation.llm_used),
+    // The explanation is plain text: board steps come from the cited transcript itself.
+    const board = boardSteps(true, citations.map(c => ({ source: clock(c.ms), n: c.n, text: String(c.transcript ?? '') })));
+    return { ...common, ...board, status: 'EXPLANATION', answer: String(explanation.answer || ''), llm_used: Boolean(explanation.llm_used),
       generation_status: String(explanation.generation_status || 'UNVERIFIED') };
   }
 }

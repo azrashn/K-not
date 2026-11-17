@@ -1088,3 +1088,78 @@ test("practice is source-bound, literal feedback is not a mastery claim, deleted
     .send({ answer: "Evaporation" })
     .expect(404);
 });
+
+describe("board steps (additive field)", () => {
+  const ask = async () =>
+    (await h.http().post(route() + "/answers").set(await h.as("ayse")).send({ question: "Evaporation" }).expect(200)).body;
+  const explain = (body: object) =>
+    h.ai.on("POST", "/api/v1/knowledge/explain", () => ({ status: 200, body }));
+
+  test("no model: steps come from the evidence, verbatim, with the evidence id", async () => {
+    const body = await ask();
+    expect(body.status).toBe("SOURCE_EXCERPTS");
+    expect(body.answer).toBe("[1] Source text");
+    expect(body.steps_status).toBe("EVIDENCE");
+    expect(body.steps).toEqual([
+      {
+        board: "Evaporation changes liquid water to vapour",
+        speech: "Evaporation changes liquid water to vapour.",
+        formula: null,
+        mark: null,
+        sources: [body.evidence[0].id],
+        source_ids: [1],
+        quote: "Evaporation changes liquid water to vapour.",
+      },
+    ]);
+  });
+
+  test("valid model steps are kept, foreign sources dropped", async () => {
+    const first = await ask();
+    const id = first.evidence[0].id;
+    explain({
+      status: "GENERATED_UNVERIFIED",
+      answer: "Water becomes vapour. [1]",
+      llm_used: true,
+      claims: [{ text: "Water becomes vapour.", sources: [1] }],
+      steps_status: "MODEL",
+      steps_summary: "Water becomes vapour.",
+      steps: [
+        { board: "Water → vapour", speech: "Liquid water changes to vapour.", formula: null, mark: "circle", sources: [id], source_ids: [1], quote: "liquid water to vapour" },
+        { board: "Foreign", speech: "Not from this answer.", formula: null, mark: null, sources: ["f".repeat(64)], source_ids: [1] },
+      ],
+    });
+    const body = await ask();
+    expect(body.answer).toBe("Water becomes vapour. [1]");
+    expect(body.steps_status).toBe("MODEL");
+    expect(body.steps_summary).toBe("Water becomes vapour.");
+    expect(body.steps.map((s: any) => s.board)).toEqual(["Water → vapour"]);
+    expect(body.steps[0].quote).toBe("liquid water to vapour");
+  });
+
+  test.each([
+    [{ status: "GENERATED_UNVERIFIED", answer: "Water. [1]", llm_used: true, claims: [], steps: [], steps_status: "INVALID" }],
+    [{ status: "GENERATED_UNVERIFIED", answer: "Water. [1]", llm_used: true, claims: [], steps: [], steps_status: "FAILED" }],
+    [{ status: "INVALID_CITATIONS", answer: "[1] Source text", llm_used: true }],
+    [{ status: "GENERATION_FAILED_SOURCE_EXCERPTS", answer: "[1] Source text", llm_used: false }],
+  ])("model could not give steps → evidence steps (%j)", async (generated) => {
+    explain(generated);
+    const body = await ask();
+    expect(body.status).toBe(generated.status);
+    expect(body.steps_status).toBe("EVIDENCE");
+    expect(body.steps).toHaveLength(1);
+    expect(body.steps_summary).toBeUndefined();
+  });
+
+  test.each(["CLARIFICATION", "MODE_NOT_SATISFIED", "NO_EVIDENCE"])("%s gets no steps", async (status) => {
+    explain({ status, answer: "Hangi bölümü kastediyorsun?", llm_used: false });
+    const body = await ask();
+    expect(body.steps).toEqual([]);
+    expect(body.steps_status).toBe("NONE");
+  });
+
+  test("steps are saved with the conversation", async () => {
+    const body = await ask();
+    const saved = await h.http().get(route() + "/conversations/" + body.chat_id).set(await h.as("ayse")).expect(200);
+    expect(saved.body.messages[1].payload.steps).toEqual(body.steps);
+  });
+});

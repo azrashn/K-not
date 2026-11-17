@@ -12,6 +12,7 @@ import { classifyLearning } from "../videos/learning-state";
 import { RateLimiter } from "../common/rate-limit";
 import { LearningHistoryService } from "../learning/history.service";
 import { resolveScope, validateViewport, inViewport } from "./context";
+import { boardSteps } from "../board/steps";
 
 const hash = (value: string) =>
   createHash("sha256").update(value).digest("hex");
@@ -36,6 +37,15 @@ interface Receipt {
   conflicts: any[];
   context?: any;
 }
+
+// Answers that explain something get board steps; guidance, clarification, NO_EVIDENCE,
+// VISUAL_UNAVAILABLE, MODE_NOT_SATISFIED and retrieve-only answers do not.
+const STEP_ANSWERS = new Set([
+  "GENERATED_UNVERIFIED",
+  "SOURCE_EXCERPTS",
+  "GENERATION_FAILED_SOURCE_EXCERPTS",
+  "INVALID_CITATIONS",
+]);
 
 @Injectable()
 export class KnowledgeService {
@@ -69,8 +79,8 @@ export class KnowledgeService {
   ): Promise<any> {
     const r = await this.ai.call(method, "/api/v1/knowledge" + path, {
       body,
-      timeoutMs:
-        path === "/explain" && (body as any)?.image_base64 ? 190000 : 120000,
+      // /explain may add a second, 60 s board steps call after the answer.
+      timeoutMs: path === "/explain" ? 190000 : 120000,
     });
     if (r.kind === "response" && [413, 422].includes(r.status))
       throw new ApiError(
@@ -1114,6 +1124,13 @@ export class KnowledgeService {
       source_ids: contextEvidence.map((e) => e.id),
       explicit_source_ids: references.map((e) => e.id),
     };
+    // Additive board steps: model steps checked again, else steps from the evidence itself.
+    const generatedAny = generated as any;
+    const board = boardSteps(
+      STEP_ANSWERS.has(generatedAny.status),
+      evidence.map((e, i) => ({ source: String(e.id), n: i + 1, text: String(e.text || "") })),
+      generatedAny,
+    );
     const receipt = randomUUID();
     while (this.receipts.size >= 128)
       this.receipts.delete(this.receipts.keys().next().value!);
@@ -1131,6 +1148,11 @@ export class KnowledgeService {
     });
     const result = {
       ...generated,
+      ...board,
+      steps_summary:
+        board.steps_status === "MODEL" || board.steps_status === "REPAIRED"
+          ? generatedAny.steps_summary
+          : undefined,
       question: body.question,
       resolved_question: question,
       conversation_id: receipt,
