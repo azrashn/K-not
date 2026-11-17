@@ -44,6 +44,16 @@ class OpenAICompatibleProvider:
     def model(self) -> str:
         return self._model
 
+    def _send(self, body, headers, request):
+        try:
+            return self._client.post(
+                self._url, json=body, headers=headers, timeout=request.timeout_seconds
+            )
+        except httpx.TimeoutException as exc:
+            raise ProviderTimeoutError("provider timed out") from exc
+        except httpx.TransportError as exc:
+            raise ProviderUnavailableError("provider unreachable") from exc
+
     def complete(self, request: LLMRequest) -> LLMResponse:
         body: dict = {
             "model": self._model,
@@ -88,14 +98,13 @@ class OpenAICompatibleProvider:
         headers = {"Content-Type": "application/json"}
         if self._api_key:
             headers["Authorization"] = f"Bearer {self._api_key}"
-        try:
-            resp = self._client.post(
-                self._url, json=body, headers=headers, timeout=request.timeout_seconds
-            )
-        except httpx.TimeoutException as exc:
-            raise ProviderTimeoutError("provider timed out") from exc
-        except httpx.TransportError as exc:
-            raise ProviderUnavailableError("provider unreachable") from exc
+        resp = self._send(body, headers, request)
+        # Some local servers (older Ollama / llama.cpp builds) cannot build a grammar from a strict JSON
+        # schema and answer 400/422/500/501. The output is validated semantically by the caller anyway,
+        # so retry once with plain JSON mode instead of failing the whole request.
+        if request.response_schema is not None and resp.status_code in (400, 422, 500, 501):
+            body = {**body, "response_format": {"type": "json_object"}}
+            resp = self._send(body, headers, request)
 
         if resp.status_code in (401, 403):
             raise ProviderAuthError(

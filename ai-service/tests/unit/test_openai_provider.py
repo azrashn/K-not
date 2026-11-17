@@ -77,3 +77,43 @@ def test_timeout_and_connection_errors():
 def test_unusable_responses(resp):
     with pytest.raises(ProviderResponseError):
         provider(lambda r: resp).complete(REQ)
+
+
+SCHEMA_REQ = LLMRequest(system="s", user="u", timeout_seconds=1.0, json_mode=True, response_schema={"type": "object", "properties": {}})
+
+
+@pytest.mark.parametrize("status", [400, 422, 500, 501])
+def test_a_rejected_json_schema_is_retried_once_as_plain_json_mode(status):
+    formats = []
+
+    def h(req):
+        fmt = json.loads(req.content)["response_format"]["type"]
+        formats.append(fmt)
+        return httpx.Response(status, json={"error": "cannot build grammar"}) if fmt == "json_schema" else ok('{"claims":[]}')
+
+    assert provider(h).complete(SCHEMA_REQ).text == '{"claims":[]}'
+    assert formats == ["json_schema", "json_object"]
+
+
+def test_the_plain_json_retry_is_not_endless_and_still_reports_the_failure():
+    calls = []
+
+    def h(req):
+        calls.append(1)
+        return httpx.Response(500)
+
+    with pytest.raises(ProviderUnavailableError):
+        provider(h).complete(SCHEMA_REQ)
+    assert len(calls) == 2
+
+
+def test_requests_without_a_schema_are_never_retried():
+    calls = []
+
+    def h(req):
+        calls.append(1)
+        return httpx.Response(500)
+
+    with pytest.raises(ProviderUnavailableError):
+        provider(h).complete(REQ)
+    assert len(calls) == 1
