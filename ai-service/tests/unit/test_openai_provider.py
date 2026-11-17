@@ -117,3 +117,21 @@ def test_requests_without_a_schema_are_never_retried():
     with pytest.raises(ProviderUnavailableError):
         provider(h).complete(REQ)
     assert len(calls) == 1
+
+
+def test_the_servers_own_reason_is_kept_for_diagnosis():
+    def h(req):
+        return httpx.Response(500, json={"error": "model requires more system memory (5.1 GiB) than is available (3.2 GiB)"})
+
+    with pytest.raises(ProviderUnavailableError) as err:
+        provider(h).complete(REQ)
+    assert "more system memory" in str(err.value) and "500" in str(err.value)
+
+
+def test_a_connection_failure_names_its_kind():
+    def h(req):
+        raise httpx.ConnectError("refused")
+
+    with pytest.raises(ProviderUnavailableError) as err:
+        provider(h).complete(REQ)
+    assert "ConnectError" in str(err.value)

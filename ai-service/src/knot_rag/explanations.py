@@ -117,6 +117,12 @@ def _usable(item):
     return len(item) >= 28 and letters / max(len(item), 1) >= 0.7 and len(item.split()) >= 5
 
 
+_DIGEST_LEAD = {
+    "tr": "Yerel model şu anda yanıt vermediği için konuyu kendi cümlelerimle açıklayamıyorum. Kaynakta sorunla ilgili geçen ifadeler şunlar (özgün dilinde):",
+    "en": "The local model is not answering right now, so I cannot explain this in my own words. These are the source passages that match your question:",
+}
+
+
 def source_digest(question, excerpts, mode):
     """Fallback when the model cannot answer: the few source sentences that best match the question,
     cited, instead of whole pages. Selection only; nothing is generated."""
@@ -135,7 +141,8 @@ def source_digest(question, excerpts, mode):
     if not chosen:
         return "\n\n".join(f"[{e['n']}] {e['text'][:260]}" for e in excerpts[:2])
     chosen.sort(key=lambda x: (x[1], x[2]))
-    return "\n".join(f"• {item[:400]} [{n}]" for _, n, _, item in chosen)
+    lead = _DIGEST_LEAD[question_language(question)]
+    return lead + "\n\n" + "\n".join(f"• {item[:400]} [{n}]" for _, n, _, item in chosen)
 
 
 _CITE = re.compile(r"\[(\d{1,2})\]")
@@ -529,4 +536,5 @@ def explain(body):
                 "visual_analysis": {**visual, "status": "MODEL_FAILED"},
                 "generation_error": type(exc).__name__,
                 "generation_failure": code,
+                "generation_detail": str(exc)[:240],
             }

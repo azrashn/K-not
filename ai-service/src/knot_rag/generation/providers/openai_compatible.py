@@ -52,7 +52,20 @@ class OpenAICompatibleProvider:
         except httpx.TimeoutException as exc:
             raise ProviderTimeoutError("provider timed out") from exc
         except httpx.TransportError as exc:
-            raise ProviderUnavailableError("provider unreachable") from exc
+            raise ProviderUnavailableError(f"provider unreachable ({type(exc).__name__})") from exc
+
+    @staticmethod
+    def _detail(resp) -> str:
+        """Short reason from the server (Ollama answers {"error": "..."}), for diagnosis. Never the request."""
+        try:
+            body = resp.json()
+            msg = body.get("error") if isinstance(body, dict) else None
+            if isinstance(msg, dict):
+                msg = msg.get("message")
+        except ValueError:
+            msg = None
+        text = str(msg or resp.text or "").replace("\n", " ").strip()
+        return text[:200]
 
     def complete(self, request: LLMRequest) -> LLMResponse:
         body: dict = {
@@ -113,9 +126,11 @@ class OpenAICompatibleProvider:
         if resp.status_code == 429:
             raise ProviderRateLimitError("provider rate limit")
         if resp.status_code >= 500:
-            raise ProviderUnavailableError(f"provider error {resp.status_code}")
+            detail = self._detail(resp)
+            raise ProviderUnavailableError(f"provider error {resp.status_code}" + (f": {detail}" if detail else ""))
         if resp.status_code >= 400:
-            raise ProviderError(f"provider rejected request ({resp.status_code})")
+            detail = self._detail(resp)
+            raise ProviderError(f"provider rejected request ({resp.status_code})" + (f": {detail}" if detail else ""))
         try:
             data = resp.json()
             choice = data["choices"][0]

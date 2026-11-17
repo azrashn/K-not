@@ -116,3 +116,15 @@ def test_modes_ask_for_different_things_and_report_which_one_was_used(monkeypatc
         seen[mode] = (calls[0].system, result["response_mode"])
     assert "at most 55 words" in seen["short"][0] and seen["short"][1] == "short"
     assert "thorough explanation" in seen["detailed"][0] and seen["detailed"][1] == "detailed"
+
+
+def test_the_failure_detail_reaches_the_answer_and_the_lead_is_in_the_question_language(monkeypatch):
+    calls = []
+    boom = ProviderUnavailableError("provider error 500: model requires more system memory")
+    monkeypatch.setattr(OpenAICompatibleProvider, "complete", fake([boom, boom], calls))
+    tr = explanations.explain(body())
+    assert "more system memory" in tr["generation_detail"]
+    assert tr["answer"].startswith("Yerel model şu anda yanıt vermediği için")
+    monkeypatch.setattr(OpenAICompatibleProvider, "complete", fake([boom, boom], []))
+    en = explanations.explain(body(question="What is framing in this region?"))
+    assert en["answer"].startswith("The local model is not answering right now")
