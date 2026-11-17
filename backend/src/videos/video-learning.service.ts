@@ -114,9 +114,11 @@ export class VideoLearningService {
       selection_id: raw.selection_id, learning_state: learning.state }, 190000);
     const confirmed = this.citations(explanation, video.engineVideoId, raw.duration_ms);
     if (JSON.stringify(confirmed) !== JSON.stringify(citations)) throw new ApiError('INTERNAL_ERROR', 'Açıklama seçilen kaynaklarla eşleşmiyor.');
-    // The explanation is plain text: board steps come from the cited transcript itself.
-    const board = boardSteps(true, citations.map(c => ({ source: clock(c.ms), n: c.n, text: String(c.transcript ?? '') })));
-    return { ...common, ...board, status: 'EXPLANATION', answer: String(explanation.answer || ''), llm_used: Boolean(explanation.llm_used),
+    // The explanation is plain text: board steps come from the cited transcript itself, in time order.
+    const answer = String(explanation.answer || ''), llmUsed = Boolean(explanation.llm_used);
+    const board = boardSteps(true, citations.map(c => ({ source: clock(c.ms), n: c.n, text: String(c.transcript ?? ''), order: [c.ms] })),
+      { question, answer: llmUsed ? answer : '' });
+    return { ...common, ...board, status: 'EXPLANATION', answer, llm_used: llmUsed,
       generation_status: String(explanation.generation_status || 'UNVERIFIED') };
   }
 }

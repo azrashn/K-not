@@ -1,6 +1,6 @@
 import json
 
-from knot_rag.generation.providers.base import ProviderError
+from knot_rag.generation.providers.base import ProviderError, ProviderTimeoutError
 from knot_rag.steps import (
     MAX_STEPS,
     build_request,
@@ -109,13 +109,16 @@ def test_broken_output_is_repaired_once():
 
 def test_broken_twice_gives_no_steps():
     model = Model("{}", out(step(source_ids=[])))
-    assert generate_steps(model, "soru", EVIDENCE) == {"steps": [], "summary": "", "steps_status": "INVALID"}
+    assert generate_steps(model, "soru", EVIDENCE) == {
+        "steps": [], "summary": "", "steps_status": "INVALID", "attempts": 2, "error": "INVALID_OUTPUT"}
     assert len(model.requests) == 2
 
 
 def test_provider_failure_or_timeout_gives_no_steps():
-    assert generate_steps(Model(ProviderError("timeout")), "soru", EVIDENCE)["steps_status"] == "FAILED"
-    assert generate_steps(Model("{}", ProviderError("timeout")), "soru", EVIDENCE)["steps_status"] == "FAILED"
+    first = generate_steps(Model(ProviderTimeoutError("timeout")), "soru", EVIDENCE)
+    assert (first["steps_status"], first["attempts"], first["error"]) == ("FAILED", 1, "ProviderTimeoutError")
+    repair = generate_steps(Model("{}", ProviderError("timeout")), "soru", EVIDENCE)
+    assert (repair["steps_status"], repair["attempts"], repair["error"]) == ("FAILED", 2, "ProviderError")
 
 
 def test_the_repair_only_gets_the_time_left_of_one_budget():
@@ -132,7 +135,8 @@ def test_the_repair_only_gets_the_time_left_of_one_budget():
     assert model.requests[1].timeout_seconds == 20
 
     now[0] = 0.0
-    assert generate_steps(Slow2(now), "soru", EVIDENCE, timeout_seconds=60, clock=clock)["steps_status"] == "FAILED"
+    late = generate_steps(Slow2(now), "soru", EVIDENCE, timeout_seconds=60, clock=clock)
+    assert (late["steps_status"], late["error"]) == ("FAILED", "NO_TIME_FOR_REPAIR")
 
 
 class Slow2(Model):

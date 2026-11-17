@@ -1126,9 +1126,25 @@ export class KnowledgeService {
     };
     // Additive board steps: model steps checked again, else steps from the evidence itself.
     const generatedAny = generated as any;
+    // Evidence steps follow the document: material (first appearance), page/slide, section,
+    // video time, character offset.
+    const materialOrder = [...new Set(evidence.map((e: any) => String(e.material_id)))];
+    const position = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : 0);
     const board = boardSteps(
       STEP_ANSWERS.has(generatedAny.status),
-      evidence.map((e, i) => ({ source: String(e.id), n: i + 1, text: String(e.text || "") })),
+      evidence.map((e: any, i) => {
+        const at = e.location && typeof e.location === "object" ? e.location : {};
+        return {
+          source: String(e.id), n: i + 1, text: String(e.text || ""),
+          order: [materialOrder.indexOf(String(e.material_id)), position(at.page ?? at.slide), position(at.section),
+            position(at.start_ms), position(at.char_start)],
+        };
+      }),
+      {
+        question: `${body.question} ${question}`,
+        // Only a model-written answer says what the evidence was used for.
+        answer: generatedAny.status === "GENERATED_UNVERIFIED" ? String(generatedAny.answer || "") : "",
+      },
       generatedAny,
     );
     const receipt = randomUUID();

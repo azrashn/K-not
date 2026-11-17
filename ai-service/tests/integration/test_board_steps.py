@@ -1,6 +1,7 @@
 """/explain adds board steps in a separate call; the written answer never changes because of it."""
 
 import json
+import logging
 
 import pytest
 from fastapi.testclient import TestClient
@@ -8,7 +9,7 @@ from fastapi.testclient import TestClient
 from knot_rag.api import create_app
 from knot_rag.bootstrap import build_components
 from knot_rag.config import Settings
-from knot_rag.generation.providers.base import LLMResponse, ProviderError
+from knot_rag.generation.providers.base import LLMResponse, ProviderError, ProviderTimeoutError
 from knot_rag.generation.providers.openai_compatible import OpenAICompatibleProvider
 
 TOKEN = "unified-test-token"
@@ -71,6 +72,23 @@ def test_failed_steps_leave_the_answer_unchanged(monkeypatch, replies, status):
     body, _ = run(monkeypatch, CLAIMS, *replies)
     assert body["status"] == "GENERATED_UNVERIFIED" and body["answer"] == "Water changes to vapour. [1]"
     assert body["steps"] == [] and body["steps_status"] == status
+
+
+def test_the_step_outcome_is_logged_without_text(monkeypatch, caplog):
+    logger = logging.getLogger("knot_rag.explanations")
+    logger.addHandler(caplog.handler)
+    try:
+        caplog.set_level(logging.INFO, logger="knot_rag.explanations")
+        run(monkeypatch, CLAIMS, ProviderTimeoutError("provider timed out"))
+    finally:
+        logger.removeHandler(caplog.handler)
+    # The handler may see the record twice (directly and by propagation): one record, one outcome.
+    [record] = {id(r): r for r in caplog.records if r.getMessage() == "board_steps.result"}.values()
+    assert record.levelname == "WARNING"
+    assert (record.steps_status, record.attempts, record.error_type) == ("FAILED", 1, "ProviderTimeoutError")
+    assert isinstance(record.duration_ms, int) and record.step_count == 0 and record.evidence_count == 1
+    logged = json.dumps({k: str(v) for k, v in vars(record).items()})
+    assert "water" not in logged.lower() and "vapour" not in logged.lower()
 
 
 def test_steps_can_be_switched_off(monkeypatch):

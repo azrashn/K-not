@@ -1,6 +1,6 @@
 """Source-bounded explanation modes and actual, optional local vision input."""
 
-import json, os, re
+import json, logging, os, re, time
 import httpx
 from fastapi import HTTPException
 from knot_rag.generation.providers.base import LLMRequest, ProviderError
@@ -10,6 +10,7 @@ from knot_rag.visual_context import prepare_image
 from knot_rag.structured import explanation_schema, visual_review_schema
 from knot_rag.steps import generate_steps
 
+log = logging.getLogger(__name__)
 
 def steps_enabled():
     return os.environ.get("UNIFIED_STEPS_ENABLED", "true").strip().lower() not in ("0", "false", "no", "off")
@@ -23,10 +24,14 @@ def steps_timeout():
 
 
 def board_steps(client, url, model, body, rendered):
-    """Board steps in a separate call (60 s budget with the repair). Visual answers get none here."""
+    """Board steps in a separate call (60 s budget with the repair). Visual answers get none here.
+
+    The outcome is logged (status, duration, attempts, error type), never question or model text.
+    """
     if not steps_enabled() or body.image_base64:
         return {"steps": [], "steps_status": "SKIPPED"}
     provider = OpenAICompatibleProvider(url, model, client=client)
+    started = time.monotonic()
     try:
         result = generate_steps(
             lambda request: provider.complete(request).text,
@@ -35,9 +40,21 @@ def board_steps(client, url, model, body, rendered):
             context=rendered,
             timeout_seconds=steps_timeout(),
         )
-    except Exception:  # the written answer is already valid; steps never break it
-        return {"steps": [], "steps_status": "FAILED"}
-    out = {"steps": result["steps"], "steps_status": result["steps_status"]}
+    except Exception as exc:  # the written answer is already valid; steps never break it
+        result = {"steps": [], "summary": "", "steps_status": "FAILED", "attempts": None, "error": type(exc).__name__}
+    status = result["steps_status"]
+    (log.info if status in ("MODEL", "REPAIRED") else log.warning)(
+        "board_steps.result",
+        extra={
+            "steps_status": status,
+            "duration_ms": round((time.monotonic() - started) * 1000),
+            "attempts": result.get("attempts"),
+            "error_type": result.get("error"),
+            "step_count": len(result["steps"]),
+            "evidence_count": len(body.evidence),
+        },
+    )
+    out = {"steps": result["steps"], "steps_status": status}
     if result["summary"]:
         out["steps_summary"] = result["summary"]
     return out

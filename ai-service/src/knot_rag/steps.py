@@ -214,32 +214,38 @@ def generate_steps(
 
     ``timeout_seconds`` is the budget of both calls together: the repair only gets what is left.
     ``complete`` sends a request and returns the model text. Returns
-    ``{"steps", "summary", "steps_status"}`` with status MODEL, REPAIRED, INVALID (broken twice)
-    or FAILED (the provider failed or timed out). INVALID and FAILED carry no steps.
+    ``{"steps", "summary", "steps_status", "attempts", "error"}`` with status MODEL, REPAIRED,
+    INVALID (broken twice) or FAILED (the provider failed or timed out); INVALID and FAILED carry
+    no steps. ``error`` names why (an exception class, INVALID_OUTPUT or NO_TIME_FOR_REPAIR),
+    never the model text: it is for the log.
     """
+
+    def result(status, attempts, steps=(), summary="", error=None):
+        return {"steps": list(steps), "summary": summary, "steps_status": status, "attempts": attempts, "error": error}
+
     if not evidence:
-        return {"steps": [], "summary": "", "steps_status": "SKIPPED"}
+        return result("SKIPPED", 0)
     deadline = clock() + timeout_seconds
     request = build_request(question, evidence, context, timeout_seconds)
     try:
         text = complete(request)
-    except ProviderError:
-        return {"steps": [], "summary": "", "steps_status": "FAILED"}
+    except ProviderError as exc:
+        return result("FAILED", 1, error=type(exc).__name__)
     steps, summary, errors = validate_steps(_parse(text), evidence)
     if not errors:
-        return {"steps": steps, "summary": summary, "steps_status": "MODEL"}
+        return result("MODEL", 1, steps, summary)
     left = deadline - clock()
     if left < MIN_REPAIR_SECONDS:
-        return {"steps": [], "summary": "", "steps_status": "FAILED"}
+        return result("FAILED", 1, error="NO_TIME_FOR_REPAIR")
     repair = repair_request(request, text or "", errors)
     try:
         text = complete(replace(repair, timeout_seconds=left))
-    except ProviderError:
-        return {"steps": [], "summary": "", "steps_status": "FAILED"}
+    except ProviderError as exc:
+        return result("FAILED", 2, error=type(exc).__name__)
     steps, summary, errors = validate_steps(_parse(text), evidence)
     if not errors:
-        return {"steps": steps, "summary": summary, "steps_status": "REPAIRED"}
-    return {"steps": [], "summary": "", "steps_status": "INVALID"}
+        return result("REPAIRED", 2, steps, summary)
+    return result("INVALID", 2, error="INVALID_OUTPUT")
 
 
 def _parse(text: object) -> object:
