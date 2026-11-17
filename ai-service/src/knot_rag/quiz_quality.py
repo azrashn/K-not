@@ -360,7 +360,7 @@ def quiz(body):
                     "question_style": "SOURCE_COMPLETION" if completion else "CONCEPTUAL",
                     "focus": body.focus,
                     "difficulty": body.difficulty,
-                    "focus_text": plan["focus_text"] if plan else None,
+                    "focus_text": plan.get("focus_text") if plan else None,
                     "assessment": (
                         "REFLECTION_NOT_AUTOGRADED"
                         if body.kind == "OPEN"
