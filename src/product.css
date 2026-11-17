@@ -905,6 +905,16 @@
   font-weight: 600;
   color: var(--color-accent);
 }
+.answer-mode {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 6px;
+  border: 1px solid var(--color-hair);
+  border-radius: 4px;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 10px;
+  color: var(--color-ink-2);
+}
 .message-tools {
   display: flex;
   align-items: center;

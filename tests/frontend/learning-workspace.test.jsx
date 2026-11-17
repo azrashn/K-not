@@ -6,6 +6,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import LearningWorkspace from "../../src/pages/LearningWorkspace";
@@ -340,4 +341,22 @@ test("Enter on an empty question does nothing", async () => {
   await screen.findByRole("heading", { name: "Physics" });
   await user.type(screen.getByLabelText("Ders kaynaklarına sorun"), "{Enter}");
   expect(api.knowledgeAnswer).not.toHaveBeenCalled();
+});
+
+
+test("the answer says which style it was written in", async () => {
+  api.knowledgeAnswer.mockResolvedValue({ ...answer, status: "GENERATED_UNVERIFIED", llm_used: true, response_mode: "detailed" });
+  const user = userEvent.setup();
+  await askWater(user);
+  const turn = await screen.findByLabelText("Ders yanıtı 1");
+  expect(within(turn).getByText("Ayrıntılı yanıt")).toBeInTheDocument();
+});
+
+test("a failed model says why and that source sentences are shown instead", async () => {
+  api.knowledgeAnswer.mockResolvedValue({ ...answer, status: "GENERATION_FAILED_SOURCE_EXCERPTS", llm_used: false, generation_failure: "UNAVAILABLE" });
+  const user = userEvent.setup();
+  await askWater(user);
+  const turn = await screen.findByLabelText("Ders yanıtı 1");
+  expect(within(turn).getByText(/Ollama açık mı/)).toBeVisible();
+  expect(within(turn).getByText(/model yorumu değil/)).toBeVisible();
 });

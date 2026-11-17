@@ -1,5 +1,6 @@
 import Voice from "../components/Voice";
 import { isSubmitKey } from "../lib/composer-keys";
+import { modeLabel, statusLabel } from "../lib/answer-labels";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api/endpoints";
 import { useApp } from "../app/store";
@@ -1137,6 +1138,11 @@ export default function LearningWorkspace({ courseId }) {
                     </div>
                     <div className="assistant-message">
                       <span className="message-author">✳ K-NOT</span>
+                      {modeLabel(t.response_mode) && (
+                        <span className="answer-mode" data-mode={t.response_mode}>
+                          {modeLabel(t.response_mode)}
+                        </span>
+                      )}
                       <div className="message-tools">
                         <Voice key={`voice-${i}`} text={t.answer || ""} autoPlay={t === freshAnswer} />
                         <button
@@ -1159,24 +1165,7 @@ export default function LearningWorkspace({ courseId }) {
                           {t.visual_analysis.region ? " · Seçili bölge" : ""}
                         </p>
                       )}
-                      <p className="answer-status">
-                        {{
-                          SOURCE_EXCERPTS:
-                            "Gerçek kaynak alıntıları · model üretimi değil",
-                          GENERATED_UNVERIFIED:
-                            "Deneysel model açıklaması · doğrulanmadı",
-                          GENERATION_FAILED_SOURCE_EXCERPTS:
-                            "Model açıklaması tamamlanamadı; kaynak metinleri gösteriliyor",
-                          NO_EVIDENCE: "Yeterli kaynak bulunamadı",
-                          INVALID_CITATIONS: "Model kaynakları doğrulanamadı",
-                          GUIDANCE:
-                            "İlgili video bölümüne dön veya açıklama iste",
-                          SOURCE_REMOVED: "Kaynak kaldırıldı",
-                          CLARIFICATION: "Bağlamı netleştirelim",
-                          MODE_NOT_SATISFIED: "İstenen biçim üretilemedi",
-                          VISUAL_UNAVAILABLE: "Görüntü analiz edilemedi",
-                        }[t.status] || "Kaynak durumu doğrulanamadı"}
-                      </p>
+                      <p className="answer-status">{statusLabel(t)}</p>
                       {(t.video_learning || []).map((l) => {
                         const e = evidence.find((e) => e.id === l.source_id);
                         return (
