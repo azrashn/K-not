@@ -102,6 +102,36 @@
 .board-formula .katex { font-size: 1.15em; color: var(--color-ink); }
 .board-tex-inline .katex { font-size: 0.72em; color: var(--color-ink); }
 
+/* Öğretmen: sade, düşük doygunluklu giysiler; tek vurgu kalemin ucunda. */
+.teacher {
+  --figure-skin: #d8b49b;
+  --figure-hair: #2a2522;
+  --figure-top: #474d5c;
+  --figure-sleeve: #555c6c;
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+.teacher .t-skin { fill: var(--figure-skin); }
+.teacher .t-skin-stroke { stroke: var(--figure-skin); }
+.teacher .t-hair { fill: var(--figure-hair); }
+.teacher .t-brow { stroke: var(--figure-hair); }
+.teacher .t-top { fill: var(--figure-top); }
+.teacher .t-top-hem { fill: var(--color-ink); fill-opacity: 0.18; }
+.teacher .t-sleeve { stroke: var(--figure-sleeve); }
+.teacher .t-sleeve-far { stroke: color-mix(in srgb, var(--figure-top) 82%, var(--color-ink)); }
+.teacher .t-cuff { stroke: var(--color-sheet); }
+.teacher .t-shirt { fill: var(--color-sheet); stroke: var(--color-line-strong); stroke-width: 0.5; }
+.teacher .t-trousers { fill: var(--color-ink-2); }
+.teacher .t-shoe { fill: var(--color-ink); }
+.teacher .t-eye { fill: var(--color-ink); }
+.teacher .t-line { stroke: var(--color-ink); stroke-opacity: 0.4; }
+.teacher .t-mouth { fill: var(--color-ink); fill-opacity: 0.75; }
+.teacher .t-marker { fill: var(--color-ink); }
+.teacher .t-marker-tip { fill: var(--color-accent); }
+.teacher .t-dots { fill: var(--color-ink-3); }
+
 @media (prefers-reduced-motion: reduce) {
   .board-step { transition: none; }
 }
