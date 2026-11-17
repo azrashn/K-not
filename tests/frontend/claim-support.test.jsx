@@ -39,12 +39,23 @@ test('it never claims the answer is verified', () => {
 })
 
 
-test('a translated answer is shown as "different language", not as unsupported', () => {
+test('a translated answer stays closed, is not called unsupported and explains the check once', () => {
   render(<ClaimSupport claims={[
-    claim('Taşıma katmanı süreçler arası iletişim sağlar.', 'UNCHECKED', { reason: 'DIFFERENT_LANGUAGE' }),
-    claim('Ağ katmanı ana bilgisayarlar arası iletişim sağlar.', 'UNCHECKED', { reason: 'DIFFERENT_LANGUAGE' }),
+    claim('Cyclic Redundancy Check (CRC), bir hata tespit yöntemidir.', 'ANCHORED', { reason: 'TERMS_FOUND_TRANSLATED', matched_terms: ['CRC'] }),
+    claim('Gönderen veriyle birlikte bit deseni kullanarak CRC bitleri hesaplar.', 'ANCHORED', { reason: 'TERMS_FOUND_TRANSLATED', matched_terms: ['CRC'] }),
+    claim('Alıcı aynı bölmeyi yapar ve kalan sıfır değilse hata vardır.', 'UNCHECKED', { reason: 'DIFFERENT_LANGUAGE' }),
   ]} />)
-  expect(screen.getByText('Kaynak kontrolü: 2 iddia — 2 farklı dilde (kontrol edilemedi)')).toBeInTheDocument()
+  expect(screen.getByText('Kaynak kontrolü: 3 iddia — 2 teknik terimi kaynakta geçiyor, 1 çeviri')).toBeInTheDocument()
+  expect(document.querySelector('details')).not.toHaveAttribute('open')
   expect(screen.queryByRole('note')).not.toBeInTheDocument()
-  expect(screen.getAllByText(/farklı dilde \(çeviri\)/).length).toBe(2)
+  expect(screen.getAllByText(/çevrildiği için kelime kelime/)).toHaveLength(1)
+  expect(screen.getAllByText('Kaynakta geçen: CRC')).toHaveLength(2)
+})
+
+test('an invented term in a translation opens the box and is named', () => {
+  render(<ClaimSupport claims={[
+    claim('Bu yöntem ECC ve CRC bitlerini kullanır.', 'PARTIAL', { reason: 'TERMS_NOT_IN_SOURCE', missing_terms: ['ECC'] }),
+  ]} />)
+  expect(document.querySelector('details')).toHaveAttribute('open')
+  expect(screen.getByText(/Kaynakta olmayan: ECC/)).toBeInTheDocument()
 })

@@ -14,7 +14,7 @@ SUPPORTED_COVERAGE = 0.7
 PARTIAL_COVERAGE = 0.35
 MAX_MISSING_FOR_SUPPORTED = 1
 MIN_TERMS = 3
-METHOD = "lexical-v3"
+METHOD = "lexical-v4"
 # Linking verbs and fillers a writer adds when rephrasing a source sentence ("services include ...",
 # "such as", "using"). They carry no claim of their own, so a source lacking them is not evidence against it.
 LIGHT_WORDS = frozenset(
@@ -46,6 +46,25 @@ def _is_turkish(text):
     tr = sum(w in _TR_STOP for w in words) + 2 * len(_TR_CHARS.findall(text))
     en = sum(w in _EN_STOP for w in words)
     return tr > en
+
+
+_ACRONYM = re.compile(r"\b[A-Z][A-Z0-9]{1,9}s?\b")
+_PAREN_TERM = re.compile(r"\(([A-Za-z][A-Za-z0-9 /\-]{1,40})\)")
+
+
+def anchor_terms(text):
+    """Language-independent anchors of a translated claim: acronyms (CRC, MAC, TCP) and original terms
+    kept in parentheses ("çerçeve (frame)"). Single letters (D, G, r) are variables, not terms."""
+    out = []
+    for m in _ACRONYM.findall(text):
+        term = m[:-1] if m.endswith("s") and m[:-1].isupper() else m
+        if len(term) >= 2 and term not in out:
+            out.append(term)
+    for m in _PAREN_TERM.findall(text):
+        term = m.strip()
+        if len(term) >= 3 and term not in out and not term.isupper():
+            out.append(term)
+    return out
 
 
 def _sentences(text):
@@ -80,9 +99,21 @@ def check_claim(claim_text, cited_texts):
     if cited_texts and _is_turkish(claim_text) != _is_turkish(" ".join(cited_texts)):
         # A translated claim shares almost no words with its source: a word comparison would call every
         # correct translation "unsupported". Only language-independent things (numbers) can still be checked.
+        # Acronyms and original terms kept in parentheses can still be compared with the source.
         unmatched = sorted(n for n in numbers(claim_text) if n not in source_numbers)
-        label, reason = ("PARTIAL", "NUMBER_NOT_IN_SOURCE") if unmatched else ("UNCHECKED", "DIFFERENT_LANGUAGE")
-        return {**base, "label": label, "reason": reason, "coverage": None, "missing_terms": [],
+        source_folded = fold(" ".join(cited_texts))
+        anchors = anchor_terms(claim_text)
+        missing_anchors = [a for a in anchors if fold(a) not in source_folded and re.sub(r"\W+", "", fold(a)) not in collapsed]
+        if unmatched:
+            label, reason = "PARTIAL", "NUMBER_NOT_IN_SOURCE"
+        elif missing_anchors:
+            label, reason = "PARTIAL", "TERMS_NOT_IN_SOURCE"
+        elif anchors:
+            label, reason = "ANCHORED", "TERMS_FOUND_TRANSLATED"
+        else:
+            label, reason = "UNCHECKED", "DIFFERENT_LANGUAGE"
+        return {**base, "label": label, "reason": reason, "coverage": None, "missing_terms": missing_anchors[:6],
+                "matched_terms": [a for a in anchors if a not in missing_anchors][:6],
                 "unmatched_numbers": unmatched[:4], "negation_mismatch": False}
     missing = [t for t in words
                if not stem_in(stem(t), source_stems) and not (len(t) >= _MIN_SUBSTRING and t in collapsed)]
@@ -111,5 +142,5 @@ def check_claims(claims, evidence):
     for claim in claims:
         cited = [evidence[n - 1]["text"] for n in sorted(set(claim["sources"])) if 1 <= n <= len(evidence)]
         out.append({**claim, "support": check_claim(claim["text"], cited)})
-    summary = {k: sum(1 for c in out if c["support"]["label"] == k) for k in ("SUPPORTED", "PARTIAL", "UNSUPPORTED", "UNCHECKED")}
+    summary = {k: sum(1 for c in out if c["support"]["label"] == k) for k in ("SUPPORTED", "ANCHORED", "PARTIAL", "UNSUPPORTED", "UNCHECKED")}
     return out, {**summary, "total": len(out), "method": METHOD, "verified": False}

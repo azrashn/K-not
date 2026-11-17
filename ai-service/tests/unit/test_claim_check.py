@@ -57,7 +57,7 @@ def test_each_claim_is_checked_only_against_the_sources_it_cites():
     ]
     checked, summary = check_claims(claims, evidence)
     assert [c["support"]["label"] for c in checked] == ["SUPPORTED", "UNSUPPORTED"]
-    assert summary == {"SUPPORTED": 1, "PARTIAL": 0, "UNSUPPORTED": 1, "UNCHECKED": 0, "total": 2, "method": "lexical-v3", "verified": False}
+    assert summary == {"SUPPORTED": 1, "PARTIAL": 0, "UNSUPPORTED": 1, "UNCHECKED": 0, "ANCHORED": 0, "total": 2, "method": "lexical-v4", "verified": False}
     assert "support" not in claims[0]  # input is not mutated
 
 
@@ -91,3 +91,24 @@ def test_a_translated_claim_still_has_its_numbers_checked():
     claim = "TCP üç yönlü el sıkışma ve 40 baytlık başlık kullanır."
     out = check_claim(claim, [source])
     assert out["label"] == "PARTIAL" and out["unmatched_numbers"] == ["40"]
+
+
+CRC = ("Cyclic redundancy check (CRC): more powerful error-detection coding. D: data bits (given, think of these as binary data). "
+       "G: bit pattern (generator), of r+1 bits. goal: choose r CRC bits, R, such that <D,R> exactly divisible by G (mod 2).")
+
+
+def test_a_translation_whose_acronyms_and_kept_terms_are_in_the_source_is_anchored():
+    claim = "Cyclic Redundancy Check (CRC), bir hata tespit yöntemi olup gönderilen verinin doğruluğunu kontrol etmek için kullanılır."
+    out = check_claim(claim, [CRC])
+    assert out["label"] == "ANCHORED" and "CRC" in out["matched_terms"]
+
+
+def test_a_translation_with_an_invented_acronym_is_flagged():
+    claim = "Bu yöntem, veriyle birlikte eklenen ECC ve CRC bitlerini kullanır."
+    out = check_claim(claim, [CRC])
+    assert out["label"] == "PARTIAL" and out["missing_terms"] == ["ECC"]
+
+
+def test_single_letter_variables_are_not_treated_as_terms():
+    from knot_rag.claim_check import anchor_terms
+    assert anchor_terms("Gönderen, veri (D) ile birlikte bir bit deseni (G) kullanarak r adet CRC biti hesaplar.") == ["CRC"]

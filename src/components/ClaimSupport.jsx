@@ -1,10 +1,13 @@
 // Per-claim source check shown under a generated answer. It is a word-level comparison with the
 // cited passages (words, numbers, negation), never a proof that the answer is true.
+// A translated answer cannot be compared word by word; its acronyms, original terms kept in parentheses
+// and numbers are compared instead.
 const SUPPORT_LABELS = {
   SUPPORTED: "Kaynakla örtüşüyor",
+  ANCHORED: "Terimleri kaynakta var",
   PARTIAL: "Kısmen örtüşüyor",
   UNSUPPORTED: "Kaynakta karşılığı zayıf",
-  UNCHECKED: "Farklı dilde, sözcük kontrolü yapılamadı",
+  UNCHECKED: "Çeviri",
 };
 const REASONS = {
   NEGATION_MISMATCH: "Olumlu/olumsuz anlamı kaynaktakiyle uyuşmuyor.",
@@ -12,26 +15,31 @@ const REASONS = {
   NUMBER_NOT_IN_SOURCE: "Sayı kaynakta yok.",
   TERMS_NOT_IN_SOURCE: "Bazı terimler kaynakta yok.",
   TOO_SHORT_TO_CHECK: "Kontrol edilemeyecek kadar kısa.",
-  DIFFERENT_LANGUAGE: "Yanıt ile kaynak farklı dilde (çeviri), kelime karşılaştırması yapılamaz. Kaynağı açıp kontrol et.",
 };
+// Only these need the student's attention; the box opens by itself for them.
+const NEEDS_LOOK = new Set(["PARTIAL", "UNSUPPORTED"]);
 
 export default function ClaimSupport({ claims }) {
   const checked = (claims || []).filter((c) => c.support);
   if (!checked.length) return null;
-  const ok = checked.filter((c) => c.support.label === "SUPPORTED").length;
-  const weak = checked.filter((c) => c.support.label === "UNSUPPORTED").length;
-  const unchecked = checked.filter((c) => c.support.label === "UNCHECKED").length;
-  const partial = checked.length - ok - weak - unchecked;
-  // "0/3" gibi bir sayı, kısmen örtüşen iddiaları yok sayıp yanıtın yanlış olduğunu düşündürürdü:
-  // gerçek dağılımı yaz.
+  const count = (label) => checked.filter((c) => c.support.label === label).length;
+  const ok = count("SUPPORTED");
+  const anchored = count("ANCHORED");
+  const partial = count("PARTIAL");
+  const weak = count("UNSUPPORTED");
+  const unchecked = count("UNCHECKED");
+  const translated = anchored + unchecked > 0 || checked.some((c) => c.support.reason === "DIFFERENT_LANGUAGE");
+  // Gerçek dağılım; "0/3" gibi bir sayı kısmen örtüşenleri ve çevirileri yok sayıp yanlış izlenim verirdi.
   const parts = [
     ok > 0 && `${ok} örtüşüyor`,
+    anchored > 0 && `${anchored} teknik terimi kaynakta geçiyor`,
     partial > 0 && `${partial} kısmen örtüşüyor`,
-    unchecked > 0 && `${unchecked} farklı dilde (kontrol edilemedi)`,
     weak > 0 && `${weak} kaynakta zayıf`,
+    unchecked > 0 && `${unchecked} çeviri`,
   ].filter(Boolean);
+  const attention = partial + weak > 0;
   return (
-    <details className="claim-support" open={ok < checked.length}>
+    <details className="claim-support" open={attention}>
       <summary>
         Kaynak kontrolü: {checked.length} iddia — {parts.join(", ")}
       </summary>
@@ -45,16 +53,25 @@ export default function ClaimSupport({ claims }) {
           <li key={i} data-support={c.support.label}>
             <span className="source-badge">{SUPPORT_LABELS[c.support.label] || c.support.label}</span>{" "}
             <span>{c.text}</span>
-            {c.support.label !== "SUPPORTED" && (
+            {NEEDS_LOOK.has(c.support.label) && (
               <small>
                 {REASONS[c.support.reason] || ""}
                 {c.support.missing_terms?.length > 0 && ` Kaynakta olmayan: ${c.support.missing_terms.join(", ")}.`}
                 {c.support.unmatched_numbers?.length > 0 && ` Kaynakta olmayan sayı: ${c.support.unmatched_numbers.join(", ")}.`}
               </small>
             )}
+            {c.support.label === "ANCHORED" && c.support.matched_terms?.length > 0 && (
+              <small>Kaynakta geçen: {c.support.matched_terms.join(", ")}</small>
+            )}
           </li>
         ))}
       </ol>
+      {translated && (
+        <p className="product-note">
+          Yanıt kaynaktan çevrildiği için kelime kelime karşılaştırılamaz; kısaltmalar, parantez içindeki
+          özgün terimler ve sayılar kaynakla karşılaştırıldı.
+        </p>
+      )}
       <p className="product-note">
         Bu, sözcük düzeyinde bir kontroldür; cevabın doğruluğunu kanıtlamaz.
       </p>
