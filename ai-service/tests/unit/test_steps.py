@@ -118,6 +118,35 @@ def test_provider_failure_or_timeout_gives_no_steps():
     assert generate_steps(Model("{}", ProviderError("timeout")), "soru", EVIDENCE)["steps_status"] == "FAILED"
 
 
+def test_the_repair_only_gets_the_time_left_of_one_budget():
+    now = [0.0]
+    clock = lambda: now[0]  # noqa: E731
+
+    class Slow(Model):
+        def __call__(self, request):
+            now[0] += 40
+            return super().__call__(request)
+
+    model = Slow("{}", out(step()))
+    assert generate_steps(model, "soru", EVIDENCE, timeout_seconds=60, clock=clock)["steps_status"] == "REPAIRED"
+    assert model.requests[1].timeout_seconds == 20
+
+    now[0] = 0.0
+    assert generate_steps(Slow2(now), "soru", EVIDENCE, timeout_seconds=60, clock=clock)["steps_status"] == "FAILED"
+
+
+class Slow2(Model):
+    """First call uses 57 of 60 seconds: no time left for a repair."""
+
+    def __init__(self, now):
+        super().__init__("{}")
+        self.now = now
+
+    def __call__(self, request):
+        self.now[0] += 57
+        return super().__call__(request)
+
+
 def test_no_evidence_no_call():
     model = Model()
     assert generate_steps(model, "soru", [])["steps_status"] == "SKIPPED"

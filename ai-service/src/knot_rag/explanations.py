@@ -8,6 +8,39 @@ from knot_rag.generation.providers.openai_compatible import OpenAICompatibleProv
 from knot_rag.generation.providers.policy import is_local_endpoint
 from knot_rag.visual_context import prepare_image
 from knot_rag.structured import explanation_schema, visual_review_schema
+from knot_rag.steps import generate_steps
+
+
+def steps_enabled():
+    return os.environ.get("UNIFIED_STEPS_ENABLED", "true").strip().lower() not in ("0", "false", "no", "off")
+
+
+def steps_timeout():
+    try:
+        return max(5.0, min(60.0, float(os.environ.get("UNIFIED_STEPS_TIMEOUT_SECONDS", "60"))))
+    except ValueError:
+        return 60.0
+
+
+def board_steps(client, url, model, body, rendered):
+    """Board steps in a separate call (60 s budget with the repair). Visual answers get none here."""
+    if not steps_enabled() or body.image_base64:
+        return {"steps": [], "steps_status": "SKIPPED"}
+    provider = OpenAICompatibleProvider(url, model, client=client)
+    try:
+        result = generate_steps(
+            lambda request: provider.complete(request).text,
+            body.question,
+            body.evidence,
+            context=rendered,
+            timeout_seconds=steps_timeout(),
+        )
+    except Exception:  # the written answer is already valid; steps never break it
+        return {"steps": [], "steps_status": "FAILED"}
+    out = {"steps": result["steps"], "steps_status": result["steps_status"]}
+    if result["summary"]:
+        out["steps_summary"] = result["summary"]
+    return out
 
 STYLES = {
     "default": ("Give up to 3 concise teaching claims.", 3, 140),
@@ -330,6 +363,8 @@ def explain(body):
                 "response_mode": mode,
                 "visual_analysis": visual,
                 "generation_source_ids": [e.get("id") for e in body.evidence],
+                # Additive: the same answer step by step for the board (empty when it failed).
+                **board_steps(client, url, model, body, rendered),
             }
         except ProviderError as exc:
             return {

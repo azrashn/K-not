@@ -19,6 +19,8 @@ from __future__ import annotations
 
 import json
 import re
+import time
+from dataclasses import replace
 import unicodedata
 from typing import Callable
 
@@ -32,6 +34,8 @@ FORMULA_MAX = 400
 QUOTE_MAX = 300
 SUMMARY_MAX = 600
 MARKS = ("underline", "circle", "arrow", "none")
+# A repair with less time than this left is not tried.
+MIN_REPAIR_SECONDS = 5
 
 STEP_RULES = (
     "You explain the answer on a whiteboard, step by step, using ONLY the numbered source excerpts. "
@@ -204,15 +208,18 @@ def generate_steps(
     evidence: list[dict],
     context: str = "",
     timeout_seconds: float = 60,
+    clock: Callable[[], float] = time.monotonic,
 ) -> dict:
     """Asks the model for board steps; one repair on broken output.
 
+    ``timeout_seconds`` is the budget of both calls together: the repair only gets what is left.
     ``complete`` sends a request and returns the model text. Returns
     ``{"steps", "summary", "steps_status"}`` with status MODEL, REPAIRED, INVALID (broken twice)
     or FAILED (the provider failed or timed out). INVALID and FAILED carry no steps.
     """
     if not evidence:
         return {"steps": [], "summary": "", "steps_status": "SKIPPED"}
+    deadline = clock() + timeout_seconds
     request = build_request(question, evidence, context, timeout_seconds)
     try:
         text = complete(request)
@@ -221,8 +228,12 @@ def generate_steps(
     steps, summary, errors = validate_steps(_parse(text), evidence)
     if not errors:
         return {"steps": steps, "summary": summary, "steps_status": "MODEL"}
+    left = deadline - clock()
+    if left < MIN_REPAIR_SECONDS:
+        return {"steps": [], "summary": "", "steps_status": "FAILED"}
+    repair = repair_request(request, text or "", errors)
     try:
-        text = complete(repair_request(request, text or "", errors))
+        text = complete(replace(repair, timeout_seconds=left))
     except ProviderError:
         return {"steps": [], "summary": "", "steps_status": "FAILED"}
     steps, summary, errors = validate_steps(_parse(text), evidence)
