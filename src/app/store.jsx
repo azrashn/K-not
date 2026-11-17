@@ -6,7 +6,7 @@ export function parseHash(hash) {
   const parts = hash.replace(/^#\/?/, '').split('/').filter(Boolean)
   if (parts[0] === 'dersler') {
     if (parts[1] && parts[2] === 'quiz') return { section:'quiz',view:'quiz',courseId:parts[1] }
-    if (parts[1] && parts[2] === 'sinavlar') return { section: 'quiz', view: 'exams', courseId: parts[1] }
+    if (parts[1] && parts[2] === 'sinavlar') return { section: 'exams', view: 'exams', courseId: parts[1] }
     if (parts[1] && parts[2] === 'ogrenme') return { section: 'courses', view: 'learning', courseId: parts[1] }
     if (parts[1] && parts[2] === 'videolar') return { section: 'courses', view: 'videos', courseId: parts[1] }
     if (parts[1] && parts[2] === 'calisma') return { section: 'courses', view: 'workspace', courseId: parts[1] }
@@ -14,13 +14,14 @@ export function parseHash(hash) {
     return { section: 'courses', view: 'list' }
   }
   if (parts[0] === 'quiz') return { section: 'quiz', view: 'quiz' }
+  if (parts[0] === 'sinav') return { section: 'exams', view: 'exams' }
   if (parts[0] === 'analitik') return { section: 'analytics', view: 'analytics' }
   return { section: 'home', view: 'home' }
 }
 
 const MOCK_COURSE_PATH = /^\/dersler\/(veri-yapilari|algoritmalar|veritabani|yazilim)(\/|$)/
 
-const SECTION_PATH = { home: '/', courses: '/dersler', quiz: '/quiz', analytics: '/analitik' }
+const SECTION_PATH = { home: '/', courses: '/dersler', quiz: '/quiz', exams: '/sinav', analytics: '/analitik' }
 export const pathFor = (section) => SECTION_PATH[section]
 
 // ─── State ──────────────────────────────────────────────────────────────────

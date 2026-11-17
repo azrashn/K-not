@@ -1767,3 +1767,35 @@
   border-top: 1px solid currentColor;
   padding-left: 2px;
 }
+
+/* "Sınav" menüsü: ders seçimi */
+.exam-course-list ul {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.exam-course {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  width: 100%;
+  padding: 14px 16px;
+  text-align: left;
+  background: #fff;
+  border: 1px solid var(--color-hair);
+  border-radius: 8px;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+.exam-course:hover,
+.exam-course:focus-visible {
+  border-color: var(--color-accent);
+  background: var(--color-paper);
+}
+.exam-course strong {
+  font-size: 15px;
+  letter-spacing: -0.03em;
+}

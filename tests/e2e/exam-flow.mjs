@@ -72,11 +72,12 @@ async function main() {
       check([200, 201].includes(up.status), `material upload → ${up.status} ${JSON.stringify(up.body)}`)
     })
 
-    await step('the practice page offers the exam builder', async () => {
-      await page.goto(`${web}/#/dersler/${courseId}/quiz`)
-      await page.getByRole('button', { name: 'Sınav hazırla →' }).click()
-      await page.getByRole('heading', { name: 'Sınavlar' }).waitFor()
-      check(page.url().endsWith(`/dersler/${courseId}/sinavlar`), `unexpected url ${page.url()}`)
+    await step('exams have their own menu entry, separate from Quiz', async () => {
+      await page.goto(`${web}/#/quiz`)
+      check(!(await page.getByRole('button', { name: 'Sınav hazırla →' }).count()), 'the quiz page must not hold the exam builder any more')
+      await page.getByRole('button', { name: 'Sınav', exact: true }).first().click()
+      await page.getByRole('heading', { name: 'Sınavlar' }).first().waitFor()
+      await page.waitForURL((u) => u.hash === `#/dersler/${courseId}/sinavlar`, { timeout: 10000 })
     })
 
     await step('a past exam (DOCX) becomes a saved style', async () => {

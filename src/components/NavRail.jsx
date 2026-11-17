@@ -1,10 +1,11 @@
-import { House, BookOpen, Exam, ChartLineUp, SignOut } from '@phosphor-icons/react'
+import { House, BookOpen, Exam, ClipboardText, ChartLineUp, SignOut } from '@phosphor-icons/react'
 import { useAuth } from '../app/auth'
 
 export const NAV = [
   { id: 'home', label: 'Ana Sayfa', Icon: House },
   { id: 'courses', label: 'Dersler', Icon: BookOpen },
   { id: 'quiz', label: 'Quiz', Icon: Exam },
+  { id: 'exams', label: 'Sınav', Icon: ClipboardText },
   { id: 'analytics', label: 'Öğrenme Analizi', Icon: ChartLineUp },
 ]
 
