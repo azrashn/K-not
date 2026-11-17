@@ -10,6 +10,7 @@
     "stop:all": "node scripts/dev.mjs stop",
     "status:all": "node scripts/dev.mjs status",
     "doctor": "node scripts/doctor.mjs",
+    "demo:users": "npm --prefix backend run demo:users --",
     "dev:all": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev.ps1",
     "dev:stop": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev.ps1 -Stop",
     "dev:status": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev.ps1 -Status",

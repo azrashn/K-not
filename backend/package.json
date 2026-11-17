@@ -16,6 +16,7 @@
     "db:migrate": "prisma migrate deploy",
     "db:seed": "ts-node scripts/seed.ts",
     "db:seed:local": "node --env-file=.env -r ts-node/register scripts/seed.ts",
+    "demo:users": "node --env-file=.env -r ts-node/register scripts/demo-users.ts",
     "test": "jest --config jest.config.js --selectProjects unit api",
     "test:unit": "jest --config jest.config.js --selectProjects unit",
     "test:api": "jest --config jest.config.js --selectProjects api",
