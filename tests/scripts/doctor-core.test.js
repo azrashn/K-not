@@ -88,6 +88,12 @@ describe('diagnose', () => {
     expect(formatReport(items)).toContain('npm run tts:install')
     expect(formatReport(diagnose({ ...base, localVoice: { installed: true } }))).toContain('Yerel doğal ses kurulu')
   })
+  test('a closed video engine is a warning that says what stops working and how to start it', () => {
+    const items = diagnose({ ...base, videoEngine: { url: 'http://127.0.0.1:7862', reachable: false } })
+    expect(hasFailure(items)).toBe(false)
+    expect(formatReport(items)).toContain('Start-MomentSearch.ps1')
+    expect(formatReport(diagnose({ ...base, videoEngine: { url: 'http://127.0.0.1:7862', reachable: true } }))).toContain('Video motoru (MomentSearch) açık')
+  })
   test('missing Poppler is a warning with the install hint, not a failure', () => {
     const items = diagnose({ ...base, poppler: false })
     expect(hasFailure(items)).toBe(false)
