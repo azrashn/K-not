@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import Board from './Board'
 import TeacherStage from './TeacherStage'
 import BoardSources, { StepSources } from './BoardSources'
@@ -6,7 +6,9 @@ import { BoardCaption, BoardToolbar } from './BoardControls'
 import { useBoardPlayer } from '../../lib/board/player'
 import { loadPrefs, savePrefs } from '../../lib/board/prefs'
 import { stepSources } from '../../lib/board/sources'
-import { stepAudioFetcher } from '../../api/tts'
+import { speak, stepAudioFetcher } from '../../api/tts'
+import { loadLocalVoice } from '../../lib/local-voice'
+import { textLanguage } from '../../lib/speech'
 
 const reducedMotion = () => {
   try {
@@ -78,12 +80,13 @@ function StepBoardInner({ steps, evidence, onSource, fetchAudio, autoPlay, keybo
 // Cevabın tahtada adım adım anlatımı: tahta, öğretmen, oynatma ve kaynaklar.
 // steps: cevabın adımları. evidence: cevabın kanıtları (kaynak eşleme için).
 // onSource(resolved, stepIndex): kaynak tıklandı; resolved { source, label, evidence, ms, page, slide }.
-// fetchAudio: (index, step) → url; verilmezse /api/tts kullanılır (kapalıyken sessiz mod).
+// fetchAudio: (index, step) → url; verilmezse sunucudaki yerel ses kuruluysa /api/tts kullanılır, değilse sessiz mod.
+// lang: verilmezse adımların dilinden bulunur (Türkçe adım Türkçe, İngilizce adım İngilizce sesle).
 export default function StepBoard({
   steps,
   evidence = [],
   onSource,
-  lang = 'tr',
+  lang,
   fetchAudio,
   autoPlay = true,
   keyboardNav = true,
@@ -91,14 +94,32 @@ export default function StepBoard({
   className = '',
 }) {
   const [prefs, setPrefsState] = useState(() => loadPrefs(reducedMotion()))
-  const audio = useMemo(() => (fetchAudio === undefined ? stepAudioFetcher(lang) : fetchAudio), [fetchAudio, lang])
-  const key = useMemo(() => stepsKey(steps || []), [steps])
+  const auto = fetchAudio === undefined
+  const [voice, setVoice] = useState(null)
+  useEffect(() => {
+    if (!auto) return undefined
+    let alive = true
+    loadLocalVoice().then((s) => { if (alive) setVoice(s) })
+    return () => { alive = false }
+  }, [auto])
+  const spoken = useMemo(
+    () => lang || textLanguage((steps || []).map((s) => s.speech || s.board || '').join(' ')),
+    [lang, steps],
+  )
+  const canSpeak = Boolean(voice?.available && voice.languages?.[spoken])
+  const audio = useMemo(
+    () => (auto ? stepAudioFetcher(spoken, speak, canSpeak) : fetchAudio),
+    [auto, fetchAudio, spoken, canSpeak],
+  )
+  // Ses durumu bilinmeden anlatım başlamaz: yoksa sessiz başlayıp sonra baştan sesli başlardı.
+  const key = useMemo(() => `${stepsKey(steps || [])}-${audio ? 'a' : 's'}`, [steps, audio])
   const setPrefs = (change) => setPrefsState((current) => {
     const next = { ...current, ...change }
     savePrefs(next)
     return next
   })
   if (!steps?.length) return null
+  if (auto && voice === null) return <div className={`step-board ${className}`} role="status">Tahta hazırlanıyor…</div>
   return (
     <div className={`step-board ${className}`}>
       <StepBoardInner
