@@ -29,22 +29,22 @@ test('exam-style helpers describe the profile and refuse an empty or too-short e
 
 test('a saved exam style chosen in the advanced settings is sent with the practice request', async () => {
   const user = userEvent.setup()
-  api.createQuiz.mockResolvedValue({ id: 'q', topic: 'FIFO', kind: 'MULTIPLE_CHOICE', question: 'Soru?', options: ['a', 'b', 'c', 'd'] })
+  api.createQuizSet.mockResolvedValue({ id: 's', status: 'READY', requested: 10, produced: 10, questions: [] })
   render(<CourseQuiz courseId="c" />)
   await user.type(await screen.findByLabelText('Konu'), 'FIFO')
   await user.click(screen.getByText('Gelişmiş ayarlar'))
   await user.selectOptions(await screen.findByLabelText('Sınav stili'), 'e1')
   await user.click(screen.getByRole('button', { name: 'Alıştırma hazırla' }))
-  expect(api.createQuiz.mock.calls[0][1]).toMatchObject({ kind: 'MULTIPLE_CHOICE', exam_style_id: 'e1' })
+  expect(api.createQuizSet.mock.calls[0][1]).toMatchObject({ count: 10, topics: ['FIFO'], exam_style_id: 'e1' })
 })
 
 test('without a chosen style the request carries none', async () => {
   const user = userEvent.setup()
-  api.createQuiz.mockResolvedValue({ id: 'q', topic: 'FIFO', kind: 'OPEN', question: 'Soru?', options: [] })
+  api.createQuizSet.mockResolvedValue({ id: 's', status: 'READY', requested: 10, produced: 10, questions: [] })
   render(<CourseQuiz courseId="c" />)
   await user.type(await screen.findByLabelText('Konu'), 'FIFO')
   await user.click(screen.getByRole('button', { name: 'Alıştırma hazırla' }))
-  expect(api.createQuiz.mock.calls[0][1]).not.toHaveProperty('exam_style_id')
+  expect(api.createQuizSet.mock.calls[0][1]).not.toHaveProperty('exam_style_id')
 })
 
 test('exams live in their own menu; the practice form only points there', async () => {

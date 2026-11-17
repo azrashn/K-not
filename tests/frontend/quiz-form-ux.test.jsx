@@ -29,9 +29,10 @@ test('the basics and the main action are in view, the rest is folded into advanc
   const details = screen.getByText('Gelişmiş ayarlar').closest('details')
   expect(details).not.toHaveAttribute('open')
   expect(screen.getByText('Tüm ders kaynakları', { selector: 'small' })).toBeInTheDocument()
-  // basics: course, topic, kind; everything else lives inside the folded part
+  // basics: course, topic, question count; everything else lives inside the folded part
   expect(details).toContainElement(screen.getByLabelText('Kaynak kapsamı'))
-  expect(details).not.toContainElement(screen.getByLabelText('Soru türü'))
+  expect(details).not.toContainElement(screen.getByLabelText('Soru sayısı'))
+  expect(screen.getByLabelText('Soru sayısı')).toHaveValue(10)
 })
 
 test('topic suggestions come from earlier practice and ready materials, and fill the topic', async () => {
@@ -49,7 +50,7 @@ test('topic suggestions come from earlier practice and ready materials, and fill
 test('while a question is prepared the student sees how long and can stop waiting', async () => {
   const user = userEvent.setup()
   let rejectRequest
-  api.createQuiz.mockImplementation((c, body, signal) => new Promise((_, reject) => {
+  api.createQuizSet.mockImplementation((c, body, signal) => new Promise((_, reject) => {
     rejectRequest = reject
     signal.addEventListener('abort', () => reject(Object.assign(new Error('aborted'), { name: 'AbortError' })))
   }))
@@ -58,7 +59,7 @@ test('while a question is prepared the student sees how long and can stop waitin
   await user.click(screen.getByRole('button', { name: 'Alıştırma hazırla' }))
   expect(await screen.findByRole('button', { name: /Hazırlanıyor… \d+ sn/ })).toBeDisabled()
   await user.click(screen.getByRole('button', { name: 'İptal' }))
-  expect(api.createQuiz.mock.calls[0][2].aborted).toBe(true)
+  expect(api.createQuizSet.mock.calls[0][2].aborted).toBe(true)
   expect(await screen.findByRole('alert')).toHaveTextContent('iptal edildi')
   expect(screen.getByRole('alert')).toHaveTextContent('Önceki alıştırmalar')
   expect(screen.getByRole('button', { name: 'Alıştırma hazırla' })).toBeEnabled()
@@ -67,23 +68,23 @@ test('while a question is prepared the student sees how long and can stop waitin
 
 test('a failure can be retried with one click and keeps the form', async () => {
   const user = userEvent.setup()
-  api.createQuiz
+  api.createQuizSet
     .mockRejectedValueOnce(Object.assign(new Error('Soru hazırlayan yerel model yanıt veremedi.'), { code: 'AI_SERVICE_UNAVAILABLE' }))
-    .mockResolvedValueOnce({ id: 'q', topic: 'BFS', kind: 'MULTIPLE_CHOICE', question: 'Soru?', options: ['a', 'b', 'c', 'd'] })
+    .mockResolvedValueOnce({ id: 's', status: 'READY', requested: 10, produced: 10, questions: [{ id: 'q', topic: 'BFS', kind: 'MULTIPLE_CHOICE', question: 'Soru?', options: ['a', 'b', 'c', 'd'] }] })
   render(<CourseQuiz courseId="c" />)
   await user.type(await screen.findByLabelText('Konu'), 'BFS')
   await user.click(screen.getByRole('button', { name: 'Alıştırma hazırla' }))
   expect(await screen.findByRole('alert')).toHaveTextContent('yerel model')
   expect(screen.getByLabelText('Konu')).toHaveValue('BFS')
   await user.click(screen.getByRole('button', { name: 'Yeniden dene' }))
-  await waitFor(() => expect(api.createQuiz).toHaveBeenCalledTimes(2))
+  await waitFor(() => expect(api.createQuizSet).toHaveBeenCalledTimes(2))
   expect(await screen.findByText('Soru?')).toBeInTheDocument()
 })
 
 test('started from the study screen, the quiz stays on that material and says so', async () => {
   intent.value = { topic: 'Genişlik öncelikli arama', materialId: 'file_a', materialTitle: 'graf-notlari.txt' }
   const user = userEvent.setup()
-  api.createQuiz.mockResolvedValue({ id: 'q', topic: 'x', kind: 'MULTIPLE_CHOICE', question: 'S?', options: ['a', 'b', 'c', 'd'] })
+  api.createQuizSet.mockResolvedValue({ id: 's', status: 'READY', requested: 10, produced: 10, questions: [] })
   render(<CourseQuiz courseId="c" />)
   expect(await screen.findByText(/Çalışma ekranındaki materyalden başlatıldı: graf-notlari.txt/)).toBeInTheDocument()
   expect(screen.getByLabelText('Konu')).toHaveValue('Genişlik öncelikli arama')
@@ -91,5 +92,5 @@ test('started from the study screen, the quiz stays on that material and says so
   expect(screen.getByLabelText('Kaynak kapsamı')).toHaveValue('active')
   await waitFor(() => expect(screen.getByLabelText('Quiz materyali')).toHaveValue('file_a'))
   await user.click(screen.getByRole('button', { name: 'Alıştırma hazırla' }))
-  expect(api.createQuiz.mock.calls[0][1].scope).toEqual({ mode: 'selected', material_ids: ['file_a'] })
+  expect(api.createQuizSet.mock.calls[0][1].scope).toEqual({ mode: 'selected', material_ids: ['file_a'] })
 })

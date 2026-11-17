@@ -7,7 +7,14 @@ import { PageFrame, Btn } from "../components/ui";
 import { MobileBar } from "../components/PageBits";
 import { PageTitle, EmptyState } from "../components/ProductUI";
 import { videoErrorText } from "../lib/video";
+import QuizSetRunner from "../components/QuizSetRunner";
+import { COUNT_DEFAULT, COUNT_MAX, COUNT_MIN, COUNT_PRESETS, parseCount, parseTopics } from "../lib/quiz-set";
 import { HISTORY_FILTERS, filterHistory, historyLabel, summarizeHistory } from "../lib/quiz-history";
+const POLL_MS = 1500;
+const sleep = (ms, signal) => new Promise((resolve, reject) => {
+  const timer = setTimeout(resolve, ms);
+  signal?.addEventListener("abort", () => { clearTimeout(timer); reject(Object.assign(new Error("aborted"), { name: "AbortError" })); });
+});
 const labels = {
   MULTIPLE_CHOICE: "Çoktan seçmeli",
   TRUE_FALSE: "Doğru / yanlış",
@@ -20,7 +27,9 @@ export default function CourseQuiz({ courseId }) {
     courses = useResource((signal) => api.courses(signal), []);
   const [course, setCourse] = useState(courseId || ""),
     [topic, setTopic] = useState(""),
-    [kind, setKind] = useState("MULTIPLE_CHOICE"),
+    [countText, setCountText] = useState(String(COUNT_DEFAULT)),
+    [set, setSet] = useState(null),
+    [progress, setProgress] = useState(null),
     [material, setMaterial] = useState("");
   const [materials, setMaterials] = useState([]),
     [history, setHistory] = useState([]),
@@ -116,21 +125,25 @@ export default function CourseQuiz({ courseId }) {
       .catch(() => {});
     return () => abort.abort();
   }, [course]);
+  const count = parseCount(countText);
   async function start(e) {
     e?.preventDefault?.();
+    if (count.error) { setError(count.error); return; }
     const epoch = ++requestEpoch.current;
     setBusy(true);
     setQuiz(null);
+    setSet(null);
     setError("");
     setResult(null);
     setAnswer("");
+    setProgress({ produced: 0, requested: count.value });
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
     try {
-      const q = await api.createQuiz(course, {
-        topic: topic.trim(),
-        kind,
+      const created = await api.createQuizSet(course, {
+        count: count.value,
+        topics: parseTopics(topic),
         scope:
           scopeMode === "selected"
             ? { mode: "selected", material_ids: selectedMaterials }
@@ -140,14 +153,26 @@ export default function CourseQuiz({ courseId }) {
         watched_only: watchedOnly,
         ...(examStyleId ? { exam_style_id: examStyleId } : {}),
       }, controller.signal);
+      // The set opens only when every question exists; until then the student sees real progress.
+      let current = created;
+      while (current.status === "GENERATING") {
+        if (epoch !== requestEpoch.current) return;
+        setProgress({ produced: current.produced, requested: current.requested });
+        await sleep(POLL_MS, controller.signal);
+        current = await api.quizSet(course, created.id, controller.signal);
+      }
       if (epoch !== requestEpoch.current) return;
-      setQuiz(q);
+      if (current.status !== "READY")
+        throw Object.assign(new Error(current.note || "Alıştırma seti hazırlanamadı. Konuyu veya kaynak kapsamını değiştirip yeniden dene."), { code: "VALIDATION_ERROR" });
+      if (!current.questions) current = await api.quizSet(course, created.id, controller.signal);
+      if (epoch !== requestEpoch.current) return;
+      setSet(current);
       const history = await api.quizzes(course);
       if (epoch === requestEpoch.current) setHistory(history);
     } catch (err) {
-      if (epoch === requestEpoch.current) setError(videoErrorText(err));
+      if (epoch === requestEpoch.current && err?.name !== "AbortError") setError(videoErrorText(err));
     } finally {
-      if (epoch === requestEpoch.current) setBusy(false);
+      if (epoch === requestEpoch.current) { setBusy(false); setProgress(null); }
     }
   }
   return (
@@ -193,6 +218,7 @@ export default function CourseQuiz({ courseId }) {
                   setHistory([]);
                   setSelectedMaterials([]);
                   setQuiz(null);
+                  setSet(null);
                   setResult(null);
                   setMaterial("");
                 }}
@@ -212,8 +238,8 @@ export default function CourseQuiz({ courseId }) {
                 disabled={busy}
                 value={topic}
                 onChange={(e) => setTopic(e.target.value)}
-                maxLength={200}
-                placeholder="Kaynaklarında geçen bir konu yaz"
+                maxLength={600}
+                placeholder="Bir veya birkaç konu yaz (virgülle ayır)"
               />
             </label>
             {suggestions.length > 0 && (
@@ -225,21 +251,27 @@ export default function CourseQuiz({ courseId }) {
                 ))}
               </div>
             )}
-            <label>
-              Soru türü
-              <select
-                aria-label="Soru türü"
-                disabled={busy}
-                value={kind}
-                onChange={(e) => setKind(e.target.value)}
-              >
-                {Object.entries(labels).map(([id, label]) => (
-                  <option key={id} value={id}>
-                    {label}
-                  </option>
+            <fieldset className="qs-count" disabled={busy}>
+              <legend>Soru sayısı</legend>
+              <div className="qs-presets" role="group" aria-label="Hazır soru sayıları">
+                {COUNT_PRESETS.map((n) => (
+                  <button key={n} type="button" aria-pressed={countText === String(n)} onClick={() => setCountText(String(n))}>{n}</button>
                 ))}
-              </select>
-            </label>
+                <input
+                  aria-label="Soru sayısı"
+                  type="number"
+                  inputMode="numeric"
+                  min={COUNT_MIN}
+                  max={COUNT_MAX}
+                  step={1}
+                  value={countText}
+                  onChange={(e) => setCountText(e.target.value)}
+                />
+              </div>
+              <small className={count.error ? "product-error" : "product-note"} role={count.error ? "alert" : undefined}>
+                {count.error || `${COUNT_MIN}–${COUNT_MAX} arası. Konular, üç zorluk seviyesi ve farklı soru yaklaşımları arasında dengelenir.`}
+              </small>
+            </fieldset>
             {scopeNote && <p className="product-note">{scopeNote}</p>}
             <div className="quiz-actions">
               <Btn
@@ -248,6 +280,7 @@ export default function CourseQuiz({ courseId }) {
                   busy ||
                   !course ||
                   !topic.trim() ||
+                  Boolean(count.error) ||
                   (scopeMode === "active" && !material) ||
                   (scopeMode === "selected" && !selectedMaterials.length)
                 }
@@ -401,6 +434,7 @@ export default function CourseQuiz({ courseId }) {
                 try {
                   const saved = await api.quiz(course, q.id);
                   if (epoch !== requestEpoch.current) return;
+                  setSet(null);
                   setQuiz(saved);
                   setResult(null);
                   setAnswer("");
@@ -427,10 +461,28 @@ export default function CourseQuiz({ courseId }) {
               )}
             </p>
           )}
-          {busy && !quiz ? <p role="status">Seçtiğin kaynaklardan soru hazırlanıyor ve denetleniyor…</p> : !quiz ? (
+          {progress ? (
+            <div className="product-panel qs-progress" role="status" aria-live="polite">
+              <strong>{progress.produced} / {progress.requested} soru hazır</strong>
+              <div className="qs-bar"><span style={{ width: `${(progress.produced / progress.requested) * 100}%` }} /></div>
+              <p className="product-note">Her soru kaynaklardan hazırlanıp ayrıca denetleniyor. Tüm sorular hazır olmadan alıştırma başlamaz; bu birkaç dakika sürebilir.</p>
+            </div>
+          ) : set ? (
+            <QuizSetRunner
+              key={set.id}
+              set={set}
+              submit={async (answers) => {
+                const r = await api.submitQuizSet(course, set.id, answers);
+                api.quizzes(course).then(setHistory).catch(() => {});
+                return r;
+              }}
+              onOpenSource={(source) => navigate(`/dersler/${course}/ogrenme`, { openSource: source })}
+              onNewSet={() => setSet(null)}
+            />
+          ) : busy && !quiz ? <p role="status">Yükleniyor…</p> : !quiz ? (
             <EmptyState title="Öğrendiklerini dene">
-              Bir ders, konu ve soru türü seç. Gerçek kaynak bulunduğunda
-              alıştırman burada açılır.
+              Bir ders, konu ve soru sayısı seç. Tüm sorular kaynaklardan
+              hazırlandığında alıştırman burada açılır.
             </EmptyState>
           ) : (
             <article className="quiz-question product-panel">

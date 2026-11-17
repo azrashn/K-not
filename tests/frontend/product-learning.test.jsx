@@ -55,14 +55,14 @@ test('switching courses ignores late quiz generation and clears previous history
   const user=userEvent.setup();
   api.courses.mockResolvedValue([{id:'c',name:'Physics'},{id:'d',name:'Biology'}]);
   let complete;
-  api.createQuiz.mockImplementation(()=>new Promise(resolve=>{complete=resolve}));
+  api.createQuizSet.mockImplementation(()=>new Promise(resolve=>{complete=resolve}));
   render(<CourseQuiz courseId="c"/>);
   await screen.findByRole('option',{name:'Biology'});
   await user.type(screen.getByLabelText('Konu'),'Energy');
   await user.click(screen.getByRole('button',{name:'Alıştırma hazırla'}));
   expect(screen.getByRole('status')).toHaveTextContent('denetleniyor');
   await user.selectOptions(screen.getByLabelText('Ders'),'d');
-  await act(async()=>complete({id:'old',kind:'CLOZE',question:'Old course secret question',options:[]}));
+  await act(async()=>complete({id:'old',status:'READY',requested:5,produced:5,questions:[{id:'x',kind:'MULTIPLE_CHOICE',topic:'T',question:'Old course secret question',options:['a','b','c','d']}]}));
   expect(screen.queryByText('Old course secret question')).toBeNull();
   expect(screen.getByLabelText('Ders')).toHaveValue('d');
 });
@@ -113,12 +113,9 @@ test('permanent course removal is disabled until exact confirmation, server fail
 test('quiz grade and exact source navigation use persisted server result', async () => {
   const user = userEvent.setup(),
     source = { id: 's', material_id: 'file_a', title: 'Physics' }
-  api.createQuiz.mockResolvedValue({
-    id: 'q',
-    kind: 'CLOZE',
-    question: 'Water _____',
-    options: [],
-  })
+  // A single saved question (from history) still opens, is answered and graded by the server.
+  api.quizzes.mockResolvedValue([{ id: 'q', topic: 'Water', kind: 'CLOZE', status: 'UNANSWERED' }])
+  api.quiz.mockResolvedValue({ id: 'q', kind: 'CLOZE', question: 'Water _____', options: [] })
   api.answerQuiz.mockResolvedValue({
     score: 0,
     message: 'Review the exact source',
@@ -127,8 +124,7 @@ test('quiz grade and exact source navigation use persisted server result', async
     source,
   })
   render(<CourseQuiz courseId="c" />)
-  await user.type(screen.getByLabelText('Konu'), 'Water')
-  await user.click(screen.getByRole('button', { name: 'Alıştırma hazırla' }))
+  await user.click(await screen.findByRole('button', { name: /Water.*Yanıt bekliyor/ }))
   await user.type(await screen.findByLabelText('Yanıtın'), 'wrong')
   await user.click(screen.getByRole('button', { name: 'Yanıtı değerlendir' }))
   await screen.findByText('Review the exact source')
