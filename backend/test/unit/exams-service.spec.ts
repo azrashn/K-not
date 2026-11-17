@@ -6,7 +6,7 @@ const EXAM = ['1. Hangisi FIFO çalışır?', 'A) Yığın', 'B) Kuyruk', 'C) A�
 const profile = buildExamProfile(EXAM);
 const u = { id: 'u', role: 'USER' } as any;
 
-function make(over: { prisma?: any; ai?: any; learning?: any } = {}) {
+function make(over: { prisma?: any; ai?: any; learning?: any; knowledge?: any } = {}) {
   const prisma = {
     examStyle: { findFirst: jest.fn().mockResolvedValue({ id: 'e1', name: 'Final', profile }) },
     generatedExam: {
@@ -23,8 +23,14 @@ function make(over: { prisma?: any; ai?: any; learning?: any } = {}) {
   };
   const learning = { start: jest.fn(), quiz: jest.fn(), createExamStyle: jest.fn(async (_u, _c, b) => ({ id: 'new', name: b.name, profile })), ...over.learning };
   const ai = { call: jest.fn(), ...over.ai };
-  const svc = new ExamsService(prisma as any, { requireMember: jest.fn() } as any, ai as any, learning as any);
-  return { svc, prisma, learning, ai };
+  // Course sources that mention every term of the past exam: topic grounding keeps them all.
+  const knowledge = {
+    materials: jest.fn().mockResolvedValue([{ id: 'm1', title: 'Notes', status: 'READY' }]),
+    preview: jest.fn().mockResolvedValue({ segments: [{ text: EXAM }] }),
+    ...over.knowledge,
+  };
+  const svc = new ExamsService(prisma as any, { requireMember: jest.fn() } as any, ai as any, learning as any, knowledge as any);
+  return { svc, prisma, learning, ai, knowledge };
 }
 const lastUpdate = (prisma: any) => prisma.generatedExam.update.mock.calls.at(-1)[0].data;
 
@@ -77,10 +83,29 @@ describe('creating an exam', () => {
     prisma.generatedExam.count.mockResolvedValue(1);
     await expect(svc.create(u, 'c', { exam_style_id: 'e1', count: 3 })).rejects.toMatchObject({ code: 'JOB_ALREADY_RUNNING' });
   });
-  test('a style without topic terms needs topics from the student', async () => {
+  test('a style without topic terms and sources without headings needs topics from the student', async () => {
     const empty = { ...profile, topic_terms: [] };
-    const { svc } = make({ prisma: { examStyle: { findFirst: jest.fn().mockResolvedValue({ id: 'e1', name: 'x', profile: empty }) } } });
+    const { svc } = make({
+      prisma: { examStyle: { findFirst: jest.fn().mockResolvedValue({ id: 'e1', name: 'x', profile: empty }) } },
+      knowledge: { preview: jest.fn().mockResolvedValue({ segments: [] }) },
+    });
     await expect(svc.create(u, 'c', { exam_style_id: 'e1', count: 3 })).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+  });
+  test('past-exam terms the course never mentions are replaced by the headings of the course sources', async () => {
+    const other = { ...profile, topic_terms: ['kalıtım', 'polimorfizm'] };
+    const { svc, prisma } = make({
+      prisma: { examStyle: { findFirst: jest.fn().mockResolvedValue({ id: 'e1', name: 'x', profile: other }) } },
+      knowledge: { preview: jest.fn().mockResolvedValue({ segments: [{ text: 'Link layer: services\nframing, link access' }, { text: 'TCP: overview\nreliable byte stream' }] }) },
+    });
+    await svc.create(u, 'c', { exam_style_id: 'e1', count: 2 });
+    const topics = prisma.generatedExam.create.mock.calls[0][0].data.topics;
+    expect(topics).toEqual(['Link layer: services', 'TCP: overview']);
+  });
+  test('topics the student writes are used as written, never filtered', async () => {
+    const { svc, prisma, knowledge } = make();
+    await svc.create(u, 'c', { exam_style_id: 'e1', count: 2, topics: ['Benim konum'] });
+    expect(prisma.generatedExam.create.mock.calls[0][0].data.topics).toEqual(['Benim konum']);
+    expect(knowledge.preview).not.toHaveBeenCalled();
   });
   test('it is accepted at once with the planned size, before any question exists', async () => {
     const { svc, prisma, learning } = make();
@@ -124,7 +149,7 @@ describe('the generation run', () => {
     const data = lastUpdate(prisma);
     expect(data.status).toBe('FAILED');
     expect(data.items).toEqual([]);
-    expect(data.note).toContain('Konuları');
+    expect(data.note).toContain('En sık neden (2/2 deneme): Soru kalite kontrolünden geçmedi.');
   });
   test('a model outage stops the run at once instead of retrying every topic', async () => {
     const { svc, prisma, learning } = make();

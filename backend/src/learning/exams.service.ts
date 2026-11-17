@@ -6,7 +6,8 @@ import { ApiError, notFound } from "../common/errors";
 import { AccessService } from "../courses/access.service";
 import { AiServiceClient } from "../ai/ai-client";
 import { LearningService } from "./learning.service";
-import { examTopics, planExamKinds } from "./exam-plan";
+import { commonReason, examTopics, groundTopics, planExamKinds } from "./exam-plan";
+import { KnowledgeService } from "../knowledge/knowledge.service";
 import type { ExamProfile } from "./exam-style";
 
 type Item = { quiz_id: string; kind: string; topic: string };
@@ -31,6 +32,7 @@ export class ExamsService implements OnModuleInit {
     private readonly access: AccessService,
     private readonly ai: AiServiceClient,
     private readonly learning: LearningService,
+    private readonly knowledge: KnowledgeService,
   ) {}
 
   /** A run lives in this process only; after a restart nothing is still generating. */
@@ -91,7 +93,10 @@ export class ExamsService implements OnModuleInit {
     });
     if (!style) throw notFound("Exam style");
     const profile = style.profile as unknown as ExamProfile;
-    const topics = examTopics(b.topics, profile);
+    const userTopics = Boolean(b.topics?.some((t) => String(t).trim()));
+    let topics = examTopics(b.topics, profile);
+    // Terms from the past exam are only useful when the course sources talk about them.
+    if (!userTopics) topics = groundTopics(topics, await this.sourceTexts(u, c, b.scope), b.count).topics;
     if (!topics.length)
       throw new ApiError(
         "VALIDATION_ERROR",
@@ -122,6 +127,22 @@ export class ExamsService implements OnModuleInit {
       this.log.error(`exam ${row.id} failed: ${e?.message ?? e}`);
     });
     return this.summary(row);
+  }
+
+  /** Text of the ready materials in scope (bounded), used only to pick answerable topics. */
+  private async sourceTexts(u: AuthUser, c: string, scope: any): Promise<{ title: string; text: string }[]> {
+    const materials = (await this.knowledge.materials(u, c)).filter((m: any) => m.status === "READY");
+    const ids = scope?.mode === "selected" && Array.isArray(scope.material_ids) ? new Set<string>(scope.material_ids) : null;
+    const out: { title: string; text: string }[] = [];
+    for (const m of materials.filter((m: any) => !ids || ids.has(m.id)).slice(0, 8)) {
+      try {
+        const p = await this.knowledge.preview(u, c, m.id);
+        for (const seg of (p.segments || []).slice(0, 400)) if (seg.text?.trim()) out.push({ title: m.title, text: String(seg.text).slice(0, 2000) });
+      } catch {
+        /* an unreadable material only gives no topics */
+      }
+    }
+    return out;
   }
 
   private async run(
@@ -167,7 +188,10 @@ export class ExamsService implements OnModuleInit {
           }
         }
       }
-      if (!items.length) note = "Seçilen konular için kaynaklara dayalı soru hazırlanamadı. Konuları ders kaynaklarındaki başlıklara yaklaştırın.";
+      if (!items.length) {
+        const top = commonReason(failures);
+        note = "Seçilen konular için kaynaklara dayalı soru hazırlanamadı." + (top ? ` En sık neden (${top.count}/${failures.length} deneme): ${top.reason}` : "");
+      }
       else if (items.length < kinds.length) note = `${kinds.length} sorudan ${items.length}'i hazırlanabildi; kalanı için yeterli kaynak bulunamadı.`;
       await save(items.length === kinds.length ? "READY" : items.length ? "PARTIAL" : "FAILED", true);
     } catch (e: any) {
