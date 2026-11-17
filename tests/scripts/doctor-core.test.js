@@ -82,6 +82,17 @@ describe('diagnose', () => {
     expect(formatReport(diagnose({ ...base, dbLogin: { ok: true } }))).toContain('giriş yapılabiliyor')
     expect(formatReport(diagnose({ ...base, dbLogin: { skipped: true } }))).not.toContain('giriş')
   })
+  test('missing Poppler is a warning with the install hint, not a failure', () => {
+    const items = diagnose({ ...base, poppler: false })
+    expect(hasFailure(items)).toBe(false)
+    expect(formatReport(items)).toContain('Poppler')
+  })
+  test('a model that lists but does not answer is a failure with the reason', () => {
+    const items = diagnose({ ...base, modelProbe: { ok: false, error: 'HTTP 500: model requires more system memory' } })
+    expect(hasFailure(items)).toBe(true)
+    expect(formatReport(items)).toContain('more system memory')
+    expect(formatReport(diagnose({ ...base, modelProbe: { ok: true, ms: 2400 } }))).toContain('yanıt veriyor')
+  })
   test('a foreign process on the AI port is a failure that names the pid', () => {
     const items = diagnose({ ...base, ports: { ...base.ports, ai: { port: 8100, owner: 'foreign', pids: [10548] } } })
     expect(formatReport(items)).toContain('PID 10548')

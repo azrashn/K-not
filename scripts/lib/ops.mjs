@@ -125,3 +125,31 @@ export function dbLogin(dir) {
   const r = spawnSync(process.execPath, ['--env-file=.env', '-e', code], { cwd: backendDir, encoding: 'utf8', timeout: 25000, windowsHide: true })
   return r.status === 0 ? { ok: true } : { ok: false, error: (r.stderr || r.error?.message || 'bilinmeyen hata').split('\n').map((l) => l.trim()).find((l) => l && !/^Node\.js v/.test(l)) || 'bilinmeyen hata' }
 }
+
+/** Poppler (pdftoppm): PDF sayfa görüntüsü ve taranmış PDF için gerekir. PDFTOPPM_PATH ya da PATH. */
+export function popplerAvailable(explicitPath) {
+  if (explicitPath) return existsSync(explicitPath)
+  const r = spawnSync(WIN ? 'where' : 'which', ['pdftoppm'], { encoding: 'utf8', timeout: 5000, windowsHide: true })
+  return r.status === 0 && Boolean(r.stdout.trim())
+}
+
+/**
+ * Modele gerçekten bir istek gönderir (yalnızca model listesine bakmak yetmez: model belleğe sığmayabilir,
+ * adres yanlış olabilir). İlk istek modeli belleğe yükler, bu yüzden uzun sürebilir.
+ */
+export async function modelProbe(baseUrl, model, timeoutMs = 120000) {
+  const started = Date.now()
+  try {
+    const res = await fetch(`${baseUrl.replace(/\/+$/, '')}/chat/completions`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ model, messages: [{ role: 'user', content: 'Yalnızca "tamam" yaz.' }], max_tokens: 8, temperature: 0 }),
+      signal: AbortSignal.timeout(timeoutMs),
+    })
+    if (!res.ok) return { ok: false, error: `HTTP ${res.status}: ${(await res.text()).slice(0, 200).replace(/\s+/g, ' ')}` }
+    return { ok: true, ms: Date.now() - started }
+  } catch (e) {
+    const timeout = e?.name === 'TimeoutError'
+    return { ok: false, error: timeout ? `${Math.round(timeoutMs / 1000)} saniyede yanıt gelmedi (model yükleniyor ya da makine yavaş olabilir)` : `${e?.cause?.code || e?.name}: ${e?.cause?.message || e?.message}` }
+  }
+}
