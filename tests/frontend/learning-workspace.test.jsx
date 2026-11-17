@@ -316,3 +316,28 @@ test("response buttons send a real mode and the saved parent message", async () 
   });
   expect(api.knowledgeAnswer.mock.calls[1][1].explain_now).toBeUndefined();
 });
+
+
+test("Enter sends the question, Shift+Enter only adds a new line", async () => {
+  api.knowledgeAnswer.mockResolvedValue({ ...answer, status: "GENERATED_UNVERIFIED", llm_used: true });
+  const user = userEvent.setup();
+  render(<LearningWorkspace courseId="course" />);
+  await screen.findByRole("heading", { name: "Physics" });
+  const box = screen.getByLabelText("Ders kaynaklarına sorun");
+  await user.type(box, "Water?{Shift>}{Enter}{/Shift}Second line");
+  expect(box.value).toBe("Water?\nSecond line");
+  expect(api.knowledgeAnswer).not.toHaveBeenCalled();
+  await user.type(box, "{Enter}");
+  await screen.findByLabelText("Ders yanıtı 1");
+  expect(api.knowledgeAnswer).toHaveBeenCalledTimes(1);
+  expect(api.knowledgeAnswer.mock.calls[0][1].question).toBe("Water?\nSecond line");
+  expect(box.value).toBe("");
+});
+
+test("Enter on an empty question does nothing", async () => {
+  const user = userEvent.setup();
+  render(<LearningWorkspace courseId="course" />);
+  await screen.findByRole("heading", { name: "Physics" });
+  await user.type(screen.getByLabelText("Ders kaynaklarına sorun"), "{Enter}");
+  expect(api.knowledgeAnswer).not.toHaveBeenCalled();
+});

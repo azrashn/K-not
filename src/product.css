@@ -1028,6 +1028,12 @@
   border-radius: 6px;
   padding: 12px;
 }
+.chat-composer .composer-hint {
+  display: block;
+  margin-top: 6px;
+  font-size: 10px;
+  color: var(--color-ink-3);
+}
 .chat-composer > div {
   display: flex;
   align-items: center;

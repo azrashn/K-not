@@ -1,4 +1,5 @@
 import Voice from "../components/Voice";
+import { isSubmitKey } from "../lib/composer-keys";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api/endpoints";
 import { useApp } from "../app/store";
@@ -350,7 +351,13 @@ export default function LearningWorkspace({ courseId }) {
             ? explainTurn.retrieval.scope
             : requestScope,
         response_mode: responseMode,
-        reference_mode: responseMode !== "default" ? "conversation" : "auto",
+        // Kullanıcı açıkça bir bölge/metin seçtiyse soru o seçime aittir: sözcüklerden tahmin edilmez.
+        reference_mode:
+          responseMode !== "default"
+            ? "conversation"
+            : !videoId && (viewport?.region || viewport?.selected_text)
+              ? "viewport"
+              : "auto",
         ...(references.length
           ? { explicit_source_ids: references.map((e) => e.id) }
           : {}),
@@ -482,6 +489,13 @@ export default function LearningWorkspace({ courseId }) {
       })
       .catch(() => setError("Çalışma konumu kaydedilemedi."));
   }
+  const canSend =
+    !busy &&
+    !chatLoading &&
+    Boolean(question.trim()) &&
+    !(scopeMode === "selected" && !selectedMaterials.length) &&
+    !(scopeMode === "active" && !selected) &&
+    materials.some((m) => m.status === "READY");
   function sourceButton(e) {
     const checked = references.some((r) => r.id === e.id);
     return (
@@ -1292,12 +1306,21 @@ export default function LearningWorkspace({ courseId }) {
                 maxLength={2000}
                 rows={3}
                 onChange={(e) => setQuestion(e.target.value)}
+                aria-describedby="composer-hint"
+                onKeyDown={(e) => {
+                  if (!isSubmitKey(e)) return;
+                  e.preventDefault();
+                  if (canSend) void ask(e);
+                }}
                 placeholder={
                   selected
                     ? `${selected.kind === "VIDEO" ? "Bu anda" : "Bu bölümde"} anlamadığın ne var?`
                     : "Dersin hakkında bir soru sor…"
                 }
               />
+              <small id="composer-hint" className="composer-hint">
+                Enter gönderir · Shift+Enter yeni satır
+              </small>
               <div>
                 <span>
                   {selected
@@ -1313,17 +1336,7 @@ export default function LearningWorkspace({ courseId }) {
                       (viewport?.region ? " · Bölge seçili" : "")
                     : "Dersin hazır kaynakları"}
                 </span>
-                <Btn
-                  type="submit"
-                  disabled={
-                    busy ||
-                    chatLoading ||
-                    !question.trim() ||
-                    (scopeMode === "selected" && !selectedMaterials.length) ||
-                    (scopeMode === "active" && !selected) ||
-                    !materials.some((m) => m.status === "READY")
-                  }
-                >
+                <Btn type="submit" disabled={!canSend}>
                   {busy ? "İnceleniyor…" : "Gönder ↑"}
                 </Btn>
               </div>
