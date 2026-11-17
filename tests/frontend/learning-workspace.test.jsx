@@ -1,3 +1,4 @@
+import { voicePrefs } from "../../src/lib/speech";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import {
   act,
@@ -160,13 +161,15 @@ test("source-linked quiz navigation retains the actual question topic", async ()
   expect(nav).toHaveBeenCalledWith("/dersler/course/quiz", { topic: "Water?" });
 });
 
-test("missing voice start callback times out while written explanation remains usable", async () => {
+function stubSpeech(voices = [{ localService: true, lang: "tr-TR", name: "Yerel", voiceURI: "yerel" }]) {
   const speech = {
-    getVoices: () => [{ localService: true, lang: "tr-TR" }],
+    getVoices: () => voices,
     addEventListener: vi.fn(),
     removeEventListener: vi.fn(),
     cancel: vi.fn(),
     speak: vi.fn(),
+    pause: vi.fn(),
+    resume: vi.fn(),
   };
   vi.stubGlobal("speechSynthesis", speech);
   vi.stubGlobal(
@@ -177,29 +180,74 @@ test("missing voice start callback times out while written explanation remains u
       }
     },
   );
-  api.knowledgeAnswer.mockResolvedValue({
-    ...answer,
-    status: "GENERATED_UNVERIFIED",
-    llm_used: true,
-  });
-  const user = userEvent.setup();
+  return speech;
+}
+
+async function askWater(user) {
   render(<LearningWorkspace courseId="course" />);
   await screen.findByRole("heading", { name: "Physics" });
   await user.type(screen.getByLabelText("Ders kaynaklarına sorun"), "Water?");
   await user.click(
     screen.getByRole("button", { name: "Gönder ↑", exact: true }),
   );
-  const speak = await screen.findByRole("button", {
-    name: "Açıklamayı seslendir",
-  });
-  vi.useFakeTimers();
-  fireEvent.click(speak);
-  act(() => vi.advanceTimersByTime(12001));
-  expect(
-    screen.getByText("Seslendirme başarısız. Metni okuyabilirsin."),
-  ).toBeVisible();
-  expect(screen.getByText("[1] Water evaporates.")).toBeVisible();
+}
+
+test("a new answer is read aloud on its own while sound is on; a missing start callback times out and the text stays usable", async () => {
+  localStorage.clear();
+  voicePrefs.reload();
+  // Capture the 12 s start watchdog instead of faking all timers (React and user-event keep real ones).
+  const watchdogs = [];
+  const realSetTimeout = globalThis.setTimeout;
+  vi.spyOn(globalThis, "setTimeout").mockImplementation((fn, ms, ...rest) =>
+    ms === 12000 ? (watchdogs.push(fn), 0) : realSetTimeout(fn, ms, ...rest),
+  );
+  const speech = stubSpeech();
+  api.knowledgeAnswer.mockResolvedValue({ ...answer, status: "GENERATED_UNVERIFIED", llm_used: true });
+  const user = userEvent.setup();
+  await askWater(user);
+  await screen.findByRole("button", { name: "Açıklamayı seslendir" });
   expect(speech.speak).toHaveBeenCalledTimes(1);
+  expect(watchdogs).toHaveLength(1);
+  act(() => watchdogs[0]());
+  expect(screen.getByText("Seslendirme başarısız. Metni okuyabilirsin.")).toBeVisible();
+  expect(screen.getByText("[1] Water evaporates.")).toBeVisible();
+});
+
+test("after the user turns sound off, answers are no longer read aloud and the choice is remembered", async () => {
+  localStorage.clear();
+  voicePrefs.reload();
+  const speech = stubSpeech();
+  api.knowledgeAnswer.mockResolvedValue({ ...answer, status: "GENERATED_UNVERIFIED", llm_used: true });
+  const user = userEvent.setup();
+  await askWater(user);
+  await user.click(await screen.findByRole("button", { name: "Sesi kapat" }));
+  expect(screen.getByRole("button", { name: "Sesi aç" })).toBeVisible();
+  expect(JSON.parse(localStorage.getItem("knot.voice.prefs")).auto).toBe(false);
+  speech.speak.mockClear();
+  api.knowledgeAnswer.mockResolvedValue({ ...answer, answer: "Another answer.", status: "GENERATED_UNVERIFIED", llm_used: true });
+  await user.type(screen.getByLabelText("Ders kaynaklarına sorun"), "Again?");
+  await user.click(screen.getByRole("button", { name: "Gönder ↑", exact: true }));
+  await screen.findByLabelText("Ders yanıtı 2");
+  expect(speech.speak).not.toHaveBeenCalled();
+  await user.click(screen.getAllByRole("button", { name: "Açıklamayı seslendir" }).at(-1));
+  expect(speech.speak).toHaveBeenCalled();
+});
+
+test("a new answer scrolls to its own beginning instead of jumping to the bottom", async () => {
+  localStorage.clear();
+  voicePrefs.reload();
+  stubSpeech([]);
+  api.knowledgeAnswer.mockResolvedValue({ ...answer, status: "GENERATED_UNVERIFIED", llm_used: true });
+  const scrollTo = vi.fn();
+  Element.prototype.scrollTo = scrollTo;
+  const user = userEvent.setup();
+  await askWater(user);
+  await screen.findByLabelText("Ders yanıtı 1");
+  const calls = scrollTo.mock.calls.map((c) => c[0]);
+  expect(calls.length).toBeGreaterThan(0);
+  expect(calls.every((c) => c.top !== Infinity)).toBe(true);
+  // jsdom has no layout: the target is the turn's own top (0 - 0 + 0 - 8), never scrollHeight.
+  expect(calls.at(-1).top).toBe(-8);
 });
 
 test("stored conversation is restored without relying on in-memory answer receipts", async () => {

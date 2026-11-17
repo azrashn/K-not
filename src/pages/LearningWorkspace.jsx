@@ -1,3 +1,4 @@
+import Voice from "../components/Voice";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api/endpoints";
 import { useApp } from "../app/store";
@@ -31,137 +32,6 @@ const watchLabel = {
   UNKNOWN: "İzleme kaydı bilinmiyor",
 };
 
-function Voice({ text }) {
-  const [voice, setVoice] = useState(null),
-    [state, setState] = useState("idle"),
-    [rate, setRate] = useState(1);
-  const utteranceRef = useRef(null),
-    waiting = useRef(null);
-  useEffect(() => {
-    const speech = window.speechSynthesis;
-    if (!speech) return;
-    const refresh = () =>
-      setVoice(
-        speech
-          .getVoices()
-          .find((v) => v.localService && v.lang.startsWith("tr")) || null,
-      );
-    refresh();
-    speech.addEventListener("voiceschanged", refresh);
-    return () => {
-      clearTimeout(waiting.current);
-      utteranceRef.current = null;
-      speech.cancel();
-      speech.removeEventListener("voiceschanged", refresh);
-    };
-  }, []);
-  function speak() {
-    if (!voice) return;
-    const speech = window.speechSynthesis;
-    clearTimeout(waiting.current);
-    utteranceRef.current = null;
-    speech.cancel();
-    const utterance = new SpeechSynthesisUtterance(text);
-    utteranceRef.current = utterance;
-    utterance.voice = voice;
-    utterance.lang = voice.lang;
-    utterance.rate = rate;
-    utterance.onstart = () => {
-      if (utteranceRef.current === utterance) {
-        clearTimeout(waiting.current);
-        setState("playing");
-      }
-    };
-    utterance.onend = () => {
-      if (utteranceRef.current === utterance) {
-        clearTimeout(waiting.current);
-        utteranceRef.current = null;
-        setState("idle");
-      }
-    };
-    utterance.onerror = (e) => {
-      if (utteranceRef.current === utterance) {
-        clearTimeout(waiting.current);
-        utteranceRef.current = null;
-        setState(
-          ["canceled", "interrupted"].includes(e.error) ? "idle" : "error",
-        );
-      }
-    };
-    waiting.current = setTimeout(() => {
-      if (utteranceRef.current === utterance) {
-        utteranceRef.current = null;
-        speech.cancel();
-        setState("error");
-      }
-    }, 12000);
-    setState("loading");
-    speech.speak(utterance);
-  }
-  if (!voice)
-    return (
-      <p className="text-xs text-ink-3">
-        Yerel Türkçe ses bulunamadı. Yazılı açıklama kullanılabilir.
-      </p>
-    );
-  return (
-    <div className="flex flex-wrap items-center gap-3 text-xs">
-      <button
-        className="border border-hair px-3 py-2"
-        onClick={() => {
-          if (state === "playing") {
-            window.speechSynthesis.pause();
-            setState("paused");
-          } else if (state === "paused") {
-            window.speechSynthesis.resume();
-            setState("playing");
-          } else speak();
-        }}
-      >
-        {state === "playing"
-          ? "Seslendirmeyi duraklat"
-          : state === "paused"
-            ? "Seslendirmeye devam et"
-            : "Açıklamayı seslendir"}
-      </button>
-      <button
-        className="product-link"
-        disabled={state === "idle"}
-        onClick={() => {
-          clearTimeout(waiting.current);
-          utteranceRef.current = null;
-          window.speechSynthesis.cancel();
-          setState("idle");
-        }}
-      >
-        Durdur
-      </button>
-      <button className="product-link" onClick={speak}>
-        Baştan dinle
-      </button>
-      <label>
-        Hız{" "}
-        <select
-          aria-label="Seslendirme hızı"
-          value={rate}
-          onChange={(e) => setRate(Number(e.target.value))}
-        >
-          <option value="0.8">0,8×</option>
-          <option value="1">1×</option>
-          <option value="1.2">1,2×</option>
-        </select>
-      </label>
-      <span>
-        {state === "loading"
-          ? "Ses hazırlanıyor…"
-          : state === "error"
-            ? "Seslendirme başarısız. Metni okuyabilirsin."
-            : "Yerel Türkçe ses · görüntülenen metin"}
-      </span>
-    </div>
-  );
-}
-
 export default function LearningWorkspace({ courseId }) {
   const { navigate, takeIntent } = useApp();
   const limits = useLimits();
@@ -172,7 +42,8 @@ export default function LearningWorkspace({ courseId }) {
     [source, setSource] = useState(null);
   const [url, setUrl] = useState(null),
     [question, setQuestion] = useState(""),
-    [turns, setTurns] = useState([]);
+    [turns, setTurns] = useState([]),
+    [freshAnswer, setFreshAnswer] = useState(null);
   const [error, setError] = useState(""),
     [busy, setBusy] = useState(false),
     [uploading, setUploading] = useState(false);
@@ -230,12 +101,25 @@ export default function LearningWorkspace({ courseId }) {
       });
     return () => abort.abort();
   }, [courseId]);
+  // Yeni yanıt gelince sohbet en alta atlamaz: yanıtın başı görünür kalır, okuma yukarıdan başlar.
+  // Kaydedilmiş bir konuşma açılırken ise (çok sayıda yanıt birden) son yanıta inilir.
   useEffect(() => {
-    chatScroll.current?.scrollTo({
-      top: chatScroll.current.scrollHeight,
-      behavior: "auto",
-    });
-  }, [turns.length, busy]);
+    const box = chatScroll.current;
+    if (!box) return;
+    const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
+    const behavior = reduce ? "auto" : "smooth";
+    const last = turns.at(-1);
+    if (last && last === freshAnswer) {
+      const el = [...box.querySelectorAll(".chat-turn")].at(-1);
+      if (el)
+        box.scrollTo?.({
+          top: el.getBoundingClientRect().top - box.getBoundingClientRect().top + box.scrollTop - 8,
+          behavior,
+        });
+    } else {
+      box.scrollTo?.({ top: box.scrollHeight, behavior: "auto" });
+    }
+  }, [turns.length]);
   useEffect(() => {
     if (!materials.length || !intent.current) return;
     const next = intent.current;
@@ -515,6 +399,7 @@ export default function LearningWorkspace({ courseId }) {
       if (!abort.signal.aborted) {
         setRetryRequest(null);
         setTurns((old) => [...old.slice(-49), answer]);
+        setFreshAnswer(answer);
         setChatId(answer.chat_id || null);
         void api
           .conversations(courseId)
@@ -1239,7 +1124,7 @@ export default function LearningWorkspace({ courseId }) {
                     <div className="assistant-message">
                       <span className="message-author">✳ K-NOT</span>
                       <div className="message-tools">
-                        <Voice key={`voice-${i}`} text={t.answer || ""} />
+                        <Voice key={`voice-${i}`} text={t.answer || ""} autoPlay={t === freshAnswer} />
                         <button
                           className="product-link"
                           onClick={() =>
