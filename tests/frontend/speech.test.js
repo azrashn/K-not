@@ -72,3 +72,13 @@ describe('voicePrefs', () => {
     expect(voicePrefs.get().auto).toBe(true)
   })
 })
+
+import { textLanguage } from '../../src/lib/speech'
+describe('textLanguage', () => {
+  test('Turkish letters or words mean Turkish, otherwise English', () => {
+    expect(textLanguage('Taşıma katmanı süreçler arasında iletişim sağlar.')).toBe('tr')
+    expect(textLanguage('Bu bir ornek ve daha fazlasi')).toBe('tr')
+    expect(textLanguage('The transport layer is used for process to process delivery.')).toBe('en')
+    expect(textLanguage('')).toBe('en')
+  })
+})

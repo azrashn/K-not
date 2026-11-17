@@ -14,6 +14,7 @@ import { AccessService } from './courses/access.service';
 import { CoursesController } from './courses/courses.controller';
 import { DocumentsModule } from './documents/documents.module';
 import { VideosModule } from './videos/videos.module';
+import { TtsModule } from './tts/tts.module';
 import { HealthController } from './health/health.controller';
 import { InternalCallbacksController } from './jobs/internal-callbacks.controller';
 import { JobsService } from './jobs/jobs.service';
@@ -29,7 +30,6 @@ import { LearningService } from './learning/learning.service';
 import { LearningController } from './learning/learning.controller';
 import { ExamsController } from './learning/exams.controller';
 import { LimitsController } from './common/limits.controller';
-import { SpeechController } from './speech/speech.controller';
 import { ExamsService } from './learning/exams.service';
 import { UploadAccessGuard } from './documents/upload-access.guard';
 import { LocalStorage, Storage } from './storage/storage';
@@ -63,8 +63,8 @@ export class AppModule implements NestModule {
   static forRoot(config: AppConfig): DynamicModule {
     return {
       module: AppModule,
-      imports: [CoreModule.forRoot(config), DocumentsModule, VideosModule],
-      controllers: [HealthController, AuthController, CoursesController, AnswersController, InternalCallbacksController, KnowledgeController,LearningController,ExamsController,LimitsController,SpeechController],
+      imports: [CoreModule.forRoot(config), DocumentsModule, VideosModule, TtsModule],
+      controllers: [HealthController, AuthController, CoursesController, AnswersController, InternalCallbacksController, KnowledgeController,LearningController,ExamsController,LimitsController],
       providers: [
         RagService,
         KnowledgeService,

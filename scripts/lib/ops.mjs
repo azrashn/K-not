@@ -154,10 +154,11 @@ export async function modelProbe(baseUrl, model, timeoutMs = 120000) {
   }
 }
 
-/** Yerel Türkçe ses (Piper) kurulu mu: ses dosyası var ve paket içe aktarılabiliyor. */
-export function localVoiceState(aiDir, voicePath) {
-  const model = path.isAbsolute(voicePath || '') ? voicePath : path.join(aiDir, voicePath || path.join('models', 'tts', 'tr_TR-dfki-medium.onnx'))
-  if (!existsSync(model)) return { installed: false, reason: 'VOICE_MISSING' }
+/** Yerel ses (Piper) gerçekten çalışabilir mi: Türkçe ses dosyaları, iki gizli anahtar ve Piper paketi. */
+export function localVoiceState(aiDir, { voicesDir, voice, keySecret, urlSecret }) {
+  const model = path.join(voicesDir, `${voice || 'tr_TR-dfki-medium'}.onnx`)
+  if (!existsSync(model) || !existsSync(`${model}.json`)) return { installed: false, reason: 'VOICE_MISSING' }
+  if ((keySecret || '').length < 16 || (urlSecret || '').length < 32) return { installed: false, reason: 'SECRET_MISSING' }
   const py = path.join(aiDir, '.venv', WIN ? 'Scripts' : 'bin', WIN ? 'python.exe' : 'python')
   if (!existsSync(py)) return { installed: false, reason: 'NO_VENV' }
   const r = spawnSync(py, ['-c', 'import piper'], { encoding: 'utf8', timeout: 20000, windowsHide: true })

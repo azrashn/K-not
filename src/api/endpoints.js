@@ -7,7 +7,7 @@ export const api = {
   login: (email, password) => request('POST', '/auth/login', { body: { email, password }, auth: false }),
   limits: (signal) => request('GET', '/limits', { signal }),
   ttsStatus: (signal) => request('GET', '/tts/status', { signal }),
-  tts: (text, signal) => request('POST', '/tts', { body: { text }, signal }),
+  tts: (text, lang, signal) => request('POST', '/tts', { body: { text, lang }, signal }),
   me: (signal) => request('GET', '/auth/me', { signal }),
 
   courses: (signal, archived = false) => request('GET', '/courses' + (archived ? '?archived=1' : ''), { signal }),

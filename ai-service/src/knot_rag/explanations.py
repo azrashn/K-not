@@ -16,6 +16,39 @@ from knot_rag.generation.providers.policy import is_local_endpoint
 from knot_rag.visual_context import prepare_image
 from knot_rag.claim_check import check_claims
 from knot_rag.structured import explanation_schema, visual_review_schema
+from knot_rag.steps import generate_steps
+
+
+def steps_enabled():
+    return os.environ.get("UNIFIED_STEPS_ENABLED", "true").strip().lower() not in ("0", "false", "no", "off")
+
+
+def steps_timeout():
+    try:
+        return max(5.0, min(60.0, float(os.environ.get("UNIFIED_STEPS_TIMEOUT_SECONDS", "60"))))
+    except ValueError:
+        return 60.0
+
+
+def board_steps(client, url, model, body, rendered):
+    """Board steps in a separate call (60 s budget with the repair). Visual answers get none here."""
+    if not steps_enabled() or body.image_base64:
+        return {"steps": [], "steps_status": "SKIPPED"}
+    provider = OpenAICompatibleProvider(url, model, client=client)
+    try:
+        result = generate_steps(
+            lambda request: provider.complete(request).text,
+            body.question,
+            body.evidence,
+            context=rendered,
+            timeout_seconds=steps_timeout(),
+        )
+    except Exception:  # the written answer is already valid; steps never break it
+        return {"steps": [], "steps_status": "FAILED"}
+    out = {"steps": result["steps"], "steps_status": result["steps_status"]}
+    if result["summary"]:
+        out["steps_summary"] = result["summary"]
+    return out
 from knot_rag.text import fold, question_key_terms, stem
 
 _TR_CHARS = re.compile(r"[çğıöşüÇĞİÖŞÜ]")
@@ -250,6 +283,10 @@ def explain(body):
     style, limit, word_limit = STYLES[mode]
     started = time.monotonic()
     lang = question_language(body.question)
+    def steps_for(rendered):
+        with httpx.Client() as steps_client:
+            return board_steps(steps_client, url, model, body, rendered)
+
     def finalize(claims, path):
         if mode == "short" and len(claims[0]["text"].split()) > 55:
             sentences = re.split(r"(?<=[.!?])\s+", claims[0]["text"])
@@ -308,6 +345,8 @@ def explain(body):
             "visual_analysis": visual,
             "generation_path": path,
             "generation_source_ids": [e.get("id") for e in body.evidence],
+            # Additive: the same answer step by step for the board (empty when it failed).
+            **steps_for(rendered),
         }
 
     def second_chance(provider_client):

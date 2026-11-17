@@ -8,3 +8,7 @@ build/
 .chroma/
 .env
 eval-report*.json
+
+# Board teacher voice: downloaded Piper voices and generated audio (never committed)
+piper-voices/
+tts-cache/

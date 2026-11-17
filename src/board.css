@@ -1,0 +1,265 @@
+/* Tahta + öğretmen. Renkler index.css'teki @theme token'larından gelir; vurgu yalnızca kobalt. */
+
+/* Caveat (SIL OFL 1.1, public/fonts/caveat/OFL.txt): tahtadaki el yazısı. latin-ext ğ, ş, İ taşır. */
+@font-face {
+  font-family: 'Caveat';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 400 700;
+  src: url('/fonts/caveat/caveat-latin-ext-wght-normal.woff2') format('woff2-variations');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329,
+    U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: 'Caveat';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 400 700;
+  src: url('/fonts/caveat/caveat-latin-wght-normal.woff2') format('woff2-variations');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+    U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+.font-hand { font-family: 'Caveat', 'Segoe Print', 'Comic Sans MS', cursive; }
+
+/* Yüzey: kâğıt üstünde beyaz tahta, net 1px sınır. */
+.board-surface {
+  position: relative;
+  display: flex;
+  overflow: hidden;
+  border: 1px solid var(--color-line);
+  border-radius: 12px;
+  background: var(--color-sheet);
+}
+.board-scroll {
+  position: relative;
+  min-width: 0;
+  flex: 1;
+  min-height: 12rem;
+  max-height: max(16rem, calc(100dvh - 22rem));
+  overflow-y: auto;
+  padding: 1.5rem 1.25rem;
+}
+.board-scroll.has-aside { padding-right: 4.75rem; }
+.board-aside {
+  pointer-events: none;
+  position: absolute;
+  right: 0.5rem;
+  top: 0.75rem;
+  width: 3.75rem;
+}
+@media (min-width: 768px) {
+  .board-scroll { padding: 1.75rem 1.75rem; }
+  .board-scroll.has-aside { padding-right: 0.75rem; }
+  .board-aside {
+    position: static;
+    display: flex;
+    align-items: flex-end;
+    flex-shrink: 0;
+    width: 9rem;
+    padding: 1.5rem 0.75rem 0 0;
+  }
+}
+
+/* Adım: o an anlatılan tam koyu, bitenler geri çekilir. */
+.board-step {
+  display: flex;
+  gap: 0.75rem;
+  transition: opacity 400ms var(--ease-out);
+}
+.board-step.is-dimmed { opacity: 0.45; }
+.board-step.is-dimmed:hover { opacity: 0.75; }
+
+.board-step-number {
+  align-self: flex-start;
+  width: 1.5rem;
+  flex-shrink: 0;
+  margin-top: 0.125rem;
+  border-radius: 6px;
+  text-align: left;
+  font-size: 1.6rem;
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--color-ink-3);
+  transition: color 150ms ease;
+}
+.board-step-number:hover,
+.board-step[data-active] .board-step-number { color: var(--color-accent); }
+
+.board-hand {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  font-size: 1.75rem;
+  font-weight: 500;
+  line-height: 1.25;
+  color: var(--color-ink);
+}
+
+/* Formüller: sola yaslı, yazı renginde, el yazısı boyutunda. */
+.board-tex-block { display: block; overflow-x: auto; padding: 0.25rem 0; }
+.board-formula .katex-display,
+.board-formula .katex-display > .katex { margin: 0; text-align: left; }
+.board-formula .katex { font-size: 1.15em; color: var(--color-ink); }
+.board-tex-inline .katex { font-size: 0.72em; color: var(--color-ink); }
+
+/* Kaynak listesi tahtanın kendi genişliği yeterse yanına, değilse altına gelir. */
+.step-board { container-type: inline-size; }
+.board-layout { display: grid; gap: 0.75rem; }
+@container (min-width: 760px) {
+  .board-layout { grid-template-columns: minmax(0, 1fr) 13rem; }
+}
+
+/* Çalışma alanında, materyalin üstünde açılan tahta. */
+.workspace-board {
+  padding: 16px 18px 18px;
+  border-bottom: 1px solid var(--color-hair);
+}
+.workspace-board-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.workspace-board-head p {
+  margin: 4px 0 0;
+  font-size: 14px;
+  font-weight: 550;
+  letter-spacing: -0.01em;
+  color: var(--color-ink);
+}
+
+/* Oynatma düğmeleri: net 1px sınır, sakin hover, basılıyken koyu. */
+.board-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  height: 2rem;
+  padding: 0 0.625rem;
+  border: 1px solid var(--color-line);
+  border-radius: 8px;
+  background: var(--color-sheet);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-ink-2);
+  white-space: nowrap;
+}
+.board-control:hover:not(:disabled) { border-color: var(--color-line-strong); color: var(--color-ink); }
+.board-control:disabled { opacity: 0.4; }
+.board-control[aria-pressed='true'],
+.board-control[aria-pressed='true']:hover:not(:disabled) { border-color: var(--color-ink); background: var(--color-ink); color: var(--color-sheet); }
+
+.board-badge {
+  display: inline-flex;
+  align-items: center;
+  height: 1.5rem;
+  padding: 0 0.5rem;
+  border: 1px solid var(--color-line);
+  border-radius: 6px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--color-ink-3);
+}
+
+.board-caption {
+  margin-top: 0.5rem;
+  overflow: hidden;
+  border: 1px solid var(--color-line);
+  border-radius: 10px;
+  background: var(--color-surface);
+}
+
+/* Kaynak etiketleri ve alıntı */
+.board-chip {
+  display: inline-flex;
+  align-items: center;
+  height: 1.5rem;
+  padding: 0 0.5rem;
+  border: 1px solid var(--color-accent-line);
+  border-radius: 6px;
+  background: var(--color-sheet);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--color-accent);
+}
+.board-chip:hover { border-color: var(--color-accent); background: var(--color-accent-tint); }
+.board-chip.is-muted { border-color: var(--color-line); color: var(--color-ink-3); cursor: default; }
+.board-chip.is-muted:hover { background: var(--color-sheet); }
+
+.board-quote {
+  display: block;
+  margin: 0;
+  max-width: 42rem;
+  padding: 0;
+  text-align: left;
+  font-family: var(--font-serif);
+  font-size: 13.5px;
+  font-style: italic;
+  line-height: 1.5;
+  color: var(--color-ink-3);
+}
+button.board-quote:hover { color: var(--color-accent); }
+
+.board-sources {
+  align-self: start;
+  border: 1px solid var(--color-line);
+  border-radius: 12px;
+  background: var(--color-sheet);
+}
+.board-source-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.375rem;
+  border-radius: 8px;
+  transition: background-color 150ms ease;
+}
+.board-source-row:hover { background: var(--color-paper); }
+.board-source-row.is-active { background: var(--color-accent-tint); }
+.board-source-step {
+  display: grid;
+  place-items: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  flex-shrink: 0;
+  border: 1px solid var(--color-line);
+  border-radius: 6px;
+  font-size: 11.5px;
+  color: var(--color-ink-2);
+}
+.board-source-row.is-active .board-source-step { border-color: var(--color-accent); color: var(--color-accent); }
+
+/* Öğretmen: sade, düşük doygunluklu giysiler; tek vurgu kalemin ucunda. */
+.teacher {
+  --figure-skin: #d8b49b;
+  --figure-hair: #2a2522;
+  --figure-top: #474d5c;
+  --figure-sleeve: #555c6c;
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+.teacher .t-skin { fill: var(--figure-skin); }
+.teacher .t-skin-stroke { stroke: var(--figure-skin); }
+.teacher .t-hair { fill: var(--figure-hair); }
+.teacher .t-brow { stroke: var(--figure-hair); }
+.teacher .t-top { fill: var(--figure-top); }
+.teacher .t-top-hem { fill: var(--color-ink); fill-opacity: 0.18; }
+.teacher .t-sleeve { stroke: var(--figure-sleeve); }
+.teacher .t-sleeve-far { stroke: color-mix(in srgb, var(--figure-top) 82%, var(--color-ink)); }
+.teacher .t-cuff { stroke: var(--color-sheet); }
+.teacher .t-shirt { fill: var(--color-sheet); stroke: var(--color-line-strong); stroke-width: 0.5; }
+.teacher .t-trousers { fill: var(--color-ink-2); }
+.teacher .t-shoe { fill: var(--color-ink); }
+.teacher .t-eye { fill: var(--color-ink); }
+.teacher .t-line { stroke: var(--color-ink); stroke-opacity: 0.4; }
+.teacher .t-mouth { fill: var(--color-ink); fill-opacity: 0.75; }
+.teacher .t-marker { fill: var(--color-ink); }
+.teacher .t-marker-tip { fill: var(--color-accent); }
+.teacher .t-dots { fill: var(--color-ink-3); }
+
+@media (prefers-reduced-motion: reduce) {
+  .board-step { transition: none; }
+}

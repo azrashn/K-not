@@ -10,6 +10,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { getEnv, setEnv } from './lib/envfile.mjs'
 import { classifyPortOwner, effectiveDockerStatus, diagnose, formatReport, hasFailure, modelNames, prefersLoopbackIp, useLoopbackIp } from './lib/doctor-core.mjs'
+import { resolveVoicesDir } from './lib/tts-install.mjs'
 import { databaseTarget, dbLogin, localVoiceState, modelProbe, popplerAvailable, dockerStatus, fetchJson, listeningPids, mysqlState, tcpReachable } from './lib/ops.mjs'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
@@ -54,7 +55,12 @@ const ollama = llm.configured ? await (async () => {
 
 const deep = process.argv.includes('--deep')
 const facts = {
-  localVoice: localVoiceState(path.join(ROOT, 'ai-service'), getEnv(AI_ENV, 'TTS_VOICE_PATH')),
+  localVoice: localVoiceState(path.join(ROOT, 'ai-service'), {
+    voicesDir: resolveVoicesDir(path.join(ROOT, 'ai-service'), getEnv(AI_ENV, 'TTS_VOICES_DIR')),
+    voice: getEnv(AI_ENV, 'TTS_VOICE_TR'),
+    keySecret: getEnv(AI_ENV, 'TTS_KEY_SECRET'),
+    urlSecret: getEnv(BACKEND_ENV, 'TTS_URL_SECRET'),
+  }),
   poppler: popplerAvailable(getEnv(AI_ENV, 'PDFTOPPM_PATH')),
   modelProbe: deep && llm.configured && ollama?.reachable ? await modelProbe(baseUrl, model) : null,
   node: process.versions.node,

@@ -1,0 +1,5 @@
+# Optional: board teacher voice (local Piper TTS). Without it /api/v1/tts answers 503.
+#   pip install -r requirements-tts.txt
+# piper-tts is GPL-3.0 (running it as a service is not distribution). It brings onnxruntime and espeak-ng.
+# Voice files (.onnx + .onnx.json) are NOT in the repository; see README "Board teacher voice".
+piper-tts==1.3.0

@@ -108,3 +108,13 @@ export const voicePrefs = {
   },
   reload() { state = read(); listeners.forEach((fn) => fn()) },
 }
+
+/** Okunacak metnin dili: Türkçe harf ya da sık Türkçe sözcük varsa 'tr', yoksa 'en'. Yerel ses buna göre seçilir. */
+export function textLanguage(text) {
+  const t = String(text || '')
+  if (/[çğıöşüÇĞİÖŞÜ]/.test(t)) return 'tr'
+  const words = t.toLowerCase().match(/[a-z]+/g) || []
+  const tr = words.filter((w) => ['ve', 'bir', 'bu', 'icin', 'ile', 'olarak', 'gibi', 'daha'].includes(w)).length
+  const en = words.filter((w) => ['the', 'and', 'of', 'to', 'is', 'are', 'for', 'with', 'that'].includes(w)).length
+  return tr > en ? 'tr' : 'en'
+}

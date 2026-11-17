@@ -4,36 +4,30 @@ import { api } from '../api/endpoints'
 // Sıradaki cümle, çalan bitmeden hazırlanır; böylece cümleler arasında boşluk kalmaz.
 
 let status = null
-/** Yerel ses kurulu mu? Sonuç sayfa ömrü boyunca hatırlanır; hata/yanıt yoksa "yok" sayılır. */
+/** Yerel ses kurulu mu, hangi dillerde? Sonuç sayfa ömrü boyunca hatırlanır; hata/yanıt yoksa "yok" sayılır. */
 export function loadLocalVoice() {
   if (!status) {
     status = Promise.resolve()
       .then(() => api.ttsStatus())
-      .then((s) => ({ available: s?.available === true, voice: s?.voice || null }))
-      .catch(() => ({ available: false, voice: null }))
+      .then((s) => ({ available: s?.available === true, languages: { tr: s?.languages?.tr === true, en: s?.languages?.en === true } }))
+      .catch(() => ({ available: false, languages: { tr: false, en: false } }))
   }
   return status
 }
 export function resetLocalVoice() { status = null }
 
-function toBlobUrl(base64, mime) {
-  const bin = atob(base64)
-  const bytes = new Uint8Array(bin.length)
-  for (let i = 0; i < bin.length; i += 1) bytes[i] = bin.charCodeAt(i)
-  return URL.createObjectURL(new Blob([bytes], { type: mime || 'audio/wav' }))
-}
-
-export async function fetchSpeechUrl(text, signal) {
-  const r = await api.tts(text, signal)
-  if (!r?.audio_base64) throw new Error('empty audio')
-  return toBlobUrl(r.audio_base64, r.mime)
+/** Sunucu sesi üretip önbelleğe koyar ve süreli, imzalı bir adres döner; tarayıcı sesi bu adresten çalar. */
+export async function fetchSpeechUrl(text, signal, lang = 'tr') {
+  const r = await api.tts(text, lang, signal)
+  if (!r?.url) throw new Error('empty audio')
+  return r.url
 }
 
 /**
  * Cümle sırasını çalar. onState: 'loading' | 'playing' | 'paused' | 'idle' | 'blocked' | 'error'.
  * `blocked`: tarayıcı kullanıcı etkileşimi olmadan sesi engelledi (otomatik oynatma).
  */
-export function createQueuePlayer({ chunks, rate = 1, onState, fetchUrl = fetchSpeechUrl, makeAudio = (url) => new Audio(url), revoke = (url) => URL.revokeObjectURL(url) }) {
+export function createQueuePlayer({ chunks, rate = 1, onState, fetchUrl = fetchSpeechUrl, makeAudio = (url) => new Audio(url), revoke = (url) => { if (String(url).startsWith('blob:')) URL.revokeObjectURL(url) } }) {
   let run = 0
   let ctl = null
   let audio = null

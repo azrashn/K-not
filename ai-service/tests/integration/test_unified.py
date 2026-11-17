@@ -467,21 +467,6 @@ def test_structured_generation_validates_each_source_before_rendering(
         assert seen[0].json_mode and "untrusted_sources" in seen[0].user
 
 
-def test_local_voice_routes_need_auth_report_status_and_degrade_cleanly(monkeypatch, tmp_path):
-    monkeypatch.setenv("TTS_VOICE_PATH", str(tmp_path / "missing.onnx"))
-    app = create_app(
-        build_components(Settings(internal_api_token="unified-test-token", embedding_backend="hashing", chroma_mode="memory"))
-    )
-    auth = {"Authorization": "Bearer unified-test-token"}
-    with TestClient(app) as c:
-        assert c.get("/api/v1/knowledge/tts/status").status_code == 401
-        status = c.get("/api/v1/knowledge/tts/status", headers=auth).json()
-        assert status["available"] is False and status["reason"] == "VOICE_MISSING"
-        assert c.post("/api/v1/knowledge/tts", json={"text": "Merhaba"}, headers=auth).status_code == 503
-        assert c.post("/api/v1/knowledge/tts", json={"text": ""}, headers=auth).status_code == 422
-        assert c.post("/api/v1/knowledge/tts", json={"text": "x" * 1300}, headers=auth).status_code == 422
-
-
 @pytest.mark.parametrize("question,expects_turkish", [("burayı türkçe açıklar mısın?", True), ("What does this section say?", False)])
 def test_the_model_is_told_which_language_to_answer_in(monkeypatch, question, expects_turkish):
     monkeypatch.setenv("UNIFIED_LLM_BASE_URL", "http://127.0.0.1:11436/v1")

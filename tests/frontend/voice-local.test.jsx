@@ -7,7 +7,8 @@ import { voicePrefs } from '../../src/lib/speech'
 const players = []
 let available = true
 vi.mock('../../src/lib/local-voice', () => ({
-  loadLocalVoice: () => Promise.resolve({ available, voice: 'tr_TR-dfki-medium' }),
+  loadLocalVoice: () => Promise.resolve({ available, languages: { tr: available, en: false } }),
+  fetchSpeechUrl: vi.fn(async () => '/api/tts/audio/x.wav'),
   createQueuePlayer: (opts) => {
     const p = { opts, play: vi.fn(async () => opts.onState('loading')), stop: vi.fn(), pause: vi.fn(), resume: vi.fn(), setRate: vi.fn() }
     players.push(p)
@@ -72,5 +73,15 @@ test('the engine can be switched to the browser voice and the choice is remember
   expect(JSON.parse(localStorage.getItem('knot.voice.prefs')).engine).toBe('browser')
   await user.click(screen.getByRole('button', { name: 'Açıklamayı seslendir' }))
   expect(speech.speak).toHaveBeenCalledTimes(1)
+  expect(players).toHaveLength(0)
+})
+
+
+test('an English answer is not read with the Turkish local voice when no English voice is installed', async () => {
+  const speech = browserSpeech()
+  vi.stubGlobal('speechSynthesis', { ...speech, getVoices: () => [{ localService: true, lang: 'en-US', name: 'E', voiceURI: 'e' }, { localService: true, lang: 'tr-TR', name: 'Yerel', voiceURI: 'y' }] })
+  const user = userEvent.setup()
+  render(<Voice text="The transport layer moves segments between processes on different hosts." />)
+  await user.click(await screen.findByRole('button', { name: 'Açıklamayı seslendir' }))
   expect(players).toHaveLength(0)
 })

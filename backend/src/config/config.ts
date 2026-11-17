@@ -27,6 +27,10 @@ export interface AppConfig {
   answerTimeoutMs: number;
   retrieveTimeoutMs: number;
   ingestionTimeoutMs: number;
+  /** Signs board teacher audio URLs; null = TTS off (POST /api/tts answers 503). */
+  ttsUrlSecret: string | null;
+  /** Path the browser reaches this API under (the audio URL is built with it). */
+  ttsPublicPrefix: string;
 }
 
 export class ConfigError extends Error {}
@@ -79,7 +83,16 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     answerTimeoutMs: (llmTimeoutSeconds + 5) * 1000,
     retrieveTimeoutMs: int(env, 'RAG_RETRIEVE_TIMEOUT_MS', 10_000, 100),
     ingestionTimeoutMs: int(env, 'INGESTION_TIMEOUT_MS', 10_000, 100),
+    ttsUrlSecret: env.TTS_URL_SECRET || null,
+    ttsPublicPrefix: (env.TTS_PUBLIC_PREFIX || '/api').replace(/\/+$/, ''),
   };
+  if (cfg.ttsUrlSecret !== null) {
+    if (cfg.ttsUrlSecret.length < 32) throw new ConfigError('TTS_URL_SECRET must be at least 32 characters');
+    if ([cfg.jwtSecret, cfg.ragInternalApiToken, cfg.ingestCallbackToken].includes(cfg.ttsUrlSecret)) {
+      throw new ConfigError('TTS_URL_SECRET must differ from the other secrets');
+    }
+  }
+  if (!/^(\/[A-Za-z0-9._~-]+)*$/.test(cfg.ttsPublicPrefix)) throw new ConfigError('TTS_PUBLIC_PREFIX must be a path like /api');
   if (cfg.ingestCallbackToken === cfg.ragInternalApiToken) {
     throw new ConfigError('INGEST_CALLBACK_TOKEN must differ from RAG_INTERNAL_API_TOKEN');
   }

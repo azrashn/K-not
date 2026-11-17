@@ -163,4 +163,6 @@ def create_app(components: Components) -> FastAPI:
 
     from knot_rag.unified import install
     install(app, components, require_internal_auth)
+    from knot_rag.tts.routes import install as install_tts
+    install_tts(app, require_internal_auth)
     return app

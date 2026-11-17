@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
-import { createQueuePlayer, loadLocalVoice } from '../lib/local-voice'
-import { SPEECH_RATES, rankVoices, speechText, splitSpeech, voicePrefs } from '../lib/speech'
+import { createQueuePlayer, fetchSpeechUrl, loadLocalVoice } from '../lib/local-voice'
+import { SPEECH_RATES, rankVoices, speechText, splitSpeech, textLanguage, voicePrefs } from '../lib/speech'
 
 const fmt = (r) => `${String(r).replace('.', ',')}×`
 
@@ -12,7 +12,7 @@ const fmt = (r) => `${String(r).replace('.', ',')}×`
 export default function Voice({ text, autoPlay = false }) {
   const prefs = useSyncExternalStore(voicePrefs.subscribe, voicePrefs.get)
   const [voices, setVoices] = useState([])
-  const [local, setLocal] = useState({ available: false, voice: null })
+  const [local, setLocal] = useState({ available: false, languages: { tr: false, en: false } })
   const [localKnown, setLocalKnown] = useState(false)
   const [state, setState] = useState('idle') // idle | loading | playing | paused | error | blocked
   const run = useRef(0)
@@ -23,7 +23,9 @@ export default function Voice({ text, autoPlay = false }) {
   const chunks = useMemo(() => splitSpeech(speechText(text)), [text])
   const ranked = useMemo(() => rankVoices(voices, { allowOnline: prefs.online }), [voices, prefs.online])
   const voice = ranked.find((v) => v.voiceURI === prefs.voiceURI) || ranked[0] || null
-  const engine = local.available && prefs.engine !== 'browser' ? 'local' : voice ? 'browser' : null
+  // Türkçe metin Türkçe sesle, İngilizce metin İngilizce sesle okunur; o dilde yerel ses yoksa tarayıcı sesi.
+  const lang = useMemo(() => textLanguage(text), [text])
+  const engine = local.available && local.languages?.[lang] && prefs.engine !== 'browser' ? 'local' : voice ? 'browser' : null
 
   useEffect(() => {
     let alive = true
@@ -94,6 +96,7 @@ export default function Voice({ text, autoPlay = false }) {
     const p = createQueuePlayer({
       chunks,
       rate: prefs.rate,
+      fetchUrl: (chunk, signal) => fetchSpeechUrl(chunk, signal, lang),
       onState: (s) => {
         if (run.current !== id) return
         // Yerel ses çalışmazsa (model yüklenemedi vb.) tarayıcı sesine düş.

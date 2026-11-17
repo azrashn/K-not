@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect } from 'react'
+import { lazy, Suspense, useEffect, useSyncExternalStore } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import { X } from '@phosphor-icons/react'
 import { AppProvider, useApp, pathFor } from './app/store'
@@ -99,6 +99,17 @@ function Shell() {
   )
 }
 
+// Tahta deneme sayfası (#/tahta-deneme) yalnızca geliştirmede vardır; production build'e girmez.
+const DevRoutes = import.meta.env.DEV ? (() => {
+  const BoardDemo = lazy(() => import('./pages/BoardDemo'))
+  const onHash = (cb) => { window.addEventListener('hashchange', cb); return () => window.removeEventListener('hashchange', cb) }
+  const isBoardDemo = () => /^#\/?tahta-deneme\/?$/.test(window.location.hash)
+  return function DevRoutes({ children }) {
+    const demo = useSyncExternalStore(onHash, isBoardDemo)
+    return demo ? <Suspense fallback={null}><BoardDemo /></Suspense> : children
+  }
+})() : ({ children }) => children
+
 // Korunan uygulama: oturum yoksa (ya da süresi dolduysa) giriş ekranı. Rota (#/...) korunur.
 function Gate() {
   const { authenticated } = useAuth()
@@ -112,8 +123,10 @@ function Gate() {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <Gate />
-    </AuthProvider>
+    <DevRoutes>
+      <AuthProvider>
+        <Gate />
+      </AuthProvider>
+    </DevRoutes>
   )
 }
