@@ -8,13 +8,32 @@ The result is shown to the student next to the answer and never marks anything a
 
 import re
 
-from knot_rag.text import content_tokens, has_negation, numbers, stem, stem_in, stem_set
+from knot_rag.text import content_tokens, fold, has_negation, numbers, stem, stem_in, stem_set
 
 SUPPORTED_COVERAGE = 0.7
 PARTIAL_COVERAGE = 0.35
 MAX_MISSING_FOR_SUPPORTED = 1
 MIN_TERMS = 3
-METHOD = "lexical-v1"
+METHOD = "lexical-v2"
+# Linking verbs and fillers a writer adds when rephrasing a source sentence ("services include ...",
+# "such as", "using"). They carry no claim of their own, so a source lacking them is not evidence against it.
+LIGHT_WORDS = frozenset(
+    fold(w)
+    for w in """
+    include includes included including enable enables enabled enabling using use uses used like such
+    provide provides provided providing allow allows allowed make makes made give gives given
+    called known also can may might well various several many other some more most often
+    typically generally mainly main basic basically based thing things way ways kind kinds type types
+    içerir içeren sağlar sağlayan kullanarak kullanır kullanılır gibi çeşitli birçok genellikle
+    """.split()
+)
+_MIN_SUBSTRING = 6
+
+
+def _collapsed(text):
+    """Source text with every separator removed, so `e-commerce` / `multi-media` still contain
+    `commerce` / `multimedia`."""
+    return re.sub(r"\W+", "", fold(text))
 
 
 def _sentences(text):
@@ -33,17 +52,21 @@ def _best_sentence(claim_stems, cited_texts):
 
 def check_claim(claim_text, cited_texts):
     """{label, coverage, missing_terms, unmatched_numbers, negation_mismatch, method, verified}."""
-    words = [t for t in dict.fromkeys(content_tokens(claim_text)) if not t.replace(".", "").replace(",", "").isdigit()]
+    words = [t for t in dict.fromkeys(content_tokens(claim_text))
+             if not t.replace(".", "").replace(",", "").isdigit() and t not in LIGHT_WORDS]
     base = {"method": METHOD, "verified": False}
     if len(words) < MIN_TERMS:
         return {**base, "label": "PARTIAL", "coverage": None, "missing_terms": [], "unmatched_numbers": [],
                 "negation_mismatch": False, "reason": "TOO_SHORT_TO_CHECK"}
     source_stems = set()
     source_numbers = set()
+    collapsed = ""
     for text in cited_texts:
         source_stems |= stem_set(text)
         source_numbers |= numbers(text)
-    missing = [t for t in words if not stem_in(stem(t), source_stems)]
+        collapsed += " " + _collapsed(text)
+    missing = [t for t in words
+               if not stem_in(stem(t), source_stems) and not (len(t) >= _MIN_SUBSTRING and t in collapsed)]
     coverage = round(1 - len(missing) / len(words), 2)
     unmatched = sorted(n for n in numbers(claim_text) if n not in source_numbers)
     claim_stems = {stem(t) for t in words}

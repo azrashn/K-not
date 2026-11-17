@@ -18,10 +18,18 @@ export default function ClaimSupport({ claims }) {
   if (!checked.length) return null;
   const ok = checked.filter((c) => c.support.label === "SUPPORTED").length;
   const weak = checked.filter((c) => c.support.label === "UNSUPPORTED").length;
+  const partial = checked.length - ok - weak;
+  // "0/3" gibi bir sayı, kısmen örtüşen iddiaları yok sayıp yanıtın yanlış olduğunu düşündürürdü:
+  // gerçek dağılımı yaz.
+  const parts = [
+    ok > 0 && `${ok} örtüşüyor`,
+    partial > 0 && `${partial} kısmen örtüşüyor`,
+    weak > 0 && `${weak} kaynakta zayıf`,
+  ].filter(Boolean);
   return (
     <details className="claim-support" open={ok < checked.length}>
       <summary>
-        Kaynak kontrolü: {ok}/{checked.length} iddia kaynakla örtüşüyor
+        Kaynak kontrolü: {checked.length} iddia — {parts.join(", ")}
       </summary>
       {weak > 0 && (
         <p role="note" className="claim-support-warning">

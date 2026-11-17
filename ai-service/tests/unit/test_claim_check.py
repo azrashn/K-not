@@ -57,5 +57,23 @@ def test_each_claim_is_checked_only_against_the_sources_it_cites():
     ]
     checked, summary = check_claims(claims, evidence)
     assert [c["support"]["label"] for c in checked] == ["SUPPORTED", "UNSUPPORTED"]
-    assert summary == {"SUPPORTED": 1, "PARTIAL": 0, "UNSUPPORTED": 1, "total": 2, "method": "lexical-v1", "verified": False}
+    assert summary == {"SUPPORTED": 1, "PARTIAL": 0, "UNSUPPORTED": 1, "total": 2, "method": "lexical-v2", "verified": False}
     assert "support" not in claims[0]  # input is not mutated
+
+
+def test_reworded_claim_with_linking_verbs_and_hyphenated_terms_is_supported():
+    source = ("Internet services: web, streaming video, multi-media teleconferencing, email, games, "
+              "e-commerce, social media, interconnected appliances.")
+    claim = "Services include web, streaming video, multimedia teleconferencing, email, games, e-commerce, social media, and interconnected appliances."
+    out = check_claim(claim, [source])
+    assert out["label"] == "SUPPORTED", out
+    assert out["missing_terms"] == []
+
+
+def test_light_words_do_not_hide_a_genuinely_missing_term():
+    source = "Transport services allow communication between application processes on different hosts."
+    claim = "Transport services enable communication between application processes using quantum encryption."
+    out = check_claim(claim, [source])
+    assert "quantum" in out["missing_terms"] and "encryption" in out["missing_terms"]
+    assert out["label"] != "SUPPORTED"
+    assert "enable" not in out["missing_terms"] and "using" not in out["missing_terms"]

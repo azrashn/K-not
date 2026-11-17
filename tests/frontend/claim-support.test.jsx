@@ -12,7 +12,7 @@ test('nothing is shown for answers without a source check', () => {
 
 test('a fully matching answer is collapsed with a plain count and no warning', () => {
   render(<ClaimSupport claims={[claim('Kuyruk FIFO çalışır.', 'SUPPORTED'), claim('BFS kuyruk kullanır.', 'SUPPORTED')]} />)
-  expect(screen.getByText('Kaynak kontrolü: 2/2 iddia kaynakla örtüşüyor')).toBeInTheDocument()
+  expect(screen.getByText('Kaynak kontrolü: 2 iddia — 2 örtüşüyor')).toBeInTheDocument()
   expect(screen.queryByRole('note')).toBeNull()
   expect(document.querySelector('details')).not.toHaveAttribute('open')
 })
@@ -24,7 +24,7 @@ test('a weak claim opens the check, warns, and says what is missing', () => {
     claim('BFS 7 düğümü gezer.', 'PARTIAL', { reason: 'NUMBER_NOT_IN_SOURCE', unmatched_numbers: ['7'] }),
     claim('Özyineleme ile budanır.', 'UNSUPPORTED', { reason: 'LOW_COVERAGE', missing_terms: ['özyineleme', 'budanır'] }),
   ]} />)
-  expect(screen.getByText('Kaynak kontrolü: 1/4 iddia kaynakla örtüşüyor')).toBeInTheDocument()
+  expect(screen.getByText('Kaynak kontrolü: 4 iddia — 1 örtüşüyor, 1 kısmen örtüşüyor, 2 kaynakta zayıf')).toBeInTheDocument()
   expect(screen.getByRole('note')).toHaveTextContent('zayıf örtüşüyor')
   expect(document.querySelector('details')).toHaveAttribute('open')
   const items = screen.getAllByRole('listitem')
