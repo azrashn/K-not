@@ -751,6 +751,10 @@ class UnifiedIndex:
             }
 
 
+class SpeechText(StrictModel):
+    text: str = Field(min_length=1, max_length=1200)
+
+
 def install(app, components, auth):
     index = UnifiedIndex(components)
     app.state.unified = index
@@ -815,6 +819,25 @@ def install(app, components, auth):
         from knot_rag.quiz_quality import quiz as quality_quiz
 
         return quality_quiz(body)
+
+    from knot_rag import tts as speech
+
+    engine = speech.SpeechEngine(speech.config_from_env())
+    app.state.speech = engine
+
+    @router.get("/tts/status")
+    def tts_status():
+        return engine.status()
+
+    @router.post("/tts")
+    def tts(body: SpeechText):
+        try:
+            wav = engine.synthesize(body.text)
+        except speech.TtsRejected as exc:
+            raise HTTPException(422, str(exc)) from exc
+        except speech.TtsUnavailable as exc:
+            raise HTTPException(503, "Local voice unavailable") from exc
+        return {"mime": "audio/wav", "voice": engine.config.voice_name, "audio_base64": base64.b64encode(wav).decode()}
 
     app.include_router(router)
     from knot_rag.visuals import install as install_visuals

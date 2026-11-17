@@ -131,6 +131,22 @@ npm run test:e2e   # gerçek uçtan uca: Chromium → vite preview → NestJS �
 
 `test:e2e` boş, ayrı bir MySQL veritabanı ister (`E2E_DATABASE_URL`; varsayılan `mysql://knot:knot-dev-password@localhost:3306/knot_e2e`), önceden `npm run build` ve `backend/` içinde `npm run build` gerekir. Veritabanını sıfırlamaz; içinde belge varsa çalışmayı reddeder. Gömme için model indirmeyen `hashing` arka ucunu, yanıt için çıkarımsal temel sağlayıcıyı (LLM değil) kullanır. Chromium yolu: `CHROMIUM_PATH` (varsayılan `/opt/pw-browsers/chromium`).
 
+## Yerel doğal ses (seslendirme)
+
+Yanıtlar varsayılan olarak otomatik seslendirilir ("Sesi kapat" ile kapatılır). Tarayıcının kendi Windows
+sesi robotiktir; daha doğal, tamamen çevrimdışı bir Türkçe ses için (tek seferlik, ~60 MB):
+
+```
+npm run tts:install
+npm run stop:all
+npm run start:all
+```
+
+Betik Piper paketini AI servisinin sanal ortamına kurar, ses modelini `ai-service/models/tts` içine indirir
+(`.gitignore`'dadır, repoya girmez) ve bir deneme cümlesi üretir. Başka bir ses için `npm run tts:install -- --voice fettah`
+(`dfki`, `fahrettin`, `fettah`). Kurulu değilse uygulama tarayıcı sesine düşer; `npm run doctor` durumu gösterir.
+Metin bu bilgisayardan çıkmaz. Ses dosyalarının lisansını kullanmadan önce model sayfasından kontrol edin.
+
 ## Sayfalar (hash tabanlı rota)
 
 | Rota | Sayfa | Veri |

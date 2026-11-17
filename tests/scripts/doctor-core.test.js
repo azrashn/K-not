@@ -82,6 +82,12 @@ describe('diagnose', () => {
     expect(formatReport(diagnose({ ...base, dbLogin: { ok: true } }))).toContain('giriş yapılabiliyor')
     expect(formatReport(diagnose({ ...base, dbLogin: { skipped: true } }))).not.toContain('giriş')
   })
+  test('a missing local voice is only a warning that names the install command', () => {
+    const items = diagnose({ ...base, localVoice: { installed: false, reason: 'VOICE_MISSING' } })
+    expect(hasFailure(items)).toBe(false)
+    expect(formatReport(items)).toContain('npm run tts:install')
+    expect(formatReport(diagnose({ ...base, localVoice: { installed: true } }))).toContain('Yerel doğal ses kurulu')
+  })
   test('missing Poppler is a warning with the install hint, not a failure', () => {
     const items = diagnose({ ...base, poppler: false })
     expect(hasFailure(items)).toBe(false)

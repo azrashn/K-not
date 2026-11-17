@@ -10,7 +10,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { getEnv, setEnv } from './lib/envfile.mjs'
 import { classifyPortOwner, effectiveDockerStatus, diagnose, formatReport, hasFailure, modelNames, prefersLoopbackIp, useLoopbackIp } from './lib/doctor-core.mjs'
-import { databaseTarget, dbLogin, modelProbe, popplerAvailable, dockerStatus, fetchJson, listeningPids, mysqlState, tcpReachable } from './lib/ops.mjs'
+import { databaseTarget, dbLogin, localVoiceState, modelProbe, popplerAvailable, dockerStatus, fetchJson, listeningPids, mysqlState, tcpReachable } from './lib/ops.mjs'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const BACKEND_ENV = path.join(ROOT, 'backend', '.env')
@@ -54,6 +54,7 @@ const ollama = llm.configured ? await (async () => {
 
 const deep = process.argv.includes('--deep')
 const facts = {
+  localVoice: localVoiceState(path.join(ROOT, 'ai-service'), getEnv(AI_ENV, 'TTS_VOICE_PATH')),
   poppler: popplerAvailable(getEnv(AI_ENV, 'PDFTOPPM_PATH')),
   modelProbe: deep && llm.configured && ollama?.reachable ? await modelProbe(baseUrl, model) : null,
   node: process.versions.node,

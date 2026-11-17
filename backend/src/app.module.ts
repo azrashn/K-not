@@ -29,6 +29,7 @@ import { LearningService } from './learning/learning.service';
 import { LearningController } from './learning/learning.controller';
 import { ExamsController } from './learning/exams.controller';
 import { LimitsController } from './common/limits.controller';
+import { SpeechController } from './speech/speech.controller';
 import { ExamsService } from './learning/exams.service';
 import { UploadAccessGuard } from './documents/upload-access.guard';
 import { LocalStorage, Storage } from './storage/storage';
@@ -63,7 +64,7 @@ export class AppModule implements NestModule {
     return {
       module: AppModule,
       imports: [CoreModule.forRoot(config), DocumentsModule, VideosModule],
-      controllers: [HealthController, AuthController, CoursesController, AnswersController, InternalCallbacksController, KnowledgeController,LearningController,ExamsController,LimitsController],
+      controllers: [HealthController, AuthController, CoursesController, AnswersController, InternalCallbacksController, KnowledgeController,LearningController,ExamsController,LimitsController,SpeechController],
       providers: [
         RagService,
         KnowledgeService,

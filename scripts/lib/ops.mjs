@@ -153,3 +153,13 @@ export async function modelProbe(baseUrl, model, timeoutMs = 120000) {
     return { ok: false, error: timeout ? `${Math.round(timeoutMs / 1000)} saniyede yanıt gelmedi (model yükleniyor ya da makine yavaş olabilir)` : `${e?.cause?.code || e?.name}: ${e?.cause?.message || e?.message}` }
   }
 }
+
+/** Yerel Türkçe ses (Piper) kurulu mu: ses dosyası var ve paket içe aktarılabiliyor. */
+export function localVoiceState(aiDir, voicePath) {
+  const model = path.isAbsolute(voicePath || '') ? voicePath : path.join(aiDir, voicePath || path.join('models', 'tts', 'tr_TR-dfki-medium.onnx'))
+  if (!existsSync(model)) return { installed: false, reason: 'VOICE_MISSING' }
+  const py = path.join(aiDir, '.venv', WIN ? 'Scripts' : 'bin', WIN ? 'python.exe' : 'python')
+  if (!existsSync(py)) return { installed: false, reason: 'NO_VENV' }
+  const r = spawnSync(py, ['-c', 'import piper'], { encoding: 'utf8', timeout: 20000, windowsHide: true })
+  return r.status === 0 ? { installed: true } : { installed: false, reason: 'PIPER_MISSING' }
+}

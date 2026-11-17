@@ -1,46 +1,61 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import { createQueuePlayer, loadLocalVoice } from '../lib/local-voice'
 import { SPEECH_RATES, rankVoices, speechText, splitSpeech, voicePrefs } from '../lib/speech'
 
 const fmt = (r) => `${String(r).replace('.', ',')}×`
 
 /**
- * Yanıtı seslendirir. Biçimli metin önce düzyazıya çevrilir ve cümle cümle okunur (uzun konuşmalar yarıda
- * kesilmez, cümle aralarında doğal duraklama olur). `autoPlay` ve tercih "ses açık" ise yeni yanıt kendiliğinden
- * okunur; kullanıcı "Sesi kapat" dediği sürece okunmaz.
+ * Yanıtı seslendirir. Biçimli metin önce düzyazıya çevrilir ve cümle cümle okunur.
+ * İki ses motoru: (1) yerel sinirsel ses (Piper, çevrimdışı; kuruluysa varsayılan) ve (2) tarayıcının sesleri.
+ * `autoPlay` ve tercih "ses açık" ise yeni yanıt kendiliğinden okunur; "Sesi kapat" dedikçe okunmaz.
  */
 export default function Voice({ text, autoPlay = false }) {
   const prefs = useSyncExternalStore(voicePrefs.subscribe, voicePrefs.get)
   const [voices, setVoices] = useState([])
-  const [state, setState] = useState('idle') // idle | loading | playing | paused | error
+  const [local, setLocal] = useState({ available: false, voice: null })
+  const [localKnown, setLocalKnown] = useState(false)
+  const [state, setState] = useState('idle') // idle | loading | playing | paused | error | blocked
   const run = useRef(0)
   const started = useRef(false)
   const timer = useRef(null)
+  const player = useRef(null)
   const autoDone = useRef(false)
   const chunks = useMemo(() => splitSpeech(speechText(text)), [text])
   const ranked = useMemo(() => rankVoices(voices, { allowOnline: prefs.online }), [voices, prefs.online])
   const voice = ranked.find((v) => v.voiceURI === prefs.voiceURI) || ranked[0] || null
+  const engine = local.available && prefs.engine !== 'browser' ? 'local' : voice ? 'browser' : null
 
   useEffect(() => {
+    let alive = true
+    loadLocalVoice().then((s) => { if (alive) { setLocal(s); setLocalKnown(true) } })
     const speech = window.speechSynthesis
-    if (!speech) return
-    const refresh = () => setVoices(speech.getVoices())
-    refresh()
-    speech.addEventListener('voiceschanged', refresh)
-    return () => {
-      run.current += 1
-      clearTimeout(timer.current)
-      if (started.current) speech.cancel()
-      speech.removeEventListener('voiceschanged', refresh)
+    if (speech) {
+      const refresh = () => setVoices(speech.getVoices())
+      refresh()
+      speech.addEventListener('voiceschanged', refresh)
+      return () => {
+        alive = false
+        run.current += 1
+        clearTimeout(timer.current)
+        player.current?.stop(false)
+        if (started.current) speech.cancel()
+        speech.removeEventListener('voiceschanged', refresh)
+      }
     }
+    return () => { alive = false; player.current?.stop(false) }
   }, [])
+
+  useEffect(() => { player.current?.setRate(prefs.rate) }, [prefs.rate])
 
   function halt() {
     run.current += 1
     clearTimeout(timer.current)
-    if (started.current) window.speechSynthesis.cancel()
+    player.current?.stop(false)
+    player.current = null
+    if (started.current && window.speechSynthesis) window.speechSynthesis.cancel()
   }
 
-  function speak() {
+  function speakBrowser() {
     if (!voice || !chunks.length) return
     const speech = window.speechSynthesis
     halt()
@@ -72,20 +87,57 @@ export default function Voice({ text, autoPlay = false }) {
     next()
   }
 
+  function speakLocal() {
+    if (!chunks.length) return
+    halt()
+    const id = run.current
+    const p = createQueuePlayer({
+      chunks,
+      rate: prefs.rate,
+      onState: (s) => {
+        if (run.current !== id) return
+        // Yerel ses çalışmazsa (model yüklenemedi vb.) tarayıcı sesine düş.
+        if (s === 'error' && voice) { speakBrowser(); return }
+        setState(s)
+      },
+    })
+    player.current = p
+    void p.play()
+  }
+
+  function speak() {
+    if (engine === 'local') speakLocal()
+    else if (engine === 'browser') speakBrowser()
+  }
+
   function stop() {
     halt()
     setState('idle')
   }
 
+  function pause() {
+    if (player.current) player.current.pause()
+    else window.speechSynthesis.pause()
+    setState('paused')
+  }
+  function resume() {
+    if (player.current) player.current.resume()
+    else window.speechSynthesis.resume()
+    setState('playing')
+  }
+
   useEffect(() => {
-    if (autoPlay && prefs.auto && voice && !autoDone.current) {
+    // Yerel ses durumu bilinmeden başlama: yoksa önce tarayıcı sesiyle başlayıp yerel sesi kaçırırdı.
+    if (autoPlay && prefs.auto && localKnown && engine && !autoDone.current) {
       autoDone.current = true
       speak()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoPlay, prefs.auto, voice])
+  }, [autoPlay, prefs.auto, engine, localKnown])
 
-  if (!window.speechSynthesis || !ranked.length) {
+  if (!localKnown) return null
+
+  if (!engine) {
     return (
       <p className="text-xs text-ink-3">
         Yerel Türkçe ses bulunamadı. Yazılı açıklama kullanılabilir.
@@ -94,6 +146,8 @@ export default function Voice({ text, autoPlay = false }) {
           <input type="checkbox" checked={prefs.online} onChange={(e) => voicePrefs.set({ online: e.target.checked })} />
           Çevrimiçi Türkçe sesleri de dene
         </label>
+        {' '}
+        <span>Daha doğal yerel ses için: <code className="font-mono">npm run tts:install</code></span>
       </p>
     )
   }
@@ -103,8 +157,8 @@ export default function Voice({ text, autoPlay = false }) {
       <button
         className="border border-hair px-3 py-2"
         onClick={() => {
-          if (state === 'playing') { window.speechSynthesis.pause(); setState('paused') }
-          else if (state === 'paused') { window.speechSynthesis.resume(); setState('playing') }
+          if (state === 'playing') pause()
+          else if (state === 'paused') resume()
           else speak()
         }}
       >
@@ -121,6 +175,7 @@ export default function Voice({ text, autoPlay = false }) {
       </button>
       <span>
         {state === 'loading' ? 'Ses hazırlanıyor…'
+          : state === 'blocked' ? 'Tarayıcı otomatik oynatmayı engelledi. "Açıklamayı seslendir"e basın.'
           : state === 'error' ? 'Seslendirme başarısız. Metni okuyabilirsin.'
           : prefs.auto ? 'Yeni yanıtlar otomatik okunur' : 'Otomatik seslendirme kapalı'}
       </span>
@@ -133,7 +188,16 @@ export default function Voice({ text, autoPlay = false }) {
               {SPEECH_RATES.map((r) => <option key={r} value={r}>{fmt(r)}</option>)}
             </select>
           </label>
-          {ranked.length > 1 && (
+          {local.available && (
+            <label>
+              Ses motoru{' '}
+              <select aria-label="Ses motoru" value={prefs.engine} onChange={(e) => { stop(); voicePrefs.set({ engine: e.target.value }) }}>
+                <option value="auto">Yerel doğal ses (çevrimdışı)</option>
+                <option value="browser">Tarayıcı sesi</option>
+              </select>
+            </label>
+          )}
+          {engine === 'browser' && ranked.length > 1 && (
             <label>
               Ses{' '}
               <select aria-label="Ses seçimi" value={voice?.voiceURI || ''} onChange={(e) => voicePrefs.set({ voiceURI: e.target.value })}>
@@ -141,11 +205,15 @@ export default function Voice({ text, autoPlay = false }) {
               </select>
             </label>
           )}
-          <label className="inline-flex items-center gap-1">
-            <input type="checkbox" checked={prefs.online} onChange={(e) => voicePrefs.set({ online: e.target.checked })} />
-            Daha doğal çevrimiçi sesleri de kullan
-          </label>
-          {prefs.online && <span className="text-ink-3">Çevrimiçi seslerde metin tarayıcının ses sağlayıcısına gidebilir.</span>}
+          {engine === 'browser' && (
+            <label className="inline-flex items-center gap-1">
+              <input type="checkbox" checked={prefs.online} onChange={(e) => voicePrefs.set({ online: e.target.checked })} />
+              Daha doğal çevrimiçi sesleri de kullan
+            </label>
+          )}
+          {engine === 'browser' && prefs.online && <span className="text-ink-3">Çevrimiçi seslerde metin tarayıcının ses sağlayıcısına gidebilir.</span>}
+          {engine === 'local' && <span className="text-ink-3">Metin bu bilgisayardan çıkmaz.</span>}
+          {engine === 'browser' && !local.available && <span className="text-ink-3">Daha doğal yerel ses için: <code className="font-mono">npm run tts:install</code></span>}
         </div>
       </details>
     </div>

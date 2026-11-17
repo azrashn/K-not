@@ -22,6 +22,8 @@ dependencies = [
 [project.optional-dependencies]
 # Production embedding backend (multilingual). Heavy (torch); install only where embeddings run.
 embeddings = ["sentence-transformers>=3.0"]
+# Optional local neural Turkish voice (installed with `npm run tts:install`, which also downloads the voice).
+tts = ["piper-tts>=1.3"]
 dev = ["pytest>=8", "python-pptx==1.0.2"]
 
 [tool.setuptools.packages.find]

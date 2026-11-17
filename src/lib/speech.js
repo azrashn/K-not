@@ -76,7 +76,7 @@ export function rankVoices(voices, { allowOnline = false } = {}) {
 }
 
 const KEY = 'knot.voice.prefs'
-const DEFAULTS = { auto: true, rate: 1, voiceURI: '', online: false }
+const DEFAULTS = { auto: true, rate: 1, voiceURI: '', online: false, engine: 'auto' }
 
 function read() {
   try {
@@ -87,6 +87,7 @@ function read() {
       rate: RATES.includes(raw.rate) ? raw.rate : DEFAULTS.rate,
       voiceURI: typeof raw.voiceURI === 'string' ? raw.voiceURI : '',
       online: raw.online === true,
+      engine: raw.engine === 'browser' ? 'browser' : 'auto',
     }
   } catch {
     return { ...DEFAULTS }

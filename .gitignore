@@ -63,3 +63,6 @@ __pycache__/
 .pytest_cache/
 *.egg-info/
 .chroma/
+
+# ── Yerel ses modelleri (npm run tts:install indirir; büyük ikili dosya, repoya girmez) ──
+ai-service/models/

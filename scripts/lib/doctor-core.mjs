@@ -166,6 +166,9 @@ export function diagnose(f) {
     else out.push(level('ok', `Yerel model hazır: ${f.llm.model}`))
   } else out.push(level('warn', 'Yerel model ayarlı değil (UNIFIED_LLM_BASE_URL / UNIFIED_LLM_MODEL)', 'ai-service/.env içine ekleyin; özet ve sınav üretimi için gerekli.'))
 
+  if (f.localVoice && !f.localVoice.installed)
+    out.push(level('warn', 'Yerel doğal ses kurulu değil: seslendirme tarayıcının (robotik) sesini kullanır', 'npm run tts:install   (tek seferlik, ~60 MB; sonra servisleri yeniden başlatın)'))
+  if (f.localVoice?.installed) out.push(level('ok', 'Yerel doğal ses kurulu (çevrimdışı)'))
   if (f.poppler === false)
     out.push(level('warn', 'Poppler (pdftoppm) kurulu değil: PDF sayfa görüntüleri ve taranmış PDF okuma çalışmaz ("Görüntü açılamadı")', 'Windows: winget install oschwartz10612.Poppler  (ya da scoop install poppler), sonra yeni terminal açıp start:all. Metin soruları etkilenmez.'))
   if (f.modelProbe)
