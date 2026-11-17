@@ -73,6 +73,15 @@ describe('diagnose', () => {
     expect(hasFailure(items)).toBe(true)
     expect(formatReport(items)).toContain('docker start knot_mysql')
   })
+  test('an open port is not enough: a failed real login is a failure with the reason', () => {
+    const items = diagnose({ ...base, dbLogin: { ok: false, error: 'pool timeout: failed to retrieve a connection' } })
+    expect(hasFailure(items)).toBe(true)
+    expect(formatReport(items)).toContain('pool timeout')
+  })
+  test('a successful real login is reported, and a skipped one adds nothing', () => {
+    expect(formatReport(diagnose({ ...base, dbLogin: { ok: true } }))).toContain('giriş yapılabiliyor')
+    expect(formatReport(diagnose({ ...base, dbLogin: { skipped: true } }))).not.toContain('giriş')
+  })
   test('a foreign process on the AI port is a failure that names the pid', () => {
     const items = diagnose({ ...base, ports: { ...base.ports, ai: { port: 8100, owner: 'foreign', pids: [10548] } } })
     expect(formatReport(items)).toContain('PID 10548')

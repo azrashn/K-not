@@ -138,6 +138,12 @@ export function diagnose(f) {
           ? level('ok', `Veritabanına bağlanılabiliyor (${db.host}:${db.port})`)
           : level('fail', `Veritabanına bağlanılamıyor (${db.host}:${db.port})`, 'MySQL konteynerinin sağlıklı olduğundan ve portun doğru olduğundan emin olun.'),
       )
+      if (f.mysqlReachable && f.dbLogin && !f.dbLogin.skipped)
+        out.push(
+          f.dbLogin.ok
+            ? level('ok', 'Veritabanına giriş yapılabiliyor (backend sürücüsüyle)')
+            : level('fail', `Veritabanına giriş yapılamıyor: ${f.dbLogin.error}`, 'Önce: cd backend && npm run build (güncel kodla dene). Sürerse backend/.env içindeki kullanıcı adı/şifre yanlış olabilir (sürücü bunu da "pool timeout" diye bildirir); docker logs knot_mysql çıktısına bakın.'),
+        )
       if (prefersLoopbackIp(f.databaseUrl))
         out.push(level('warn', 'DATABASE_URL "localhost" kullanıyor; Windows\'ta IPv6\'ya çözülüp bağlantı zaman aşımına uğrayabilir', 'npm run doctor -- --fix   (adresi 127.0.0.1 yapar)'))
     }

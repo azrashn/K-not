@@ -105,3 +105,23 @@ export async function fetchJson(url, timeout = 2500) {
     return null
   }
 }
+
+/**
+ * Gerçek giriş denemesi: backend'in kendi sürücüsü ve URL kuralıyla "select 1". Yalnızca portun açık
+ * olması yetmez; kimlik doğrulama yöntemi uyuşmazsa bağlantı sessizce takılır (pool timeout).
+ * Dönüş: {ok, error} ya da derlenmiş backend yoksa {skipped: true}.
+ */
+export function dbLogin(dir) {
+  const backendDir = path.resolve(dir)
+  const service = path.join(backendDir, 'dist', 'prisma', 'prisma.service.js')
+  if (!existsSync(service) || !existsSync(path.join(backendDir, '.env'))) return { skipped: true }
+  const code = `
+    const { mariaDbUrl } = require(${JSON.stringify(service)});
+    const { PrismaMariaDb } = require('@prisma/adapter-mariadb');
+    new PrismaMariaDb(mariaDbUrl(process.env.DATABASE_URL)).connect()
+      .then((c) => c.queryRaw({ sql: 'select 1 as ok', args: [], argTypes: [] }))
+      .then(() => process.exit(0))
+      .catch((e) => { console.error(String(e && e.message).split('\\n')[0]); process.exit(1) })`
+  const r = spawnSync(process.execPath, ['--env-file=.env', '-e', code], { cwd: backendDir, encoding: 'utf8', timeout: 25000, windowsHide: true })
+  return r.status === 0 ? { ok: true } : { ok: false, error: (r.stderr || r.error?.message || 'bilinmeyen hata').split('\n').map((l) => l.trim()).find((l) => l && !/^Node\.js v/.test(l)) || 'bilinmeyen hata' }
+}

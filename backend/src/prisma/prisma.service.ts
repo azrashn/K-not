@@ -17,9 +17,26 @@ export class PrismaService extends PrismaClient implements OnModuleDestroy {
   }
 }
 
-/** The MariaDB driver (used by Prisma's MySQL adapter) expects a mariadb:// URL. */
+/**
+ * The MariaDB driver (used by Prisma's MySQL adapter) expects a mariadb:// URL.
+ *
+ * MySQL 8.4 creates accounts with caching_sha2_password. Over a plain (non-TLS) connection the driver
+ * can only finish that login by fetching the server's public key; without permission it hangs and
+ * surfaces as "pool timeout". On a loopback address (local development, Docker published on
+ * 127.0.0.1) that is safe, so it is allowed unless the URL already decides. Remote hosts are left alone.
+ */
 export function mariaDbUrl(url: string): string {
-  return url.replace(/^mysql:\/\//, 'mariadb://');
+  const out = url.replace(/^mysql:\/\//, 'mariadb://');
+  let parsed: URL;
+  try {
+    parsed = new URL(out);
+  } catch {
+    return out;
+  }
+  const loopback = ['localhost', '127.0.0.1', '[::1]'].includes(parsed.hostname);
+  if (!loopback || parsed.searchParams.has('allowPublicKeyRetrieval')) return out;
+  parsed.searchParams.set('allowPublicKeyRetrieval', 'true');
+  return parsed.toString();
 }
 
 export function isUniqueViolation(e: unknown): boolean {

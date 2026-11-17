@@ -10,7 +10,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { getEnv, setEnv } from './lib/envfile.mjs'
 import { classifyPortOwner, effectiveDockerStatus, diagnose, formatReport, hasFailure, modelNames, prefersLoopbackIp, useLoopbackIp } from './lib/doctor-core.mjs'
-import { databaseTarget, dockerStatus, fetchJson, listeningPids, mysqlState, tcpReachable } from './lib/ops.mjs'
+import { databaseTarget, dbLogin, dockerStatus, fetchJson, listeningPids, mysqlState, tcpReachable } from './lib/ops.mjs'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const BACKEND_ENV = path.join(ROOT, 'backend', '.env')
@@ -57,6 +57,7 @@ const facts = {
   docker,
   mysqlState: docker === 'running' ? mysqlState() : 'missing',
   mysqlReachable: dbReachable,
+  dbLogin: dbReachable ? dbLogin(path.join(ROOT, 'backend')) : { skipped: true },
   databaseUrl: getEnv(BACKEND_ENV, 'DATABASE_URL'),
   envFiles: { missing: ['backend/.env', 'ai-service/.env'].filter((f) => !existsSync(path.join(ROOT, f))) },
   ports,

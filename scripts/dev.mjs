@@ -25,7 +25,9 @@ const cmd = process.argv[2] ?? 'status'
 
 const alive = (pid) => { try { process.kill(pid, 0); return true } catch { return false } }
 // 127.0.0.1: Windows'ta "localhost" IPv6'ya (::1) çözülüp servise ulaşılamıyor görünebilir.
-async function up(url) { try { return (await fetch(url.replace('localhost', '127.0.0.1'), { signal: AbortSignal.timeout(3000) })).status < 500 } catch { return false } }
+// Windows'ta Vite yalnızca "localhost" (IPv6) üzerinde dinleyebilir, API'ler 127.0.0.1'de: ikisini de dene.
+async function reachable(url) { try { return (await fetch(url, { signal: AbortSignal.timeout(3000) })).status < 500 } catch { return false } }
+async function up(url) { return (await reachable(url.replace('localhost', '127.0.0.1'))) || (await reachable(url)) }
 function tailLog(name, lines = 12) {
   const file = path.join(LOGS, `${name}.err.log`)
   if (!existsSync(file)) return ''
