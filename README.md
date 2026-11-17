@@ -156,3 +156,16 @@ Faz 1: ders materyali indeksleme, kaynağa dayalı soru-cevap, otomatik soru ür
 ## Yapay zekâ servisi (WBS-3 · RAG)
 
 Kaynağa dayalı yanıt motoru `ai-service/` altında ayrı bir Python (FastAPI) servisidir; yalnızca NestJS arka ucu tarafından çağrılır. Kurulum ve testler için [`ai-service/README.md`](ai-service/README.md), sözleşmeler için `docs/rag-architecture.md`, `docs/rag-api-contract.md`, `docs/rag-integration.md` ve `docs/rag-evaluation.md` dosyalarına bakın.
+
+## Tahta öğretmen sesi (isteğe bağlı)
+
+Asistan cevapları mevcut alanlara ek olarak `steps` (tahtaya yazılan adımlar) taşır. Adımlar sesli okunabilir: tarayıcı `POST /api/tts {text, lang: "tr"|"en"}` ile `{url}` alır; ses yerel Piper ile `ai-service` içinde üretilir ve aynı metin önbellekten döner.
+
+1. `cd ai-service && pip install -r requirements-tts.txt`
+2. Ses dosyalarını indirin (repoya **eklenmez**; `ai-service/piper-voices/` git dışıdır). Adımlar: [`ai-service/README.md` → "Board teacher voice"](ai-service/README.md#board-teacher-voice-optional-tts).
+3. `ai-service/.env`: `TTS_KEY_SECRET` (en az 16 rastgele karakter). `backend/.env`: `TTS_URL_SECRET` (en az 32 rastgele karakter, diğer sırlardan farklı).
+4. Frontend'de `src/api/tts.js` içindeki `TTS_ENABLED` değerini `true` yapın (kapalıyken tahta sessiz modda okuma süresiyle akar).
+
+**Ses adresi:** `<audio>` isteğe `Authorization` başlığı ekleyemez; bu yüzden adres imzalıdır: `/api/tts/audio/<anahtar>.wav?exp=…&sig=…`. Anahtar metnin sırla alınmış HMAC'idir (metinden tahmin edilemez), imza `TTS_URL_SECRET` ile atılır ve adres en fazla 24 saat geçerlidir. Geçersiz, süresi dolmuş ya da değiştirilmiş adres 404 döner.
+
+**Lisans:** varsayılan sesler (`tr_TR-dfki-medium`, `en_US-ryan-medium`) **CC BY-NC-SA 4.0** lisanslıdır: ticari kullanım yok, atıf gerekir. `piper-tts` GPL-3.0'dır.
