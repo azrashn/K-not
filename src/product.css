@@ -905,6 +905,15 @@
   font-weight: 600;
   color: var(--color-accent);
 }
+.answer-status-detail {
+  margin-top: 4px;
+  font-size: 10px;
+  color: var(--color-ink-3);
+  overflow-wrap: anywhere;
+}
+.answer-status-detail code {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+}
 .answer-mode {
   display: inline-block;
   margin-left: 8px;

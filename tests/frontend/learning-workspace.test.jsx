@@ -353,10 +353,11 @@ test("the answer says which style it was written in", async () => {
 });
 
 test("a failed model says why and that source sentences are shown instead", async () => {
-  api.knowledgeAnswer.mockResolvedValue({ ...answer, status: "GENERATION_FAILED_SOURCE_EXCERPTS", llm_used: false, generation_failure: "UNAVAILABLE" });
+  api.knowledgeAnswer.mockResolvedValue({ ...answer, status: "GENERATION_FAILED_SOURCE_EXCERPTS", llm_used: false, generation_failure: "UNAVAILABLE", generation_detail: "provider error 500: model requires more system memory" });
   const user = userEvent.setup();
   await askWater(user);
   const turn = await screen.findByLabelText("Ders yanıtı 1");
   expect(within(turn).getByText(/Ollama açık mı/)).toBeVisible();
   expect(within(turn).getByText(/model yorumu değil/)).toBeVisible();
+  expect(within(turn).getByText(/more system memory/)).toBeVisible();
 });

@@ -1166,6 +1166,11 @@ export default function LearningWorkspace({ courseId }) {
                         </p>
                       )}
                       <p className="answer-status">{statusLabel(t)}</p>
+                      {t.generation_detail && (
+                        <p className="answer-status-detail">
+                          Ayrıntı: <code>{t.generation_detail}</code>
+                        </p>
+                      )}
                       {(t.video_learning || []).map((l) => {
                         const e = evidence.find((e) => e.id === l.source_id);
                         return (
