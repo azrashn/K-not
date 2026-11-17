@@ -71,6 +71,7 @@
 .board-step.is-dimmed:hover { opacity: 0.75; }
 
 .board-step-number {
+  align-self: flex-start;
   width: 1.5rem;
   flex-shrink: 0;
   margin-top: 0.125rem;
@@ -119,7 +120,8 @@
 }
 .board-control:hover:not(:disabled) { border-color: var(--color-line-strong); color: var(--color-ink); }
 .board-control:disabled { opacity: 0.4; }
-.board-control[aria-pressed='true'] { border-color: var(--color-ink); background: var(--color-ink); color: var(--color-sheet); }
+.board-control[aria-pressed='true'],
+.board-control[aria-pressed='true']:hover:not(:disabled) { border-color: var(--color-ink); background: var(--color-ink); color: var(--color-sheet); }
 
 .board-badge {
   display: inline-flex;
