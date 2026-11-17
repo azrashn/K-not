@@ -268,3 +268,40 @@ test("response buttons send a real mode and the saved parent message", async () 
   });
   expect(api.knowledgeAnswer.mock.calls[1][1].explain_now).toBeUndefined();
 });
+
+const askWater = async () => {
+  const user = userEvent.setup();
+  render(<LearningWorkspace courseId="course" />);
+  await screen.findByRole("heading", { name: "Physics" });
+  await user.type(screen.getByLabelText("Ders kaynaklarına sorun"), "Water?");
+  await user.click(screen.getByRole("button", { name: "Gönder ↑", exact: true }));
+  await screen.findByText("Gerçek kaynak alıntıları · model üretimi değil");
+  return user;
+};
+
+test("an answer with steps opens the board in the workspace; its sources open the material", async () => {
+  api.knowledgeAnswer.mockResolvedValue({
+    ...answer,
+    steps: [{ board: "Su buharlaşır", speech: "Su ısınınca buharlaşır.", formula: null, mark: null, sources: [evidence.id], quote: "Water evaporates." }],
+  });
+  const user = await askWater();
+  const board = screen.getByRole("region", { name: "Tahtada anlatım" });
+  expect(board.querySelector(".board-step")).toBeInTheDocument();
+  expect(screen.getByText("[1] Water evaporates.")).toBeInTheDocument();
+
+  await user.click(board.querySelector(".board-sources .board-chip"));
+  await waitFor(() => expect(api.knowledgeSource).toHaveBeenCalledWith("course", m.id, evidence.id));
+
+  await user.click(screen.getByRole("button", { name: "Tahtayı kapat" }));
+  expect(screen.queryByRole("region", { name: "Tahtada anlatım" })).not.toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "Tahtada anlat" }));
+  expect(screen.getByRole("region", { name: "Tahtada anlatım" })).toBeInTheDocument();
+});
+
+test("an answer without steps (or with an empty list) stays a text answer", async () => {
+  api.knowledgeAnswer.mockResolvedValue({ ...answer, steps: [] });
+  await askWater();
+  expect(screen.getByText("[1] Water evaporates.")).toBeInTheDocument();
+  expect(screen.queryByRole("region", { name: "Tahtada anlatım" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Tahtada anlat" })).not.toBeInTheDocument();
+});

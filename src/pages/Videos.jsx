@@ -5,6 +5,8 @@ import { Btn, PageFrame } from '../components/ui'
 import { MobileBar } from '../components/PageBits'
 import { validateVideoFile, videoTime, videoErrorText as errorText } from '../lib/video'
 import { useVideoProgress } from '../hooks/useVideoProgress'
+import StepBoard from '../components/board/StepBoard'
+import { hasSteps } from '../lib/board/content'
 
 const STATES = { pending: 'Sırada', queued: 'Sırada', fetching: 'Video okunuyor', sampling: 'Kareler çıkarılıyor',
   embedding: 'Ses ve görseller hazırlanıyor', indexed: 'Hazır', failed: 'İşlenemedi', skipped: 'Daha önce işlendi' }
@@ -257,6 +259,10 @@ export default function Videos({ courseId }) {
               </p>}
               {answer.question && <p className="text-sm text-ink-2">Soru: {answer.question}</p>}
               <p className="whitespace-pre-wrap text-sm leading-relaxed">{answer.answer}</p>
+              {hasSteps(answer) && <section aria-label="Tahtada anlatım" className="pt-2">
+                <StepBoard steps={answer.steps} evidence={answer.citations || []}
+                  onSource={item => { if (Number.isFinite(item.ms)) seek(item.ms / 1000) }} />
+              </section>}
               <p className="text-xs text-ink-3" aria-label="Açıklamanın üretim durumu">
                 {answer.status === 'GUIDANCE' ? 'Kaynak bulundu; açıklama henüz üretilmedi.'
                   : answer.generation_status === 'SOURCE_CONFLICT' ? 'Kaynak tutarsızlığı nedeniyle model çağrılmadı.'

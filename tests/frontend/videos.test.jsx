@@ -132,3 +132,16 @@ test('unknown without a reliable timestamp does not manufacture jump/explain but
   expect(screen.queryByRole('button', { name: 'İlgili bölüme git' })).not.toBeInTheDocument()
   expect(screen.queryByRole('button', { name: 'Şimdi açıkla' })).not.toBeInTheDocument()
 })
+test('an answer with steps is explained on the board; a step source seeks the video', async () => {
+  api.videoAnswer.mockResolvedValue({ question: 'Prim nedir?', status: 'EXPLANATION', answer: 'Kaynaklı açıklama [1]', note: '',
+    citations: [{ n: 1, video_id: 'video-1', timestamp_ms: 20000, transcript: 'Gerçek kaynak' }],
+    steps: [{ board: 'Prim', speech: 'Prim tanımı.', formula: null, mark: null, sources: ['[1]'] }] })
+  render(<Videos courseId="course-1" />)
+  await screen.findByRole('button', { name: 'Kaldığın yere dön · 1:05' })
+  fireEvent.change(screen.getByLabelText('Video hakkında soru'), { target: { value: 'Prim nedir?' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Sor', exact: true }))
+  const board = await screen.findByRole('region', { name: 'Tahtada anlatım' })
+  expect(screen.getByText('Kaynaklı açıklama [1]')).toBeInTheDocument()
+  fireEvent.click(board.querySelector('.board-sources .board-chip'))
+  expect(screen.getByLabelText('Ders videosu').currentTime).toBe(20)
+})

@@ -261,6 +261,9 @@ export function stripStepNumber(board, index) {
   return stripped.trim() ? stripped : board
 }
 
+// Cevap tahtada anlatılabilir mi: steps listesi var ve boş değil.
+export const hasSteps = (answer) => Array.isArray(answer?.steps) && answer.steps.length > 0
+
 // Cevaptan gelen adımlar tahtaya hazır: tekrarlanan numara atılır, eksik metin alanları boş olur.
 export function boardSteps(steps) {
   return (steps || []).map((s, i) => ({

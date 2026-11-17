@@ -43,7 +43,7 @@ function StepBoardInner({ steps, evidence, onSource, fetchAudio, autoPlay, keybo
   return (
     <div ref={wrapperRef} className="space-y-3">
       <BoardToolbar board={board} teacher={prefs.teacher} onTeacher={() => setPrefs({ teacher: !prefs.teacher })} />
-      <div className={showSourceList && rows.length ? 'grid gap-3 xl:grid-cols-[minmax(0,1fr)_13rem]' : ''}>
+      <div className={showSourceList && rows.length ? 'board-layout' : ''}>
         <div className="min-w-0">
           <Board
             steps={board.steps}

@@ -8,6 +8,8 @@ import { videoTime, videoErrorText } from "../lib/video";
 import DocumentCanvas from "../components/DocumentCanvas";
 import VideoProgressPanel from "../components/VideoProgressPanel";
 import { MaterialRename } from "../components/ProductUI";
+import StepBoard from "../components/board/StepBoard";
+import { hasSteps } from "../lib/board/content";
 
 const locationLabel = (l) =>
   l.kind === "video"
@@ -180,6 +182,9 @@ export default function LearningWorkspace({ courseId }) {
     [linkBusy, setLinkBusy] = useState(false);
   const [renaming, setRenaming] = useState(null);
   const [retryRequest, setRetryRequest] = useState(null);
+  // Tahtada anlatılan cevap (steps taşıyorsa); yoksa çalışma alanı eskisi gibi.
+  const [boardTurn, setBoardTurn] = useState(null);
+  const viewerTop = useRef(null);
   const [viewport, setViewport] = useState(null),
     [scopeMode, setScopeMode] = useState("course"),
     [selectedMaterials, setSelectedMaterials] = useState([]),
@@ -254,6 +259,7 @@ export default function LearningWorkspace({ courseId }) {
           })),
       );
       setChatId(id);
+      setBoardTurn(null);
       sessionStorage.setItem(`knot.chat.${courseId}`, id);
     } catch (e) {
       setError(videoErrorText(e));
@@ -506,6 +512,7 @@ export default function LearningWorkspace({ courseId }) {
       if (!abort.signal.aborted) {
         setRetryRequest(null);
         setTurns((old) => [...old.slice(-49), answer]);
+        setBoardTurn(hasSteps(answer) ? answer : null);
         setChatId(answer.chat_id || null);
         void api
           .conversations(courseId)
@@ -545,6 +552,7 @@ export default function LearningWorkspace({ courseId }) {
       setSegments([]);
       setConfirmDelete(false);
       setTurns([]);
+      setBoardTurn(null);
       await refresh();
     } catch (e) {
       setError(videoErrorText(e));
@@ -570,6 +578,7 @@ export default function LearningWorkspace({ courseId }) {
     activeRequest.current?.abort();
     setBusy(false);
     setTurns([]);
+    setBoardTurn(null);
     setChatId(null);
     setRetryRequest(null);
     sessionStorage.removeItem(`knot.chat.${courseId}`);
@@ -587,6 +596,15 @@ export default function LearningWorkspace({ courseId }) {
         ...(s ? { segment_id: s.id } : {}),
       })
       .catch(() => setError("Çalışma konumu kaydedilemedi."));
+  }
+  // Tahtadaki kaynak: kanıtsa materyali o yerde açar, yalnızca zamansa açık videoyu o ana götürür.
+  async function openBoardSource(item) {
+    if (item.evidence?.material_id) await openEvidence(item.evidence);
+    else if (Number.isFinite(item.ms) && videoId && player.current) {
+      player.current.currentTime = item.ms / 1000;
+      setCurrentMs(item.ms);
+    }
+    viewerTop.current?.scrollIntoView?.({ block: "start", behavior: "smooth" });
   }
   function sourceButton(e) {
     const checked = references.some((r) => r.id === e.id);
@@ -886,6 +904,25 @@ export default function LearningWorkspace({ courseId }) {
             </span>
             <h2>{selected?.title || "Kaynağın burada açılacak"}</h2>
           </header>
+          {boardTurn && (
+            <section className="workspace-board" aria-label="Tahtada anlatım">
+              <div className="workspace-board-head">
+                <div>
+                  <span className="product-eyebrow">Tahtada anlatım</span>
+                  <p>{boardTurn.question || "Önceki soru"}</p>
+                </div>
+                <button className="product-link" onClick={() => setBoardTurn(null)}>
+                  Tahtayı kapat
+                </button>
+              </div>
+              <StepBoard
+                steps={boardTurn.steps}
+                evidence={boardTurn.evidence || []}
+                onSource={openBoardSource}
+              />
+            </section>
+          )}
+          <div ref={viewerTop} />
           {!selected && (
             <div className="viewer-empty">
               <span aria-hidden>▤</span>
@@ -1214,6 +1251,15 @@ export default function LearningWorkspace({ courseId }) {
                       <span className="message-author">✳ K-NOT</span>
                       <div className="message-tools">
                         <Voice key={`voice-${i}`} text={t.answer || ""} />
+                        {hasSteps(t) && (
+                          <button
+                            className="product-link"
+                            aria-pressed={boardTurn === t}
+                            onClick={() => setBoardTurn(t)}
+                          >
+                            Tahtada anlat
+                          </button>
+                        )}
                         <button
                           className="product-link"
                           onClick={() =>
