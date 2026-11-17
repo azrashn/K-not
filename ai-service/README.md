@@ -137,6 +137,45 @@ pytest tests/ingest        # HashingEmbedder (mock embeddings), in-memory Chroma
 python tests/ingest/fixtures/make_pdfs.py   # regenerate fixture PDFs (needs reportlab)
 ```
 
+## Board teacher voice (optional TTS)
+
+The board explanation can be read aloud with local [Piper](https://github.com/rhasspy/piper)
+voices. Internal routes (internal token; only the NestJS backend calls them):
+`POST /api/v1/tts {text, lang: "tr"|"en"} → {key, duration_ms, cached}`,
+`GET /api/v1/tts/audio/{key}.wav`, `GET /api/v1/tts/health`.
+
+```bash
+pip install -r requirements-tts.txt     # piper-tts 1.3.0 (onnxruntime + espeak-ng inside)
+```
+
+Set `TTS_KEY_SECRET` (at least 16 random characters) in `.env`; without it the routes answer
+503. **Voice files are never committed** (`piper-voices/`, `tts-cache/` are git-ignored). Each
+voice is a model and its settings, about 63 MB for a medium voice. Download once:
+
+```bash
+mkdir -p piper-voices && cd piper-voices
+B=https://huggingface.co/rhasspy/piper-voices/resolve/main
+curl -L -O $B/tr/tr_TR/dfki/medium/tr_TR-dfki-medium.onnx
+curl -L -O $B/tr/tr_TR/dfki/medium/tr_TR-dfki-medium.onnx.json
+curl -L -O $B/en/en_US/ryan/medium/en_US-ryan-medium.onnx
+curl -L -O $B/en/en_US/ryan/medium/en_US-ryan-medium.onnx.json
+```
+
+PowerShell: `Invoke-WebRequest "$B/tr/tr_TR/dfki/medium/tr_TR-dfki-medium.onnx" -OutFile tr_TR-dfki-medium.onnx`
+(the same for the other three files). Another voice: `<lang>/<lang_REGION>/<name>/<quality>/<lang_REGION>-<name>-<quality>.onnx`,
+all voices at <https://huggingface.co/rhasspy/piper-voices>. `TTS_AUTO_DOWNLOAD=true` fetches a
+missing voice once on first use instead (the first request is then slow).
+
+**Licenses:** both default voices (`tr_TR-dfki-medium`, `en_US-ryan-medium`) are
+**CC BY-NC-SA 4.0**: no commercial use, attribution required, derivatives under the same
+license. A commercial deployment needs another voice; read its `MODEL_CARD` first.
+`piper-tts` is GPL-3.0 (running it as a service is not distribution).
+
+**Cache:** the key is `HMAC-SHA256(TTS_KEY_SECRET, voice + text)`: the same text is synthesized
+once and then served from `TTS_CACHE_DIR`, and a key cannot be computed from a text without the
+secret. The cache is never cleaned automatically; delete old files when needed. Changing the
+secret starts a new cache.
+
 ## Known limitations (summary)
 
 - Support states come from explicit **lexical rules** (`citation-lexical-v2`: verbatim quote,
