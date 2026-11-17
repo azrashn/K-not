@@ -5,6 +5,7 @@
   "description": "K-not WBS-4: NestJS backend (auth, courses, documents, ingestion orchestration, RAG proxy)",
   "license": "UNLICENSED",
   "scripts": {
+    "prebuild": "prisma generate",
     "build": "tsc -p tsconfig.build.json",
     "start": "node dist/main.js",
     "start:local": "node --env-file=.env dist/main.js",
