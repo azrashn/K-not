@@ -19,7 +19,7 @@ import httpx
 from xml.etree import ElementTree as ET
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Body, Depends, HTTPException
 from pydantic import Field, model_validator
 
 from knot_rag.schemas.common import StrictModel, Identifier
@@ -825,10 +825,29 @@ def install(app, components, auth):
         return summarize(body)
 
     @router.post("/quiz")
-    def quiz(body: QuizDraft):
+    def quiz(body: dict = Body(...)):
+        # Two request shapes share this internal route. A body with "items" is the v2 engine
+        # (quiz_engine.py); the original single-question body is the legacy engine (quiz_quality.py),
+        # kept unchanged. QUIZ_ENGINE=legacy turns v2 requests away so only the old engine runs.
+        from pydantic import ValidationError
+        from fastapi.exceptions import RequestValidationError
+        from knot_rag.quiz_engine import QuizRequest, engine_setting, quiz_v2
+
+        try:
+            if "items" in body:
+                if engine_setting() == "legacy":
+                    raise HTTPException(409, {"code": "QUIZ_ENGINE_DISABLED",
+                                              "message": "QUIZ_ENGINE=legacy: the v2 quiz engine is turned off"})
+                request = QuizRequest.model_validate(body)
+            else:
+                draft = QuizDraft.model_validate(body)
+        except ValidationError as exc:
+            raise RequestValidationError(exc.errors(include_url=False)) from exc
+        if "items" in body:
+            return quiz_v2(request)
         from knot_rag.quiz_quality import quiz as quality_quiz
 
-        return quality_quiz(body)
+        return quality_quiz(draft)
 
     app.include_router(router)
     from knot_rag.visuals import install as install_visuals
