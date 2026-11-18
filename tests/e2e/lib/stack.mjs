@@ -66,6 +66,49 @@ export function scriptedQuiz(body) {
   }
 }
 
+// v2 question stems differ per kind, so the backend's repeat check (quiz-repeat.ts) does not take two
+// questions of one exam for copies. Every stem keeps "konusunda" and the kind tag the exam test reads.
+const V2_STEM = {
+  MULTIPLE_CHOICE: (t) => `${t} konusunda kaynağa göre doğru seçenek hangisidir? (MULTIPLE_CHOICE)`,
+  TRUE_FALSE: (t) => `${t} konusunda kaynaktaki ifade doğru mudur? (TRUE_FALSE)`,
+  SHORT_ANSWER: (t) => `${t} konusunda verilen değerle sonucu hesaplayınız. (SHORT_ANSWER)`,
+  OPEN: (t) => `${t} konusundaki süreci kendi cümlelerinle açıklayınız. (OPEN)`,
+}
+
+/** The same deterministic writer for the v2 engine contract (ai-service quiz_engine.py):
+ *  { questions: [...], failures: [...] } for the requested items. A topic named "Nothing" fails every
+ *  item with a reason code, as a real model whose answer has no ground in the source would. */
+export function scriptedQuizV2(body) {
+  const items = body.items ?? []
+  if (String(body.topic).includes('Nothing'))
+    return { engine: 'v2', pipeline_version: 'single-call-v1', questions: [], timing: {},
+      failures: items.map((it, slot) => ({ slot, kind: it.kind, variant: it.variant ?? null, code: 'ANSWER_NOT_IN_SOURCE', detail: 'scripted', attempts: 2, seconds: 0 })) }
+  const text = body.evidence?.[0]?.text ?? ''
+  const quote = text.slice(0, Math.min(text.length, 160)).trim()
+  const firstWords = quote.split(/\s+/).slice(0, 2).join(' ')
+  const questions = items.map((it, slot) => {
+    const kind = it.kind
+    const cloze = kind === 'CLOZE'
+    return {
+      slot, kind, ...(it.variant ? { variant: it.variant } : {}),
+      question: cloze ? `Kaynakta kullanılan kavramla tamamla:\n_____ ${quote.split(/\s+/).slice(1).join(' ')}` : V2_STEM[kind](body.topic),
+      options: kind === 'MULTIPLE_CHOICE' ? ['Yığın', 'Kuyruk', 'Ağaç', 'Küme'] : kind === 'TRUE_FALSE' ? ['Doğru', 'Yanlış'] : [],
+      expected: kind === 'MULTIPLE_CHOICE' ? '1' : kind === 'TRUE_FALSE' ? '0' : kind === 'OPEN' ? ''
+        : it.variant === 'CALCULATION' ? '42' : cloze ? quote.split(/\s+/)[0] : firstWords,
+      quote, source_index: 1,
+      explanation: 'Kaynak metin bu ifadeyi doğrudan destekler.', objective: null, option_feedback: [],
+      experimental: true, llm_used: true, question_style: cloze ? 'SOURCE_COMPLETION' : 'CONCEPTUAL',
+      assessment: kind === 'OPEN' ? 'REFLECTION_NOT_AUTOGRADED' : 'SOURCE_CHECKED_UNVERIFIED',
+      quality: { pipeline_version: 'single-call-v1', structural_validation: true, deterministic_validation: true,
+        independent_model_review: false, truth_verified: false, attempts: 1, feedback_mode: 'SOURCE_EXPLANATION' },
+      note: 'Senaryolu yazıcı (e2e).',
+    }
+  })
+  return { engine: 'v2', pipeline_version: 'single-call-v1', questions, failures: [], timing: {} }
+}
+
+export const QUIZ_ENGINES = ['v2', 'legacy']
+
 export function scriptedSummary(body) {
   const sources = body.evidence ?? []
   const items = sources.slice(0, 3).map((s, i) => {
@@ -77,7 +120,11 @@ export function scriptedSummary(body) {
   return { focus: body.focus, items, dropped: 0, quality: { quote_verified: true, model_generated: true } }
 }
 
-export async function startStack({ dbUrl, python, logs = true } = {}) {
+/** quizEngine: the backend's QUIZ_ENGINE ("v2" default, or "legacy"); also read from E2E_QUIZ_ENGINE.
+ *  The scripted writer answers both request shapes, so either engine runs end to end. */
+export async function startStack({ dbUrl, python, logs = true, quizEngine } = {}) {
+  const QUIZ_ENGINE = quizEngine ?? process.env.E2E_QUIZ_ENGINE ?? 'v2'
+  if (!QUIZ_ENGINES.includes(QUIZ_ENGINE)) throw new Error(`quiz engine must be one of ${QUIZ_ENGINES.join(', ')}: ${QUIZ_ENGINE}`)
   const DB = dbUrl ?? process.env.E2E_DATABASE_URL ?? 'mysql://knot:knot-dev-password@127.0.0.1:3306/knot_e2e'
   const PYTHON = python ?? process.env.PYTHON ?? 'python3'
   const CHROMIUM = process.env.CHROMIUM_PATH ?? (existsSync('/opt/pw-browsers/chromium') ? '/opt/pw-browsers/chromium' : undefined)
@@ -144,6 +191,8 @@ export async function startStack({ dbUrl, python, logs = true } = {}) {
       if (req.method === 'POST' && url === '/api/v1/knowledge/quiz') {
         const body = JSON.parse(raw.toString('utf8'))
         calls.quiz.push(body)
+        // Same dispatch as the ai-service route: a body with "items" is the v2 engine.
+        if (Array.isArray(body.items)) return json(200, scriptedQuizV2(body))
         if (String(body.question).includes('Nothing')) return json(422, { detail: { code: 'QUIZ_TOPIC_NOT_FOUND' } })
         return json(200, scriptedQuiz(body))
       }
@@ -169,7 +218,7 @@ export async function startStack({ dbUrl, python, logs = true } = {}) {
       ...process.env, DATABASE_URL: DB, PORT: String(apiPort), JWT_SECRET: 'e2e-jwt-secret-at-least-32-characters-long',
       STORAGE_ROOT: storage, AI_SERVICE_URL: `http://127.0.0.1:${proxyPort}`, RAG_INTERNAL_API_TOKEN: RAG_TOKEN, INGEST_CALLBACK_TOKEN: CALLBACK_TOKEN,
       SCHEDULER_ENABLED: 'true', LOG_LEVEL: 'warn',
-      QUIZ_ENGINE: 'legacy', // the scripted quiz writer below answers in the legacy engine's shape
+      QUIZ_ENGINE,
     },
   })
   await waitFor('backend', async () => (await fetch(`${apiUrl}/courses`)).status === 401)
@@ -184,5 +233,5 @@ export async function startStack({ dbUrl, python, logs = true } = {}) {
     proxy.close()
     for (const p of procs) p.kill('SIGTERM')
   }
-  return { web, apiUrl, ai, work, browser, calls, stop }
+  return { web, apiUrl, ai, work, browser, calls, stop, quizEngine: QUIZ_ENGINE }
 }

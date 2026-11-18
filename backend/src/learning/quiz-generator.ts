@@ -7,6 +7,7 @@ import { AiServiceClient } from "../ai/ai-client";
 import { findQuizSources, QuizScopeRequest } from "./quiz-sources";
 import { publicQuiz } from "./quiz-public";
 import { failure, QuizFailure, V2_PIPELINE } from "./quiz-failures";
+import { isDuplicateStem } from "./quiz-repeat";
 
 export type QuizItemRequest = { kind: string; variant?: "CALCULATION" | null };
 
@@ -118,6 +119,11 @@ export class QuizGenerator {
       const item = b.items[slot];
       if (!validV2Question(q, item, sources)) {
         failures.push(failure(slot, item.kind, "INVALID_SHAPE", q?.quality?.attempts ?? 0, item.variant));
+        continue;
+      }
+      // Checked before storing, so a repeated question never reaches the student's history.
+      if (isDuplicateStem(q.question, [...(b.avoidStems ?? []), ...stems])) {
+        failures.push(failure(slot, item.kind, "DUPLICATE_STEM", q?.quality?.attempts ?? 0, item.variant));
         continue;
       }
       const source = sources[q.source_index - 1];

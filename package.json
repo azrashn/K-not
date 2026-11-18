@@ -22,6 +22,7 @@
     "test:watch": "vitest",
     "test:e2e": "node tests/e2e/run-e2e.mjs",
     "test:e2e:exam": "node tests/e2e/exam-flow.mjs",
+    "test:e2e:exam:legacy": "node tests/e2e/exam-flow.mjs --quiz-engine=legacy",
     "test:e2e:outbox": "node tests/e2e/outbox-browser.mjs",
     "unused:modules": "node scripts/unused-modules.mjs"
   },
