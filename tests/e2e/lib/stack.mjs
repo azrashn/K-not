@@ -169,6 +169,7 @@ export async function startStack({ dbUrl, python, logs = true } = {}) {
       ...process.env, DATABASE_URL: DB, PORT: String(apiPort), JWT_SECRET: 'e2e-jwt-secret-at-least-32-characters-long',
       STORAGE_ROOT: storage, AI_SERVICE_URL: `http://127.0.0.1:${proxyPort}`, RAG_INTERNAL_API_TOKEN: RAG_TOKEN, INGEST_CALLBACK_TOKEN: CALLBACK_TOKEN,
       SCHEDULER_ENABLED: 'true', LOG_LEVEL: 'warn',
+      QUIZ_ENGINE: 'legacy', // the scripted quiz writer below answers in the legacy engine's shape
     },
   })
   await waitFor('backend', async () => (await fetch(`${apiUrl}/courses`)).status === 401)

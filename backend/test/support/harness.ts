@@ -61,6 +61,7 @@ export class Harness {
         DATABASE_URL: testDatabaseUrl(), JWT_SECRET: 'test-jwt-secret-test-jwt-secret-0123', STORAGE_ROOT: this.storageRoot,
         AI_SERVICE_URL: this.ai.url, RAG_INTERNAL_API_TOKEN: RAG_TOKEN, INGEST_CALLBACK_TOKEN: CALLBACK_TOKEN, SCHEDULER_ENABLED: 'false',
         LOGIN_RATE_LIMIT_PER_MINUTE: '10000', // each test logs in afresh; auth.spec tests the limit itself
+        QUIZ_ENGINE: 'legacy', // existing API tests script the legacy quiz engine; v2 specs pass { quizEngine: 'v2' }
       }),
       ...overrides,
     };

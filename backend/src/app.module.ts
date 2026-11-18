@@ -31,6 +31,7 @@ import { LearningController } from './learning/learning.controller';
 import { ExamsController } from './learning/exams.controller';
 import { LimitsController } from './common/limits.controller';
 import { ExamsService } from './learning/exams.service';
+import { QuizGenerator } from './learning/quiz-generator';
 import { UploadAccessGuard } from './documents/upload-access.guard';
 import { LocalStorage, Storage } from './storage/storage';
 
@@ -69,6 +70,7 @@ export class AppModule implements NestModule {
         RagService,
         KnowledgeService,
         CourseLifecycleService,
+        QuizGenerator,
         LearningService,
         ExamsService,
         UploadAccessGuard,
