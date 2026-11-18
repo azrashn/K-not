@@ -239,22 +239,35 @@ _OPS = {
 }
 _UNARY = {ast.USub: operator.neg, ast.UAdd: operator.pos}
 _NUMBER = re.compile(r"(?<![\w.,])\d+(?:[.,]\d+)?(?![\w])")
+# Turkish: "1.000" and "25.000.000" group thousands with dots (exactly three digits per group);
+# the comma is the decimal mark ("3,5" = 3.5, "12.345,6" = 12345.6). A dot that is not followed
+# by exactly three-digit groups ("1.5") stays a decimal point.
+_TR_THOUSANDS = r"\d{1,3}(?:\.\d{3})+(?:,\d+)?"
+_NUMBER_TR = re.compile(r"(?<![\w.,])(?:" + _TR_THOUSANDS + r"(?![\w]|[.,]\d)|\d+(?:[.,]\d+)?(?![\w]))")
 # Constants a worked solution may introduce without the question stating them (halves, percent).
 _FREE_CONSTANTS = {0.0, 1.0, 2.0, 100.0}
 
 
-def _normalize_expression(expression: str) -> str:
+def _to_float(token: str, language: str) -> float:
+    if language == "tr" and re.fullmatch(_TR_THOUSANDS, token):
+        token = token.replace(".", "")
+    return float(token.replace(",", "."))
+
+
+def _normalize_expression(expression: str, language: str = "en") -> str:
     s = expression.replace("×", "*").replace("·", "*").replace("÷", "/").replace("−", "-").replace("^", "**")
+    if language == "tr":
+        s = _NUMBER_TR.sub(lambda m: repr(_to_float(m.group(0), "tr")), s)
     return re.sub(r"(?<=\d),(?=\d)", ".", s)
 
 
-def safe_eval(expression: str) -> float:
+def safe_eval(expression: str, language: str = "en") -> float:
     """Arithmetic only: numbers, + - * / % ** and parentheses. Names, calls and attributes are
     rejected; exponents and magnitudes are bounded so a draft cannot stall the service."""
     if not isinstance(expression, str) or not 1 <= len(expression) <= 160:
         raise QuizCheckError(BAD_FORMAT, "expression must be 1-160 characters")
     try:
-        tree = ast.parse(_normalize_expression(expression), mode="eval")
+        tree = ast.parse(_normalize_expression(expression, language), mode="eval")
     except SyntaxError as exc:
         raise QuizCheckError(BAD_FORMAT, "expression is not arithmetic") from exc
 
@@ -281,41 +294,52 @@ def safe_eval(expression: str) -> float:
     return walk(tree)
 
 
-def _numbers(text: str) -> list[float]:
-    return [float(n.replace(",", ".")) for n in _NUMBER.findall(text)]
+def _number_tokens(text: str, language: str) -> list[str]:
+    return (_NUMBER_TR if language == "tr" else _NUMBER).findall(text)
 
 
-def _format_number(value: float) -> str:
+def _numbers(text: str, language: str = "en") -> list[float]:
+    return [_to_float(n, language) for n in _number_tokens(text, language)]
+
+
+def _decimals(token: str, language: str) -> int:
+    mark = "," if language == "tr" and re.fullmatch(_TR_THOUSANDS, token) else "[.,]"
+    parts = re.split(mark, token)
+    return len(parts[-1]) if len(parts) > 1 else 0
+
+
+def _format_number(value: float, language: str = "en") -> str:
+    """Expected answers are written the way a student of that language types them."""
     rounded = round(value, 6)
-    return str(int(rounded)) if rounded == int(rounded) else f"{rounded:g}"
+    text = str(int(rounded)) if rounded == int(rounded) else f"{rounded:f}".rstrip("0")
+    return text.replace(".", ",") if language == "tr" else text
 
 
-def check_calculation(draft: dict, evidence: list[dict]) -> dict:
+def check_calculation(draft: dict, evidence: list[dict], language: str = "tr") -> dict:
     """SHORT_ANSWER + variant CALCULATION: the server recomputes the answer from the expression,
     and every number the expression uses must be given in the question."""
     _no_options(draft)
     question = _text(draft, "question", 10, 600)
     expression = _text(draft, "expression", 1, 160)
     answer_text = _text(draft, "answer", 1, 60)
-    value = safe_eval(expression)
-    given = _numbers(question)
-    missing = [n for n in _numbers(expression)
+    value = safe_eval(expression, language)
+    given = _numbers(question, language)
+    missing = [n for n in _numbers(expression, language)
                if n not in _FREE_CONSTANTS and not any(math.isclose(n, g) for g in given)]
     if missing:
-        raise QuizCheckError(CALC_DATA_MISSING, ", ".join(_format_number(n) for n in missing))
-    stated = _numbers(answer_text)
+        raise QuizCheckError(CALC_DATA_MISSING, ", ".join(_format_number(n, language) for n in missing))
+    stated = _numbers(answer_text, language)
     if len(stated) != 1:
         raise QuizCheckError(BAD_FORMAT, "answer must state exactly one number")
     # A rounded answer is right when it matches the exact result to the decimals it states.
-    written = _NUMBER.search(answer_text).group(0)
-    decimals = len(re.split(r"[.,]", written)[1]) if re.search(r"[.,]", written) else 0
+    decimals = _decimals(_number_tokens(answer_text, language)[0], language)
     tolerance = 0.5 * 10 ** -decimals + 1e-9 if decimals else 1e-9 * max(1.0, abs(value))
     if abs(stated[0] - value) > tolerance:
-        raise QuizCheckError(CALC_MISMATCH, f"{answer_text} != {_format_number(value)}")
+        raise QuizCheckError(CALC_MISMATCH, f"{answer_text} != {_format_number(value, language)}")
     source_index, quote = _quote(draft, evidence)
     return {
         "kind": "SHORT_ANSWER", "variant": CALCULATION, "question": question, "options": [],
-        "expected": _format_number(stated[0]), "quote": quote, "source_index": source_index,
+        "expected": _format_number(stated[0], language), "quote": quote, "source_index": source_index,
         "explanation": _explanation(draft), "objective": _objective(draft),
         "solution_expression": expression,
     }
@@ -356,7 +380,7 @@ def check_question(kind: str, draft, evidence: list[dict], *, variant: str | Non
     if variant == CALCULATION:
         if kind != "SHORT_ANSWER":
             raise QuizCheckError(SCHEMA_MISMATCH, "calculation is a SHORT_ANSWER variant")
-        result = check_calculation(draft, evidence)
+        result = check_calculation(draft, evidence, language)
     elif variant is not None:
         raise QuizCheckError(SCHEMA_MISMATCH, f"unknown variant {variant}")
     elif kind == "MULTIPLE_CHOICE":

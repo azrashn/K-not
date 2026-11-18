@@ -203,8 +203,57 @@ def test_wrong_arithmetic_is_rejected():
 def test_rounded_answer_is_accepted_to_its_stated_decimals():
     draft = calc(question="Bir araç 100 km yolu 3 saatte alıyor. Ortalama hızı kaç km/sa'tir?",
                  expression="100/3", answer="33,33")
-    assert check_question("SHORT_ANSWER", draft, EVIDENCE, variant="CALCULATION")["expected"] == "33.33"
+    assert check_question("SHORT_ANSWER", draft, EVIDENCE, variant="CALCULATION")["expected"] == "33,33"
     assert code_of("SHORT_ANSWER", {**draft, "answer": "33"}, variant="CALCULATION") == qc.CALC_MISMATCH
+
+
+@pytest.mark.parametrize("text,numbers", [
+    ("1.000 kg", [1000.0]),
+    ("25.000.000 TL", [25000000.0]),
+    ("3,5 saat", [3.5]),
+    ("12.345,6 m", [12345.6]),
+    ("1.5 kat", [1.5]),           # not a three-digit group: decimal point
+    ("12.3456", [12.3456]),
+    ("1.000 ve 2,5 ve 7", [1000.0, 2.5, 7.0]),
+])
+def test_turkish_numbers_use_dot_thousands_and_comma_decimals(text, numbers):
+    assert qc._numbers(text, "tr") == numbers
+
+
+@pytest.mark.parametrize("text,numbers", [
+    ("1.000 kg", [1.0]),          # English keeps the previous reading
+    ("3,5 h", [3.5]),
+    ("2.75 m", [2.75]),
+])
+def test_english_numbers_keep_the_previous_behaviour(text, numbers):
+    assert qc._numbers(text, "en") == numbers
+
+
+def test_turkish_thousands_in_expressions():
+    assert qc.safe_eval("25.000.000 / 1.000", "tr") == 25000
+    assert qc.safe_eval("12.345,5 * 2", "tr") == 24691
+    assert qc.safe_eval("1.000 * 2", "en") == 2
+
+
+def test_turkish_calculation_with_thousands_end_to_end():
+    draft = calc(question="Bir araç 1.200 km yolu 2,5 saatte alıyor. Ortalama hızı kaç km/sa'tir?",
+                 expression="1.200 / 2,5", answer="480 km/sa")
+    assert check_question("SHORT_ANSWER", draft, EVIDENCE, variant="CALCULATION")["expected"] == "480"
+    big = calc(question="Bir şirket 25.000.000 TL'yi 4 bölüme eşit dağıtıyor. Bölüm başına kaç TL düşer?",
+               expression="25.000.000 / 4", answer="6.250.000 TL")
+    assert check_question("SHORT_ANSWER", big, EVIDENCE, variant="CALCULATION")["expected"] == "6250000"
+    rounded = calc(question="Bir araç 1.000 km yolu 3 saatte alıyor. Ortalama hızı kaç km/sa'tir?",
+                   expression="1.000 / 3", answer="333,33")
+    assert check_question("SHORT_ANSWER", rounded, EVIDENCE, variant="CALCULATION")["expected"] == "333,33"
+    one_decimal = {**rounded, "answer": "333,3"}
+    assert check_question("SHORT_ANSWER", one_decimal, EVIDENCE, variant="CALCULATION")["expected"] == "333,3"
+    assert code_of("SHORT_ANSWER", {**rounded, "answer": "333,4"}, variant="CALCULATION") == qc.CALC_MISMATCH
+
+
+def test_english_calculation_keeps_dot_decimals():
+    draft = calc(question="A car covers 100 km in 3 hours. What is its average speed in km/h?",
+                 expression="100/3", answer="33.33")
+    assert check_question("SHORT_ANSWER", draft, EVIDENCE, variant="CALCULATION", language="en")["expected"] == "33.33"
 
 
 def test_every_number_in_the_expression_must_be_given_in_the_question():
