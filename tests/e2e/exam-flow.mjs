@@ -194,7 +194,8 @@ async function main() {
 
     await step('an exam topic with no source is reported, never invented', async () => {
       await page.goto(`${web}/#/dersler/${courseId}/sinavlar`)
-      await page.getByLabel('Sınav stili').selectOption({ index: 1 })
+      const first = page.getByRole('group', { name: 'Geçmiş sınavlar' }).getByRole('checkbox').first()
+      if (!(await first.isChecked())) await first.check()
       await page.getByLabel('Soru sayısı').fill('2')
       await page.getByLabel('Konular').fill('Nothing')
       await page.getByRole('button', { name: 'Sınavı hazırla' }).click()

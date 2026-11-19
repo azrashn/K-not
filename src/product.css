@@ -1405,6 +1405,70 @@
   color: var(--color-accent-deep);
   font-weight: 550;
 }
+/* Past exams to combine: one bordered row per exam, the checked ones marked with the accent. */
+.exam-style-pick {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+.exam-style-pick legend {
+  margin-bottom: 6px;
+  padding: 0;
+  font-size: 13px;
+  font-weight: 550;
+}
+.exam-style-pick legend small {
+  margin-left: 6px;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 10px;
+  font-weight: 400;
+  color: var(--color-ink-3);
+}
+.exam-style-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border: 1px solid var(--color-line);
+  border-radius: 6px;
+  background: var(--color-surface);
+  cursor: pointer;
+  transition: border-color 120ms ease, background-color 120ms ease;
+}
+.exam-style-option:hover {
+  background: var(--color-paper);
+}
+.exam-style-option.is-checked {
+  border-color: var(--color-accent);
+  background: var(--color-accent-tint);
+}
+.exam-style-option:has(input:disabled) {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+.exam-style-option input {
+  margin: 0;
+  accent-color: var(--color-accent);
+}
+.exam-style-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.exam-style-count {
+  flex: none;
+  padding: 1px 6px;
+  border: 1px solid var(--color-hair);
+  border-radius: 4px;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 10px;
+  color: var(--color-ink-2);
+}
 .exam-list {
   margin-bottom: 20px;
   border: 1px solid var(--color-hair);

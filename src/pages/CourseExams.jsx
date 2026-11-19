@@ -8,7 +8,8 @@ import { PageTitle, EmptyState } from "../components/ProductUI";
 import { videoErrorText } from "../lib/video";
 import { describeExamStyle, examStyleProblem } from "../lib/exam-style";
 import {
-  KIND_LABELS, OPTION_LETTERS, examFormProblem, examStatusText, fileProblem, topicsFromText,
+  EXAM_STYLES_MAX, KIND_LABELS, OPTION_LETTERS, averageExamCount, examFormProblem, examStatusText, fileProblem,
+  topicsFromText,
 } from "../lib/exam";
 
 // The exam as printed paper. The same component is shown on screen and, while printing, as a copy
@@ -90,10 +91,25 @@ export default function CourseExams({ courseId, pollMs = 2500 }) {
     [file, setFile] = useState(null),
     [name, setName] = useState(""),
     [text, setText] = useState("");
-  const [styleId, setStyleId] = useState(""),
+  const [styleIds, setStyleIds] = useState([]),
     [count, setCount] = useState(5),
+    // Until the student types a size, it follows the average of the selected exams.
+    [countTouched, setCountTouched] = useState(false),
     [topicsText, setTopicsText] = useState("");
   const alive = useRef(true);
+  const selected = styles.filter((s) => styleIds.includes(s.id));
+
+  useEffect(() => {
+    if (countTouched) return;
+    const suggested = averageExamCount(styles.filter((s) => styleIds.includes(s.id)).map((s) => s.profile));
+    if (suggested) setCount(suggested);
+  }, [styleIds, styles, countTouched]);
+
+  function toggleStyle(id) {
+    setStyleIds((ids) =>
+      ids.includes(id) ? ids.filter((x) => x !== id) : ids.length < EXAM_STYLES_MAX ? [...ids, id] : ids,
+    );
+  }
 
   // While the browser prints (button or Ctrl+P) the paper is rendered outside the app shell.
   useEffect(() => {
@@ -115,7 +131,7 @@ export default function CourseExams({ courseId, pollMs = 2500 }) {
         if (abort.signal.aborted) return;
         setStyles(s);
         setExams(e);
-        setStyleId((cur) => cur || s[0]?.id || "");
+        setStyleIds((cur) => (cur.length ? cur : s[0] ? [s[0].id] : []));
         const running = e.find((x) => x.status === "GENERATING");
         if (running) setExam({ ...running, questions: [] });
       })
@@ -156,7 +172,8 @@ export default function CourseExams({ courseId, pollMs = 2500 }) {
 
   async function saveStyle(saved) {
     setStyles((list) => [saved, ...list]);
-    setStyleId(saved.id);
+    // A newly added exam joins the selection (while there is room), so several can be combined at once.
+    setStyleIds((ids) => (ids.length < EXAM_STYLES_MAX ? [...ids, saved.id] : ids));
     setFile(null);
     setName("");
     setText("");
@@ -186,7 +203,7 @@ export default function CourseExams({ courseId, pollMs = 2500 }) {
     try {
       await api.deleteExamStyle(courseId, id);
       setStyles((list) => list.filter((x) => x.id !== id));
-      if (styleId === id) setStyleId("");
+      setStyleIds((ids) => ids.filter((x) => x !== id));
     } catch (err) {
       setError(videoErrorText(err));
     }
@@ -196,18 +213,17 @@ export default function CourseExams({ courseId, pollMs = 2500 }) {
     e.preventDefault();
     setError("");
     const topics = topicsFromText(topicsText);
-    const style = styles.find((x) => x.id === styleId);
     const problem = examFormProblem({
-      styleId,
+      styleIds,
       count,
-      hasStyleTopics: Boolean(style?.profile?.topic_terms?.length),
+      hasStyleTopics: selected.some((s) => s.profile?.topic_terms?.length),
       topics,
     });
     if (problem) return setError(problem);
     setBusy(true);
     try {
       const created = await api.createExam(courseId, {
-        exam_style_id: styleId,
+        exam_style_ids: styleIds,
         count: Number(count),
         ...(topics.length ? { topics } : {}),
       });
@@ -266,8 +282,8 @@ export default function CourseExams({ courseId, pollMs = 2500 }) {
           </button>
         }
       >
-        Geçmiş bir sınavını yükle; soru biçimini öğrenip ders kaynaklarından benzer yeni bir sınav
-        hazırlanır. Kaynakta karşılığı olmayan soru yazılmaz.
+        Bir ya da birkaç geçmiş sınavını yükle; soru biçimini öğrenip ders kaynaklarından benzer yeni
+        bir sınav hazırlanır. Kaynakta karşılığı olmayan soru yazılmaz.
       </PageTitle>
       <div className="quiz-layout exam-layout">
         <aside>
@@ -321,24 +337,55 @@ export default function CourseExams({ courseId, pollMs = 2500 }) {
 
           <form className="product-panel product-form mt-6" onSubmit={generate} aria-label="Yeni sınav hazırla">
             <h2>2. Yeni sınav hazırla</h2>
-            <label>
-              Sınav stili
-              <select aria-label="Sınav stili" value={styleId} disabled={busy} onChange={(e) => setStyleId(e.target.value)}>
-                <option value="">Stil seç</option>
-                {styles.map((s) => (
-                  <option key={s.id} value={s.id}>{s.name}</option>
-                ))}
-              </select>
-            </label>
+            <fieldset className="exam-style-pick" aria-label="Geçmiş sınavlar" disabled={busy}>
+              <legend>
+                Geçmiş sınavlar <small>en fazla {EXAM_STYLES_MAX}</small>
+              </legend>
+              {styles.length === 0 ? (
+                <p className="product-note">Önce yukarıdan bir geçmiş sınav ekle.</p>
+              ) : (
+                styles.map((s) => {
+                  const checked = styleIds.includes(s.id);
+                  return (
+                    <label key={s.id} className={`exam-style-option${checked ? " is-checked" : ""}`}>
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        disabled={!checked && styleIds.length >= EXAM_STYLES_MAX}
+                        onChange={() => toggleStyle(s.id)}
+                      />
+                      <span className="exam-style-name">{s.name}</span>
+                      <span className="exam-style-count">{s.profile?.question_count ?? 0} soru</span>
+                    </label>
+                  );
+                })
+              )}
+            </fieldset>
+            {selected.length > 1 && (
+              <p className="product-note">
+                Seçilen {selected.length} sınavın soru türleri, terimleri ve üslubu birleştirilir.
+              </p>
+            )}
             <label>
               Soru sayısı
-              <input aria-label="Soru sayısı" type="number" min={1} max={20} value={count} disabled={busy} onChange={(e) => setCount(e.target.value)} />
+              <input
+                aria-label="Soru sayısı"
+                type="number"
+                min={1}
+                max={20}
+                value={count}
+                disabled={busy}
+                onChange={(e) => {
+                  setCountTouched(true);
+                  setCount(e.target.value);
+                }}
+              />
             </label>
             <label>
               Konular (satır başına bir konu, isteğe bağlı)
               <textarea aria-label="Konular" rows={3} value={topicsText} disabled={busy} placeholder="Boş bırakırsan sınavdaki sık terimler kullanılır" onChange={(e) => setTopicsText(e.target.value)} />
             </label>
-            <Btn type="submit" disabled={busy || !styleId}>Sınavı hazırla</Btn>
+            <Btn type="submit" disabled={busy || !styleIds.length}>Sınavı hazırla</Btn>
           </form>
         </aside>
 

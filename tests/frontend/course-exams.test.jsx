@@ -1,10 +1,10 @@
-import { afterEach, beforeEach, expect, test, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import CourseExams from '../../src/pages/CourseExams'
 import { api } from '../../src/api/endpoints'
 import { ApiError } from '../../src/api/client'
-import { examFormProblem, examStatusText, fileProblem, topicsFromText } from '../../src/lib/exam'
+import { averageExamCount, examFormProblem, examStatusText, fileProblem, topicsFromText } from '../../src/lib/exam'
 
 vi.mock('../../src/api/endpoints')
 const nav = vi.hoisted(() => vi.fn())
@@ -25,17 +25,21 @@ afterEach(() => vi.useRealTimers())
 
 test('helpers bound the form and describe progress', () => {
   expect(topicsFromText('BFS\n dfs, BFS ;; ')).toEqual(['BFS', 'dfs'])
-  expect(examFormProblem({ styleId: '', count: 5, hasStyleTopics: true, topics: [] })).toMatch(/stil/)
-  expect(examFormProblem({ styleId: 'a', count: 21, hasStyleTopics: true, topics: [] })).toMatch(/1 ile 20/)
-  expect(examFormProblem({ styleId: 'a', count: 3, hasStyleTopics: false, topics: [] })).toMatch(/konu/)
-  expect(examFormProblem({ styleId: 'a', count: 3, hasStyleTopics: false, topics: ['x'] })).toBe('')
+  expect(examFormProblem({ styleIds: [], count: 5, hasStyleTopics: true, topics: [] })).toMatch(/En az bir geçmiş sınav/)
+  expect(examFormProblem({ styleIds: ['a', 'b', 'c', 'd', 'e', 'f'], count: 5, hasStyleTopics: true, topics: [] })).toMatch(/En fazla 5/)
+  expect(examFormProblem({ styleIds: ['a'], count: 21, hasStyleTopics: true, topics: [] })).toMatch(/1 ile 20/)
+  expect(examFormProblem({ styleIds: ['a'], count: 3, hasStyleTopics: false, topics: [] })).toMatch(/konu/)
+  expect(examFormProblem({ styleIds: ['a', 'b'], count: 3, hasStyleTopics: false, topics: ['x'] })).toBe('')
+  expect(averageExamCount([{ question_count: 4 }, { question_count: 7 }])).toBe(6)
+  expect(averageExamCount([{ question_count: 40 }])).toBe(20)
+  expect(averageExamCount([])).toBeNull()
   expect(fileProblem({ name: 'a.exe', size: 5 })).toMatch(/PDF/)
   expect(fileProblem({ name: 'a.pdf', size: 6 * 1024 * 1024 })).toMatch(/5 MB/)
   expect(fileProblem({ name: 'a.docx', size: 10 })).toBe('')
   expect(examStatusText({ status: 'GENERATING', produced: 1, requested: 5 })).toBe('Hazırlanıyor · 1/5 soru')
 })
 
-test('uploading a past exam file saves a style and selects it', async () => {
+test('uploading a past exam file saves a style and adds it to the selection', async () => {
   const user = userEvent.setup()
   const saved = { ...style, id: '22222222-2222-4222-8222-222222222222', name: 'Vize' }
   api.uploadExamStyleFile.mockResolvedValue(saved)
@@ -45,7 +49,8 @@ test('uploading a past exam file saves a style and selects it', async () => {
   await user.upload(screen.getByLabelText('Sınav dosyası'), file)
   await user.click(screen.getByRole('button', { name: 'Dosyayı oku' }))
   expect(api.uploadExamStyleFile).toHaveBeenCalledWith('c', file, '')
-  expect(await screen.findByLabelText('Sınav stili')).toHaveValue(saved.id)
+  expect(await screen.findByRole('checkbox', { name: /Vize/ })).toBeChecked()
+  expect(screen.getByRole('checkbox', { name: /Final 2025/ })).toBeChecked()
 })
 
 test('an unsupported file is refused in the page without a request', async () => {
@@ -75,12 +80,12 @@ test('generating an exam shows progress until it is ready, then the questions', 
     .mockResolvedValueOnce({ ...started, produced: 1, questions: [q('q1')] })
     .mockResolvedValue(ready)
   render(<CourseExams courseId="c" pollMs={10} />)
-  await screen.findByLabelText('Sınav stili')
+  expect(await screen.findByRole('checkbox', { name: /Final 2025/ })).toBeChecked()
   await user.clear(screen.getByLabelText('Soru sayısı'))
   await user.type(screen.getByLabelText('Soru sayısı'), '2')
   await user.type(screen.getByLabelText('Konular'), 'BFS')
   await user.click(screen.getByRole('button', { name: 'Sınavı hazırla' }))
-  expect(api.createExam).toHaveBeenCalledWith('c', { exam_style_id: style.id, count: 2, topics: ['BFS'] })
+  expect(api.createExam).toHaveBeenCalledWith('c', { exam_style_ids: [style.id], count: 2, topics: ['BFS'] })
   expect(await screen.findByRole('status')).toHaveTextContent('Hazırlanıyor')
   await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Hazır · 2/2 soru'))
   expect(screen.getByText('Soru q1?')).toBeInTheDocument()
@@ -148,4 +153,74 @@ test('removing a style and an exam calls the server', async () => {
   expect(api.deleteExamStyle).toHaveBeenCalledWith('c', style.id)
   await user.click(await screen.findByRole('button', { name: /sınavını sil/ }))
   expect(api.deleteExam).toHaveBeenCalledWith('c', 'x1')
+})
+
+describe('choosing several past exams', () => {
+  const vize = { id: '22222222-2222-4222-8222-222222222222', name: 'Vize 2025', profile: { ...profile, question_count: 7, topic_terms: [] } }
+  const styles = (n) => Array.from({ length: n }, (_, i) => ({ id: `3333333${i}-3333-4333-8333-333333333333`, name: `Sınav ${i + 1}`, profile }))
+
+  test('several exams are sent together, in the order chosen, with the average size prefilled', async () => {
+    const user = userEvent.setup()
+    api.examStyles.mockResolvedValue([style, vize])
+    api.createExam.mockResolvedValue({ id: 'x1', title: '2 geçmiş sınavdan yeni sınav', status: 'GENERATING', requested: 6, produced: 0, failures: [] })
+    api.exam.mockReturnValue(new Promise(() => undefined))
+    render(<CourseExams courseId="c" />)
+    expect(await screen.findByRole('checkbox', { name: /Final 2025/ })).toBeChecked()
+    expect(screen.getByRole('checkbox', { name: /Vize 2025/ })).not.toBeChecked()
+    expect(screen.getByLabelText('Soru sayısı')).toHaveValue(4)
+    await user.click(screen.getByRole('checkbox', { name: /Vize 2025/ }))
+    expect(screen.getByLabelText('Soru sayısı')).toHaveValue(6) // (4 + 7) / 2, rounded
+    expect(screen.getByText(/Seçilen 2 sınavın/)).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Sınavı hazırla' }))
+    expect(api.createExam).toHaveBeenCalledWith('c', { exam_style_ids: [style.id, vize.id], count: 6 })
+  })
+
+  test('a size the student typed is kept when the selection changes', async () => {
+    const user = userEvent.setup()
+    api.examStyles.mockResolvedValue([style, vize])
+    render(<CourseExams courseId="c" />)
+    await screen.findByRole('checkbox', { name: /Final 2025/ })
+    await user.clear(screen.getByLabelText('Soru sayısı'))
+    await user.type(screen.getByLabelText('Soru sayısı'), '12')
+    await user.click(screen.getByRole('checkbox', { name: /Vize 2025/ }))
+    expect(screen.getByLabelText('Soru sayısı')).toHaveValue(12)
+  })
+
+  test('with nothing selected the exam cannot be prepared', async () => {
+    const user = userEvent.setup()
+    render(<CourseExams courseId="c" />)
+    await user.click(await screen.findByRole('checkbox', { name: /Final 2025/ }))
+    expect(screen.getByRole('button', { name: 'Sınavı hazırla' })).toBeDisabled()
+  })
+
+  test('topics are needed only when none of the selected exams has terms', async () => {
+    const user = userEvent.setup()
+    api.examStyles.mockResolvedValue([vize])
+    render(<CourseExams courseId="c" />)
+    await screen.findByRole('checkbox', { name: /Vize 2025/ })
+    await user.click(screen.getByRole('button', { name: 'Sınavı hazırla' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Seçilen sınavlarda yeterli terim yok')
+    expect(api.createExam).not.toHaveBeenCalled()
+  })
+
+  test('at most five exams can be selected', async () => {
+    const user = userEvent.setup()
+    api.examStyles.mockResolvedValue(styles(6))
+    render(<CourseExams courseId="c" />)
+    await screen.findByRole('checkbox', { name: /Sınav 1/ })
+    for (let i = 2; i <= 5; i++) await user.click(screen.getByRole('checkbox', { name: new RegExp(`Sınav ${i}`) }))
+    expect(screen.getByRole('checkbox', { name: /Sınav 6/ })).toBeDisabled()
+    await user.click(screen.getByRole('checkbox', { name: /Sınav 5/ }))
+    expect(screen.getByRole('checkbox', { name: /Sınav 6/ })).toBeEnabled()
+  })
+
+  test('a deleted style leaves the selection', async () => {
+    const user = userEvent.setup()
+    api.deleteExamStyle.mockResolvedValue({ deleted: true })
+    render(<CourseExams courseId="c" />)
+    await screen.findByRole('checkbox', { name: /Final 2025/ })
+    await user.click(screen.getByRole('button', { name: 'Stili sil' }))
+    await waitFor(() => expect(screen.queryByRole('checkbox', { name: /Final 2025/ })).toBeNull())
+    expect(screen.getByRole('button', { name: 'Sınavı hazırla' })).toBeDisabled()
+  })
 })
