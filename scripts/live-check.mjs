@@ -52,7 +52,7 @@ const report = { api: API, startedAt: new Date().toISOString(), files: files.map
 const login = await call('POST', '/auth/login', { body: { email: EMAIL, password: PASSWORD } })
 if (!login.ok) { console.error('Giriş başarısız:', login.status, JSON.stringify(login.data)); process.exit(1) }
 token = login.data.access_token
-const course = await call('POST', '/courses', { body: { name: `Canlı kontrol ${new Date().toISOString().slice(0, 16)}`, term: 'Kişisel' } })
+const course = await call('POST', '/courses', { body: { name: `Canlı kontrol ${new Date().toISOString().slice(0, 16)}`, description: '', category: '' } })
 if (!course.ok) { console.error('Ders açılamadı:', course.status, JSON.stringify(course.data)); process.exit(1) }
 const courseId = course.data.id
 report.courseId = courseId
