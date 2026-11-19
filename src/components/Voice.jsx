@@ -9,7 +9,7 @@ const fmt = (r) => `${String(r).replace('.', ',')}×`
  * İki ses motoru: (1) yerel sinirsel ses (Piper, çevrimdışı; kuruluysa varsayılan) ve (2) tarayıcının sesleri.
  * `autoPlay` ve tercih "ses açık" ise yeni yanıt kendiliğinden okunur; "Sesi kapat" dedikçe okunmaz.
  */
-export default function Voice({ text, autoPlay = false }) {
+export default function Voice({ text, autoPlay = false, onAutoPlay }) {
   const prefs = useSyncExternalStore(voicePrefs.subscribe, voicePrefs.get)
   const [voices, setVoices] = useState([])
   const [local, setLocal] = useState({ available: false, languages: { tr: false, en: false } })
@@ -133,6 +133,7 @@ export default function Voice({ text, autoPlay = false }) {
     // Yerel ses durumu bilinmeden başlama: yoksa önce tarayıcı sesiyle başlayıp yerel sesi kaçırırdı.
     if (autoPlay && prefs.auto && localKnown && engine && !autoDone.current) {
       autoDone.current = true
+      onAutoPlay?.()
       speak()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -155,45 +156,55 @@ export default function Voice({ text, autoPlay = false }) {
     )
   }
 
+  const playLabel = state === 'playing' ? 'Duraklat' : state === 'paused' ? 'Devam et' : 'Dinle'
+  const statusText = state === 'loading' ? 'Ses hazırlanıyor…'
+    : state === 'blocked' ? 'Tarayıcı otomatik oynatmayı engelledi. Dinle\'ye bas.'
+    : state === 'error' ? 'Seslendirme başarısız. Metni okuyabilirsin.'
+    : ''
+
   return (
-    <div className="flex flex-wrap items-center gap-3 text-xs">
+    <div className="voice-bar" role="group" aria-label="Sesli dinleme">
       <button
-        className="border border-hair px-3 py-2"
+        type="button"
+        className="tool-btn tool-btn--main"
+        aria-label={playLabel === 'Dinle' ? 'Açıklamayı seslendir' : playLabel}
         onClick={() => {
           if (state === 'playing') pause()
           else if (state === 'paused') resume()
           else speak()
         }}
       >
-        {state === 'playing' ? 'Seslendirmeyi duraklat' : state === 'paused' ? 'Seslendirmeye devam et' : 'Açıklamayı seslendir'}
+        {state === 'playing' ? <span className="eq" aria-hidden><i /><i /><i /></span> : <Icon d="play" />}
+        <span>{playLabel}</span>
       </button>
-      <button className="product-link" disabled={state === 'idle'} onClick={stop}>Durdur</button>
-      <button className="product-link" onClick={speak}>Baştan dinle</button>
+      <button type="button" className="tool-btn" aria-label="Durdur" title="Durdur" disabled={state === 'idle'} onClick={stop}>
+        <Icon d="stop" />
+      </button>
+      <button type="button" className="tool-btn" aria-label="Baştan dinle" title="Baştan dinle" onClick={speak}>
+        <Icon d="restart" />
+      </button>
       <button
-        className="product-link"
+        type="button"
+        className="tool-btn"
         aria-pressed={prefs.auto}
+        aria-label={prefs.auto ? 'Otomatik okumayı kapat' : 'Otomatik okumayı aç'}
+        title={prefs.auto ? 'Yeni yanıtlar otomatik okunur · kapat' : 'Otomatik okuma kapalı · aç'}
         onClick={() => { if (prefs.auto) stop(); voicePrefs.set({ auto: !prefs.auto }) }}
       >
-        {prefs.auto ? 'Sesi kapat' : 'Sesi aç'}
+        <Icon d={prefs.auto ? 'sound' : 'mute'} />
       </button>
-      <span>
-        {state === 'loading' ? 'Ses hazırlanıyor…'
-          : state === 'blocked' ? 'Tarayıcı otomatik oynatmayı engelledi. "Açıklamayı seslendir"e basın.'
-          : state === 'error' ? 'Seslendirme başarısız. Metni okuyabilirsin.'
-          : prefs.auto ? 'Yeni yanıtlar otomatik okunur' : 'Otomatik seslendirme kapalı'}
-      </span>
-      <details className="w-full">
-        <summary className="cursor-pointer text-ink-2">Ses ayarları</summary>
-        <div className="mt-2 flex flex-wrap items-center gap-3">
+      <details className="voice-settings">
+        <summary className="tool-btn" aria-label="Ses ayarları" title="Ses ayarları"><Icon d="sliders" /></summary>
+        <div className="voice-settings-panel">
           <label>
-            Hız{' '}
+            <span>Hız</span>
             <select aria-label="Seslendirme hızı" value={prefs.rate} onChange={(e) => voicePrefs.set({ rate: Number(e.target.value) })}>
               {SPEECH_RATES.map((r) => <option key={r} value={r}>{fmt(r)}</option>)}
             </select>
           </label>
           {local.available && (
             <label>
-              Ses motoru{' '}
+              <span>Ses motoru</span>
               <select aria-label="Ses motoru" value={prefs.engine} onChange={(e) => { stop(); voicePrefs.set({ engine: e.target.value }) }}>
                 <option value="auto">Yerel doğal ses (çevrimdışı)</option>
                 <option value="browser">Tarayıcı sesi</option>
@@ -202,23 +213,38 @@ export default function Voice({ text, autoPlay = false }) {
           )}
           {engine === 'browser' && ranked.length > 1 && (
             <label>
-              Ses{' '}
+              <span>Ses</span>
               <select aria-label="Ses seçimi" value={voice?.voiceURI || ''} onChange={(e) => voicePrefs.set({ voiceURI: e.target.value })}>
                 {ranked.map((v) => <option key={v.voiceURI} value={v.voiceURI}>{v.name}{v.localService ? '' : ' (çevrimiçi)'}</option>)}
               </select>
             </label>
           )}
           {engine === 'browser' && (
-            <label className="inline-flex items-center gap-1">
+            <label className="voice-check">
               <input type="checkbox" checked={prefs.online} onChange={(e) => voicePrefs.set({ online: e.target.checked })} />
-              Daha doğal çevrimiçi sesleri de kullan
+              <span>Daha doğal çevrimiçi sesleri de kullan</span>
             </label>
           )}
-          {engine === 'browser' && prefs.online && <span className="text-ink-3">Çevrimiçi seslerde metin tarayıcının ses sağlayıcısına gidebilir.</span>}
-          {engine === 'local' && <span className="text-ink-3">Metin bu bilgisayardan çıkmaz.</span>}
-          {engine === 'browser' && !local.available && <span className="text-ink-3">Daha doğal yerel ses için: <code className="font-mono">npm run tts:install</code></span>}
+          {engine === 'browser' && prefs.online && <p>Çevrimiçi seslerde metin tarayıcının ses sağlayıcısına gidebilir.</p>}
+          {engine === 'local' && <p>Metin bu bilgisayardan çıkmaz.</p>}
+          {engine === 'browser' && !local.available && <p>Daha doğal yerel ses için: <code className="font-mono">npm run tts:install</code></p>}
         </div>
       </details>
+      {statusText && <small className="voice-status" role="status">{statusText}</small>}
     </div>
   )
+}
+
+const ICONS = {
+  play: <path d="M5 3.5v9l7.5-4.5z" fill="currentColor" />,
+  pause: <><rect x="4" y="3.5" width="3" height="9" rx="0.8" fill="currentColor" /><rect x="9" y="3.5" width="3" height="9" rx="0.8" fill="currentColor" /></>,
+  stop: <rect x="4" y="4" width="8" height="8" rx="1" fill="currentColor" />,
+  restart: <path d="M3 8a5 5 0 1 0 1.7-3.8M3 2.8v3.2h3.2" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />,
+  sound: <><path d="M2.5 6.2h2.3L8 3.6v8.8L4.8 9.8H2.5z" fill="currentColor" /><path d="M10.5 5.6a3.3 3.3 0 0 1 0 4.8M12.2 3.9a5.7 5.7 0 0 1 0 8.2" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></>,
+  mute: <><path d="M2.5 6.2h2.3L8 3.6v8.8L4.8 9.8H2.5z" fill="currentColor" /><path d="M10.5 6l3.5 4M14 6l-3.5 4" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /></>,
+  sliders: <><path d="M2.5 5h11M2.5 11h11" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /><circle cx="6" cy="5" r="1.7" fill="var(--color-sheet)" stroke="currentColor" strokeWidth="1.4" /><circle cx="10.5" cy="11" r="1.7" fill="var(--color-sheet)" stroke="currentColor" strokeWidth="1.4" /></>,
+}
+
+function Icon({ d }) {
+  return <svg width="15" height="15" viewBox="0 0 16 16" aria-hidden focusable="false">{ICONS[d]}</svg>
 }
