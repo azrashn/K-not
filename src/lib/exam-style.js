@@ -1,11 +1,12 @@
 // Past-exam style helpers. The server derives the profile; these only describe and validate it.
 export const EXAM_TEXT_LIMIT = 20000
 
-export function describeExamStyle(profile) {
+/** `withCount: false` leaves out the leading "N soru" (for places that show the count separately). */
+export function describeExamStyle(profile, { withCount = true } = {}) {
   if (!profile) return ''
   const f = profile.formats || {}
   return [
-    `${profile.question_count} soru`,
+    withCount ? `${profile.question_count} soru` : null,
     f.MULTIPLE_CHOICE ? `çoktan seçmeli ${f.MULTIPLE_CHOICE}` : null,
     f.TRUE_FALSE ? `doğru/yanlış ${f.TRUE_FALSE}` : null,
     f.CALCULATION ? `hesaplama ${f.CALCULATION}` : null,

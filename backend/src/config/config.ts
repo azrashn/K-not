@@ -31,7 +31,11 @@ export interface AppConfig {
   ttsUrlSecret: string | null;
   /** Path the browser reaches this API under (the audio URL is built with it). */
   ttsPublicPrefix: string;
+  /** Quiz question engine: "v2" (one model call, code checks; default) or "legacy" (quiz_quality.py). */
+  quizEngine: QuizEngine;
 }
+
+export type QuizEngine = 'v2' | 'legacy';
 
 export class ConfigError extends Error {}
 
@@ -53,6 +57,13 @@ function required(env: Record<string, string | undefined>, name: string, minLeng
   const v = env[name];
   if (!v || v.length < minLength) throw new ConfigError(`${name} is required${minLength > 1 ? ` (>= ${minLength} characters)` : ''}`);
   return v;
+}
+
+function quizEngine(raw: string | undefined): QuizEngine {
+  const v = (raw ?? '').trim().toLowerCase();
+  if (v === '' || v === 'v2') return 'v2';
+  if (v === 'legacy') return 'legacy';
+  throw new ConfigError('QUIZ_ENGINE must be v2 or legacy');
 }
 
 export function loadConfig(env: Record<string, string | undefined> = process.env): AppConfig {
@@ -85,6 +96,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     ingestionTimeoutMs: int(env, 'INGESTION_TIMEOUT_MS', 10_000, 100),
     ttsUrlSecret: env.TTS_URL_SECRET || null,
     ttsPublicPrefix: (env.TTS_PUBLIC_PREFIX || '/api').replace(/\/+$/, ''),
+    quizEngine: quizEngine(env.QUIZ_ENGINE),
   };
   if (cfg.ttsUrlSecret !== null) {
     if (cfg.ttsUrlSecret.length < 32) throw new ConfigError('TTS_URL_SECRET must be at least 32 characters');

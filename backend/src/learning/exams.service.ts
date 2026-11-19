@@ -1,17 +1,32 @@
-import { Injectable, Logger, OnModuleInit } from "@nestjs/common";
+import { Inject, Injectable, Logger, OnModuleInit, Optional } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
 import { PrismaService } from "../prisma/prisma.service";
 import { AuthUser } from "../common/request-context";
 import { ApiError, notFound } from "../common/errors";
 import { AccessService } from "../courses/access.service";
 import { AiServiceClient } from "../ai/ai-client";
-import { LearningService } from "./learning.service";
-import { commonReason, examTopics, groundTopics, planExamKinds } from "./exam-plan";
 import { KnowledgeService } from "../knowledge/knowledge.service";
-import type { ExamProfile } from "./exam-style";
+import { APP_CONFIG, AppConfig, QuizEngine } from "../config/config";
+import { LearningService } from "./learning.service";
+import {
+  commonReason, EXAM_MAX_QUESTIONS, ExamItem, examTopics, groundTopics, planExamItems, planExamKinds,
+} from "./exam-plan";
+import { EXAM_STYLES_MAX, examStyleHint, ExamProfile, mergeExamProfiles } from "./exam-style";
+import { GenerateResult, QuizGenerator } from "./quiz-generator";
+import { describeFailure, failure, INFRASTRUCTURE_CODES, TIME_CODES } from "./quiz-failures";
+import { loadSourceTexts } from "./source-texts";
 
 type Item = { quiz_id: string; kind: string; topic: string };
-type Failure = { topic: string; kind: string; reason: string };
+/** `code` is set by the v2 engine (quiz-failures.ts); legacy failures carry the message only. */
+type Failure = { topic: string; kind: string; reason: string; code?: string };
+type Slot = { slot: number; kind: string; variant?: "CALCULATION" };
+
+/** v2: questions of one topic asked together, at most this many per ai-service request. */
+export const EXAM_BATCH_SIZE = 3;
+/** v2: model time for one exam request (up to three questions plus repairs on a CPU model). */
+export const EXAM_BATCH_BUDGET_SECONDS = 240;
+/** v2: whole requests in a row that only timed out before the run stops. */
+export const EXAM_TIMEOUT_STREAK_LIMIT = 2;
 
 const FILE_KINDS: Record<string, "PDF" | "DOCX" | "TXT"> = {
   ".pdf": "PDF",
@@ -21,6 +36,31 @@ const FILE_KINDS: Record<string, "PDF" | "DOCX" | "TXT"> = {
 };
 // Model or service trouble stops the whole run; a missing source only skips that topic.
 const INFRASTRUCTURE = new Set(["AI_SERVICE_UNAVAILABLE", "PROVIDER_TIMEOUT"]);
+
+/** The selected past exams: exactly one of `exam_style_id` (older clients) and `exam_style_ids`. */
+export function examStyleIds(b: { exam_style_id?: string; exam_style_ids?: string[] }): string[] {
+  const single = typeof b.exam_style_id === "string" && b.exam_style_id !== "";
+  const many = Array.isArray(b.exam_style_ids);
+  if (single === many)
+    throw new ApiError(
+      "VALIDATION_ERROR",
+      single
+        ? "exam_style_id ve exam_style_ids birlikte gönderilemez; yalnız birini kullanın."
+        : "En az bir geçmiş sınav seçin.",
+    );
+  const ids = single ? [b.exam_style_id!] : b.exam_style_ids!;
+  if (!ids.length || ids.length > EXAM_STYLES_MAX)
+    throw new ApiError("VALIDATION_ERROR", `1 ile ${EXAM_STYLES_MAX} arasında geçmiş sınav seçin.`);
+  if (new Set(ids).size !== ids.length)
+    throw new ApiError("VALIDATION_ERROR", "Aynı geçmiş sınav birden fazla kez seçilemez.");
+  return ids;
+}
+
+/** No count from the client: the average question count of the selected exams, within 1..20. */
+export function defaultExamCount(profiles: ExamProfile[]): number {
+  const total = profiles.reduce((sum, p) => sum + (p.question_count ?? 0), 0);
+  return Math.max(1, Math.min(EXAM_MAX_QUESTIONS, Math.round(total / Math.max(1, profiles.length))));
+}
 
 /** Past exam files, and new exams written from a saved exam style. Every question is an ordinary
  *  source-bound quiz question: when no source supports a topic the exam says so instead of inventing one. */
@@ -32,8 +72,15 @@ export class ExamsService implements OnModuleInit {
     private readonly access: AccessService,
     private readonly ai: AiServiceClient,
     private readonly learning: LearningService,
-    private readonly knowledge: KnowledgeService,
+    @Optional() private readonly knowledge?: KnowledgeService,
+    @Optional() private readonly generator?: QuizGenerator,
+    @Optional() @Inject(APP_CONFIG) private readonly config?: AppConfig,
   ) {}
+
+  /** v2 needs the generator; a service built without one (older unit tests) runs the legacy engine. */
+  get quizEngine(): QuizEngine {
+    return this.generator && (this.config?.quizEngine ?? "v2") === "v2" ? "v2" : "legacy";
+  }
 
   /** A run lives in this process only; after a restart nothing is still generating. */
   async onModuleInit() {
@@ -85,18 +132,38 @@ export class ExamsService implements OnModuleInit {
   async create(
     u: AuthUser,
     c: string,
-    b: { exam_style_id: string; count: number; topics?: string[]; title?: string; scope?: any },
+    b: {
+      exam_style_id?: string;
+      exam_style_ids?: string[];
+      count?: number;
+      topics?: string[];
+      title?: string;
+      scope?: any;
+    },
   ) {
     await this.access.requireMember(u, c);
-    const style = await this.prisma.examStyle.findFirst({
-      where: { id: b.exam_style_id, courseId: c, ownerId: u.id },
+    const ids = examStyleIds(b);
+    const v2 = this.quizEngine === "v2";
+    if (!v2 && ids.length > 1)
+      throw new ApiError(
+        "VALIDATION_ERROR",
+        "Birden fazla geçmiş sınav yalnız yeni soru motoruyla birlikte kullanılabilir. Tek bir sınav seçin.",
+      );
+    const rows = await this.prisma.examStyle.findMany({
+      where: { id: { in: ids }, courseId: c, ownerId: u.id },
     });
-    if (!style) throw notFound("Exam style");
-    const profile = style.profile as unknown as ExamProfile;
-    const userTopics = Boolean(b.topics?.some((t) => String(t).trim()));
+    // Any missing or foreign style is "not found", as for a single style: nothing about others' styles leaks.
+    if (rows.length !== ids.length) throw notFound("Exam style");
+    const byId = new Map(rows.map((r) => [r.id, r]));
+    const styles = ids.map((id) => byId.get(id)!);
+    const style = styles[0];
+    const profile = mergeExamProfiles(styles.map((s) => s.profile as unknown as ExamProfile));
+    const count = b.count ?? defaultExamCount(styles.map((s) => s.profile as unknown as ExamProfile));
     let topics = examTopics(b.topics, profile);
-    // Terms from the past exam are only useful when the course sources talk about them.
-    if (!userTopics) topics = groundTopics(topics, await this.sourceTexts(u, c, b.scope), b.count).topics;
+    // Terms from the past exams are only useful when the course sources talk about them (both engines);
+    // terms shared by more of the selected exams come first. Topics the student wrote are never filtered.
+    if (this.knowledge && !b.topics?.some((t) => String(t).trim()))
+      topics = groundTopics(topics, await loadSourceTexts(this.knowledge, u, c, b.scope), count, profile.term_exams).topics;
     if (!topics.length)
       throw new ApiError(
         "VALIDATION_ERROR",
@@ -107,14 +174,17 @@ export class ExamsService implements OnModuleInit {
     });
     if (running)
       throw new ApiError("JOB_ALREADY_RUNNING", "Bu ders için bir sınav zaten hazırlanıyor. Bitmesini bekleyin.");
-    const kinds = planExamKinds(profile, b.count);
+    const plan = v2 ? planExamItems(profile, count) : null;
+    const kinds = plan ? plan.map((i) => i.kind) : planExamKinds(profile, count);
+    const fallbackTitle = styles.length > 1 ? `${styles.length} geçmiş sınavdan yeni sınav` : `${style.name} — yeni sınav`;
     const row = await this.prisma.generatedExam.create({
       data: {
         id: randomUUID(),
         courseId: c,
         userId: u.id,
         styleId: style.id,
-        title: (b.title?.trim() || `${style.name} — yeni sınav`).slice(0, 160),
+        styleIds: ids,
+        title: (b.title?.trim() || fallbackTitle).slice(0, 160),
         status: "GENERATING",
         requested: kinds.length,
         topics,
@@ -123,26 +193,109 @@ export class ExamsService implements OnModuleInit {
       },
     });
     // Runs in this process. The caller polls GET /exams/:id.
-    void this.run(u, c, row.id, style.id, kinds, topics, b.scope).catch((e) => {
+    const generation = plan
+      ? this.runV2(u, c, row.id, plan, topics, b.scope, examStyleHint(profile))
+      : this.run(u, c, row.id, style.id, kinds, topics, b.scope);
+    void generation.catch((e) => {
       this.log.error(`exam ${row.id} failed: ${e?.message ?? e}`);
     });
     return this.summary(row);
   }
 
-  /** Text of the ready materials in scope (bounded), used only to pick answerable topics. */
-  private async sourceTexts(u: AuthUser, c: string, scope: any): Promise<{ title: string; text: string }[]> {
-    const materials = (await this.knowledge.materials(u, c)).filter((m: any) => m.status === "READY");
-    const ids = scope?.mode === "selected" && Array.isArray(scope.material_ids) ? new Set<string>(scope.material_ids) : null;
-    const out: { title: string; text: string }[] = [];
-    for (const m of materials.filter((m: any) => !ids || ids.has(m.id)).slice(0, 8)) {
+  /**
+   * v2 run. Slots go to topics in turn; the slots of one topic are asked together (≤ EXAM_BATCH_SIZE).
+   * A bad or timed-out question only loses itself: its reason is recorded with a code and the slot is
+   * tried once more with the next topic. The run stops early only when the model is unreachable or
+   * EXAM_TIMEOUT_STREAK_LIMIT requests in a row produced nothing but timeouts.
+   */
+  private async runV2(
+    u: AuthUser,
+    c: string,
+    id: string,
+    plan: ExamItem[],
+    topics: string[],
+    scope: any,
+    styleHint: string | null,
+  ) {
+    const produced: (Item & { slot: number })[] = [];
+    const failures: Failure[] = [];
+    const stems: string[] = [];
+    let note: string | null = null;
+    let timeoutStreak = 0;
+    // Set inside ask(); the assertion keeps TypeScript from narrowing it to null after the calls.
+    let stopped = null as "MODEL" | "TIMEOUTS" | null;
+    const save = (status: string, finished = false) =>
+      this.prisma.generatedExam.update({
+        where: { id },
+        data: {
+          status,
+          items: [...produced].sort((a, b) => a.slot - b.slot).map(({ quiz_id, kind, topic }) => ({ quiz_id, kind, topic })) as any,
+          failures: failures as any,
+          note,
+          ...(finished ? { finishedAt: new Date() } : {}),
+        },
+      });
+
+    /** One ai-service request; returns the slots that failed and may be retried. */
+    const ask = async (topic: string, slots: Slot[]): Promise<Slot[]> => {
+      let result: GenerateResult;
       try {
-        const p = await this.knowledge.preview(u, c, m.id);
-        for (const seg of (p.segments || []).slice(0, 400)) if (seg.text?.trim()) out.push({ title: m.title, text: String(seg.text).slice(0, 2000) });
-      } catch {
-        /* an unreadable material only gives no topics */
+        result = await this.generator!.generate(u, c, {
+          topic,
+          scope,
+          items: slots.map((s) => ({ kind: s.kind, variant: s.variant ?? null })),
+          styleHint,
+          avoidStems: stems,
+          budgetSeconds: EXAM_BATCH_BUDGET_SECONDS,
+        });
+      } catch (e: any) {
+        if (e?.code !== "VALIDATION_ERROR") throw e;
+        // No source for this topic: every slot of the request fails for that reason, no model call.
+        result = { quizzes: [], stems: [], failures: slots.map((s, i) => failure(i, s.kind, "NO_SOURCE", 0, s.variant)) };
       }
+      for (const q of result.quizzes) produced.push({ slot: slots[q.slot].slot, quiz_id: q.id, kind: slots[q.slot].kind, topic });
+      stems.push(...result.stems);
+      for (const f of result.failures) failures.push({ topic, kind: f.kind, reason: describeFailure(f), code: f.code });
+      const codes = result.failures.map((f) => f.code);
+      if (!result.quizzes.length && codes.some((code) => INFRASTRUCTURE_CODES.has(code))) stopped = "MODEL";
+      else if (!result.quizzes.length && codes.length && codes.every((code) => TIME_CODES.has(code))) {
+        if (++timeoutStreak >= EXAM_TIMEOUT_STREAK_LIMIT) stopped = "TIMEOUTS";
+      } else timeoutStreak = 0;
+      await save("GENERATING");
+      return result.failures.filter((f) => !INFRASTRUCTURE_CODES.has(f.code)).map((f) => slots[f.slot]);
+    };
+
+    /** Asks every slot with its topic, grouped per topic in batches; returns the failed slots. */
+    const pass = async (slots: Slot[], topicOf: (s: Slot) => string): Promise<Slot[]> => {
+      const byTopic = new Map<string, Slot[]>();
+      for (const s of slots) byTopic.set(topicOf(s), [...(byTopic.get(topicOf(s)) ?? []), s]);
+      const failed: Slot[] = [];
+      for (const [topic, list] of byTopic)
+        for (let i = 0; i < list.length; i += EXAM_BATCH_SIZE) {
+          if (stopped) return failed;
+          failed.push(...(await ask(topic, list.slice(i, i + EXAM_BATCH_SIZE))));
+        }
+      return failed;
+    };
+
+    try {
+      const slots: Slot[] = plan.map((p, slot) => ({ slot, kind: p.kind, ...(p.variant ? { variant: p.variant } : {}) }));
+      const failed = await pass(slots, (s) => topics[s.slot % topics.length]);
+      // One more try for each failed slot, with the next topic. A single topic has nothing else to offer.
+      if (!stopped && failed.length && topics.length > 1)
+        await pass(failed, (s) => topics[(s.slot + 1) % topics.length]);
+      const top = commonReason(failures);
+      const why = top ? ` En sık neden (${top.count}/${failures.length} deneme): ${top.reason}` : "";
+      if (stopped === "MODEL") note = "Soru hazırlayan modele ulaşılamadığı için üretim durduruldu.";
+      else if (stopped === "TIMEOUTS") note = "Model arka arkaya iki kez ayrılan sürede yanıt vermediği için üretim durduruldu.";
+      else if (!produced.length) note = "Seçilen konular için kaynaklara dayalı soru hazırlanamadı." + why;
+      else if (produced.length < plan.length) note = `${plan.length} sorudan ${produced.length}'i hazırlanabildi.` + why;
+      await save(produced.length === plan.length ? "READY" : produced.length ? "PARTIAL" : "FAILED", true);
+    } catch (e: any) {
+      note = "Beklenmeyen bir hata oluştu.";
+      await save(produced.length ? "PARTIAL" : "FAILED", true).catch(() => undefined);
+      throw e;
     }
-    return out;
   }
 
   private async run(
@@ -212,6 +365,8 @@ export class ExamsService implements OnModuleInit {
       failures: row.failures,
       note: row.note,
       style_id: row.styleId,
+      // Exams made before several styles could be combined only have styleId.
+      style_ids: Array.isArray(row.styleIds) ? row.styleIds : row.styleId ? [row.styleId] : [],
       created_at: row.createdAt,
       finished_at: row.finishedAt,
     };

@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common";
+import { Inject, Injectable, Optional } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
 import { PrismaService } from "../prisma/prisma.service";
 import { AuthUser } from "../common/request-context";
@@ -6,10 +6,18 @@ import { ApiError, notFound } from "../common/errors";
 import { AccessService } from "../courses/access.service";
 import { KnowledgeService } from "../knowledge/knowledge.service";
 import { AiServiceClient } from "../ai/ai-client";
+import { APP_CONFIG, AppConfig, QuizEngine } from "../config/config";
 import { validSourceCompletion } from "./quiz-validation";
 import { quizHistoryItem } from "./quiz-history";
 import { buildExamProfile, examStyleHint, ExamProfile } from "./exam-style";
 import { matchAnswer, rubricCoverage, rubricTerms } from "./answer-match";
+import { findQuizSources } from "./quiz-sources";
+import { publicQuiz } from "./quiz-public";
+import { QuizGenerator } from "./quiz-generator";
+import { quizError } from "./quiz-failures";
+
+/** Model time for one question from POST /quizzes: first call plus one repair (see quiz_engine.py). */
+export const SINGLE_QUIZ_BUDGET_SECONDS = 130;
 
 @Injectable()
 export class LearningService {
@@ -18,7 +26,14 @@ export class LearningService {
     private readonly access: AccessService,
     private readonly knowledge: KnowledgeService,
     private readonly ai: AiServiceClient,
+    @Optional() private readonly generator?: QuizGenerator,
+    @Optional() @Inject(APP_CONFIG) private readonly config?: AppConfig,
   ) {}
+
+  /** v2 needs the generator; a service built without one (older unit tests) runs the legacy engine. */
+  get quizEngine(): QuizEngine {
+    return this.generator && (this.config?.quizEngine ?? "v2") === "v2" ? "v2" : "legacy";
+  }
   async activity(u: AuthUser, c: string, body: any) {
     await this.access.requireMember(u, c);
     if (body.material_id) {
@@ -151,51 +166,31 @@ export class LearningService {
     };
   }
   async start(u: AuthUser, c: string, b: any) {
-    const found = await this.knowledge.ask(u, c, {
-      question: b.topic,
-      retrieve_only: true,
+    if (this.quizEngine === "v2") return this.startV2(u, c, b);
+    return this.startLegacy(u, c, b);
+  }
+
+  /** v2: one ai-service request for one question; a failure names its reason (quiz-failures.ts). */
+  private async startV2(u: AuthUser, c: string, b: any) {
+    const styleHint = await this.styleHintFor(u, c, b.exam_style_id);
+    const r = await this.generator!.generate(u, c, {
+      topic: b.topic,
       scope: b.scope,
-      watched_only: Boolean(b.watched_only),
-      ...(b.material_id
-        ? { strategy: "single", active_material_id: b.material_id }
-        : {}),
+      watched_only: b.watched_only,
+      material_id: b.material_id,
+      items: [{ kind: b.kind, variant: b.variant ?? null }],
+      styleHint,
+      budgetSeconds: SINGLE_QUIZ_BUDGET_SECONDS,
     });
-    let candidates = found.evidence
-      .filter(
-        (e: any) =>
-          !b.watched_only ||
-          found.video_learning.some(
-            (l: any) => l.source_id === e.id && l.state === "WATCHED",
-          ),
-      )
-      .slice(0, 4);
-    // A selected ready material can be relevant across languages even when the
-    // text retrieval's lexical guard finds no anchor. The source-fact planner
-    // still rejects unrelated topics; never bypass watched-only restrictions.
-    if (!candidates.length && !b.watched_only &&
-        b.scope?.mode === "selected" && b.scope.material_ids?.length) {
-      const materials = await this.knowledge.materials(u, c);
-      for (const id of b.scope.material_ids.slice(0, 4)) {
-        const m = materials.find((m: any) => m.id === id && m.status === "READY");
-        if (!m) continue;
-        const preview = await this.knowledge.preview(u, c, id);
-        for (const segment of preview.segments) {
-          if (!segment.text?.trim()) continue;
-          candidates.push({...segment, material_id:m.id, version:m.version,
-                           title:m.title, kind:m.kind});
-          if (candidates.length >= 4) break;
-        }
-        if (candidates.length >= 4) break;
-      }
-    }
+    if (!r.quizzes.length) throw quizError(r.failures);
+    const { slot: _slot, ...quiz } = r.quizzes[0];
+    return quiz;
+  }
+
+  /** The original engine (ai-service quiz_quality.py) with its original acceptance rules. */
+  private async startLegacy(u: AuthUser, c: string, b: any) {
+    const candidates = await findQuizSources(this.knowledge, u, c, b);
     let source = candidates[0];
-    if (!source)
-      throw new ApiError(
-        "VALIDATION_ERROR",
-        b.watched_only
-          ? "Bu konuda tamamen izlenmiş video bölümü bulunamadı. Son oynatma konumu tek başına izleme kanıtı değildir."
-          : "Bu konuda soru hazırlamaya uygun kaynak bulunamadı.",
-      );
     const styleHint = await this.styleHintFor(u, c, b.exam_style_id);
     const r = await this.ai.call("POST", "/api/v1/knowledge/quiz", {
       body: {
@@ -284,40 +279,7 @@ export class LearningService {
     return this.publicQuiz(row);
   }
   private publicQuiz(row: any) {
-    const d = row.data,
-      s = d.source;
-    // Never leak a complete source excerpt, answer key or option rationale before answering.
-    return {
-      id: row.id,
-      topic: row.topic,
-      kind: row.kind,
-      question: d.question,
-      options: d.options,
-      // A paraphrased objective can disclose the answer despite lexical checks.
-      // Keep detailed objectives server-side until the student has answered.
-      objective: null,
-      note: d.note,
-      experimental: d.experimental,
-      assessment: d.assessment,
-      question_style: d.question_style || "CONCEPTUAL",
-      scope: d.scope,
-      watched_only: d.watched_only || false,
-      quality_state:
-        d.quality?.option_audit_version === 3 && d.quality?.deterministic_source_validation
-          ? "SOURCE_RECALL_CHECKED"
-          : d.quality?.option_audit_version === 2
-          ? "MODEL_REVIEWED_UNVERIFIED"
-          : "LEGACY_NOT_REVIEWED",
-      source: s
-        ? {
-            id: s.id,
-            material_id: s.material_id,
-            title: s.title,
-            kind: s.kind,
-            location: s.location,
-          }
-        : null,
-    };
+    return publicQuiz(row);
   }
   async quiz(u: AuthUser, c: string, id: string) {
     await this.access.requireMember(u, c);

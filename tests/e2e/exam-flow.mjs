@@ -5,6 +5,9 @@
  * solve a question → practice history → material summary.
  *
  *   npm run build && (cd backend && npm run build) && npm run test:e2e:exam
+ *
+ * Quiz engine (backend QUIZ_ENGINE): v2 by default; the legacy engine with
+ *   npm run test:e2e:exam:legacy        (or --quiz-engine=legacy, or E2E_QUIZ_ENGINE=legacy)
  */
 import { spawnSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
@@ -37,9 +40,12 @@ const PAST_EXAM = [
   '4. DFS ile BFS arasındaki farkı hesaplayınız ve açıklayınız.',
 ]
 
+const engineArg = process.argv.find((a) => a.startsWith('--quiz-engine='))?.split('=')[1]
+
 async function main() {
-  const stack = await startStack({ python: process.env.PYTHON })
-  const { web, browser, calls, work } = stack
+  const stack = await startStack({ python: process.env.PYTHON, quizEngine: engineArg })
+  const { web, browser, calls, work, quizEngine } = stack
+  console.log(`  quiz engine: ${quizEngine}`)
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } })
   await page.addInitScript(() => { window.__prints = 0; window.print = () => { window.__prints += 1 } })
   const shot = (n) => page.screenshot({ path: path.join(work, `${n}.png`), fullPage: true })
@@ -111,13 +117,26 @@ async function main() {
     })
 
     await step('every question was written from a real course source with the exam style', async () => {
-      check(calls.quiz.length === 4, `model boundary saw ${calls.quiz.length} requests`)
       for (const c of calls.quiz) {
         check(c.style_hint?.includes('Sınav stili'), 'style hint missing')
         check(/Genişlik|Derinlik|Dijkstra/.test(c.evidence[0].text), `evidence is not from the notes: ${c.evidence[0].text.slice(0, 60)}`)
       }
-      const kinds = calls.quiz.map((c) => c.kind).sort()
-      check(kinds.join() === 'MULTIPLE_CHOICE,OPEN,SHORT_ANSWER,TRUE_FALSE', `kinds follow the past exam: ${kinds}`)
+      if (quizEngine === 'v2') {
+        // v2 asks the questions of one topic together: 4 questions over 3 topics → 3 requests.
+        check(calls.quiz.every((c) => Array.isArray(c.items) && !('kind' in c)), 'v2 engine must send item lists')
+        check(calls.quiz.length === 3, `model boundary saw ${calls.quiz.length} requests, expected one per topic`)
+        const items = calls.quiz.flatMap((c) => c.items)
+        const kinds = items.map((i) => i.kind).sort()
+        check(kinds.join() === 'MULTIPLE_CHOICE,OPEN,SHORT_ANSWER,TRUE_FALSE', `kinds follow the past exam: ${kinds}`)
+        // "hesaplayınız" in the past exam is a calculation: the engine recomputes its answer.
+        check(items.find((i) => i.kind === 'SHORT_ANSWER')?.variant === 'CALCULATION', 'calculation variant missing')
+        check(calls.quiz.every((c) => c.budget_seconds === 240), 'exam requests carry the exam time budget')
+      } else {
+        check(calls.quiz.every((c) => typeof c.kind === 'string' && !('items' in c)), 'legacy engine sends one question per request')
+        check(calls.quiz.length === 4, `model boundary saw ${calls.quiz.length} requests`)
+        const kinds = calls.quiz.map((c) => c.kind).sort()
+        check(kinds.join() === 'MULTIPLE_CHOICE,OPEN,SHORT_ANSWER,TRUE_FALSE', `kinds follow the past exam: ${kinds}`)
+      }
     })
 
     await step('every question on the exam sheet carries a counter number (the PDF step reads the real numbers back)', async () => {
@@ -202,7 +221,8 @@ async function main() {
 
     await step('an exam topic with no source is reported, never invented', async () => {
       await page.goto(`${web}/#/dersler/${courseId}/sinavlar`)
-      await page.getByLabel('Sınav stili').selectOption({ index: 1 })
+      const first = page.getByRole('group', { name: 'Geçmiş sınavlar' }).getByRole('checkbox').first()
+      if (!(await first.isChecked())) await first.check()
       await page.getByLabel('Soru sayısı').fill('2')
       await page.getByLabel('Konular').fill('Nothing')
       await page.getByRole('button', { name: 'Sınavı hazırla' }).click()

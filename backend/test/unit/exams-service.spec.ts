@@ -8,7 +8,7 @@ const u = { id: 'u', role: 'USER' } as any;
 
 function make(over: { prisma?: any; ai?: any; learning?: any; knowledge?: any } = {}) {
   const prisma = {
-    examStyle: { findFirst: jest.fn().mockResolvedValue({ id: 'e1', name: 'Final', profile }) },
+    examStyle: { findMany: jest.fn().mockResolvedValue([{ id: 'e1', name: 'Final', profile }]) },
     generatedExam: {
       count: jest.fn().mockResolvedValue(0),
       create: jest.fn(async ({ data }) => ({ ...data, createdAt: new Date(), finishedAt: null })),
@@ -75,7 +75,7 @@ describe('upload of a past exam file', () => {
 
 describe('creating an exam', () => {
   test('an unknown style or one that belongs to someone else is not found', async () => {
-    const { svc } = make({ prisma: { examStyle: { findFirst: jest.fn().mockResolvedValue(null) } } });
+    const { svc } = make({ prisma: { examStyle: { findMany: jest.fn().mockResolvedValue([]) } } });
     await expect(svc.create(u, 'c', { exam_style_id: 'x', count: 3 })).rejects.toMatchObject({ code: 'NOT_FOUND' });
   });
   test('only one exam per course runs at a time', async () => {
@@ -86,7 +86,7 @@ describe('creating an exam', () => {
   test('a style without topic terms and sources without headings needs topics from the student', async () => {
     const empty = { ...profile, topic_terms: [] };
     const { svc } = make({
-      prisma: { examStyle: { findFirst: jest.fn().mockResolvedValue({ id: 'e1', name: 'x', profile: empty }) } },
+      prisma: { examStyle: { findMany: jest.fn().mockResolvedValue([{ id: 'e1', name: 'x', profile: empty }]) } },
       knowledge: { preview: jest.fn().mockResolvedValue({ segments: [] }) },
     });
     await expect(svc.create(u, 'c', { exam_style_id: 'e1', count: 3 })).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
@@ -94,7 +94,7 @@ describe('creating an exam', () => {
   test('past-exam terms the course never mentions are replaced by the headings of the course sources', async () => {
     const other = { ...profile, topic_terms: ['kalıtım', 'polimorfizm'] };
     const { svc, prisma } = make({
-      prisma: { examStyle: { findFirst: jest.fn().mockResolvedValue({ id: 'e1', name: 'x', profile: other }) } },
+      prisma: { examStyle: { findMany: jest.fn().mockResolvedValue([{ id: 'e1', name: 'x', profile: other }]) } },
       knowledge: { preview: jest.fn().mockResolvedValue({ segments: [{ text: 'Link layer: services\nframing, link access' }, { text: 'TCP: overview\nreliable byte stream' }] }) },
     });
     await svc.create(u, 'c', { exam_style_id: 'e1', count: 2 });

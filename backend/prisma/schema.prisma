@@ -295,6 +295,9 @@ model GeneratedExam {
   courseId   String
   userId     String
   styleId    String?
+  /// Every past exam the exam was written from, in the order chosen; styleId is the first of them.
+  /// NULL for exams made before several styles could be combined (then styleId alone).
+  styleIds   Json?
   title      String    @db.VarChar(160)
   status     String    @db.VarChar(16)
   requested  Int

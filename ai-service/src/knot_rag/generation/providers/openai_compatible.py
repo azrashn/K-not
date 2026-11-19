@@ -15,6 +15,7 @@ from knot_rag.generation.providers.base import (
     ProviderRateLimitError,
     ProviderResponseError,
     ProviderTimeoutError,
+    ProviderTruncatedError,
     ProviderUnavailableError,
 )
 
@@ -138,12 +139,18 @@ class OpenAICompatibleProvider:
         except (ValueError, KeyError, IndexError, TypeError) as exc:
             raise ProviderResponseError("unexpected provider response shape") from exc
         finish = choice.get("finish_reason")
-        if finish == "length":
-            raise ProviderResponseError("provider output truncated (max tokens)")
-        if not text.strip():
-            raise ProviderResponseError("empty provider output")
         usage = data.get("usage") if isinstance(data, dict) else None
         usage = usage if isinstance(usage, dict) else {}
+        if finish == "length":
+            completion = usage.get("completion_tokens")
+            raise ProviderTruncatedError(
+                "provider output truncated (max tokens)",
+                finish_reason=finish,
+                output_tokens=completion if isinstance(completion, int) else None,
+                max_tokens=request.max_output_tokens,
+            )
+        if not text.strip():
+            raise ProviderResponseError("empty provider output")
         return LLMResponse(
             text=text,
             finish_reason=finish,

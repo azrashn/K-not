@@ -4,20 +4,26 @@ import {
 import { FileInterceptor } from "@nestjs/platform-express";
 import { Type } from "class-transformer";
 import {
-  ArrayMaxSize, IsArray, IsInt, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, ValidateNested,
+  ArrayMaxSize, ArrayMinSize, ArrayUnique, IsArray, IsInt, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, ValidateNested,
 } from "class-validator";
 import { CurrentUser } from "../auth/auth.decorators";
 import { AuthUser } from "../common/request-context";
 import { UploadAccessGuard } from "../documents/upload-access.guard";
 import { KnowledgeScope } from "../knowledge/knowledge.controller";
+import { EXAM_STYLES_MAX } from "./exam-style";
 import { ExamsService } from "./exams.service";
 
 class ExamFileBody {
   @IsOptional() @IsString() @MaxLength(120) name?: string;
 }
+/** Exactly one of exam_style_id (older clients) and exam_style_ids is required; the service checks
+ *  that, so a body with both or neither is a 422 like every other validation error here. */
 class CreateExam {
-  @IsUUID() exam_style_id!: string;
-  @IsInt() @Min(1) @Max(20) count!: number;
+  @IsOptional() @IsUUID() exam_style_id?: string;
+  @IsOptional() @IsArray() @ArrayMinSize(1) @ArrayMaxSize(EXAM_STYLES_MAX) @ArrayUnique() @IsUUID(undefined, { each: true })
+  exam_style_ids?: string[];
+  /** Missing: the average question count of the selected exams. */
+  @IsOptional() @IsInt() @Min(1) @Max(20) count?: number;
   @IsOptional() @IsArray() @ArrayMaxSize(12) @IsString({ each: true }) @MaxLength(200, { each: true }) topics?: string[];
   @IsOptional() @IsString() @MaxLength(160) title?: string;
   @IsOptional() @ValidateNested() @Type(() => KnowledgeScope) scope?: KnowledgeScope;
