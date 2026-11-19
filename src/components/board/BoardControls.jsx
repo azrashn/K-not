@@ -31,18 +31,18 @@ export function BoardCaption({ board }) {
   const subtitle = !fast && active >= 0 ? steps[active] : null
   return (
     <div className="board-caption">
-      <div className="flex flex-wrap items-start gap-3 px-4 py-3">
+      <div className="flex flex-col gap-2 px-4 py-3">
         {subtitle ? (
-          <div className="flex min-w-0 flex-1 gap-3" aria-live="polite">
+          <div className="flex min-w-0 gap-3" aria-live="polite">
             <span className="shrink-0 pt-0.5 font-mono text-[11.5px] text-accent">{active + 1}/{steps.length}</span>
             <p className="m-0 min-w-0 text-[13.5px] leading-relaxed text-ink-2">{subtitle.speech}</p>
           </div>
         ) : (
-          <p className="m-0 min-w-0 flex-1 pt-0.5 text-[12.5px] text-ink-3">
+          <p className="m-0 min-w-0 pt-0.5 text-[12.5px] text-ink-3">
             {finished || fast ? `${steps.length} adımın hepsi tahtada.` : `${steps.length} adım hazır.`}
           </p>
         )}
-        <div className="flex shrink-0 items-center gap-1">
+        <div className="flex flex-wrap items-center gap-1">
           <Control icon={CaretLeft} onClick={() => board.goTo(Math.max(0, current) - 1)} disabled={current <= 0} aria-label="Önceki adım">Önceki</Control>
           <Control icon={ArrowClockwise} onClick={() => board.goTo(Math.max(0, current))}>Bu adımı tekrar</Control>
           <Control icon={CaretRight} onClick={() => board.goTo(current < 0 ? 0 : current + 1)} disabled={current >= steps.length - 1} aria-label="Sonraki adım">Sonraki</Control>
