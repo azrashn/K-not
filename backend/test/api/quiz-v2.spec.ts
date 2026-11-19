@@ -46,6 +46,17 @@ test("a v2 exam is written from several past exams and remembers all of them", a
     name: "Vize", text: ["1. Is evaporation a cooling process? Doğru veya yanlış yazınız.",
       "2. Calculate the heat for 2 kg of water. Hesaplayınız.", "3. Explain boiling. Açıklayınız.", "4. Explain melting. Açıklayınız."].join("\n"),
   }).expect(201);
+  // Enough text for 3 questions: each source part carries one (generation/source-pool capacity).
+  await h.prisma.studyMaterial.create({
+    data: {
+      id: "water-more", courseId: h.world.courses.vy, ownerId: h.world.users.ayse, kind: "TXT",
+      title: "More physics notes", filename: "more.txt", sha256: "b".repeat(64),
+      segments: [
+        { text: "Evaporation cools the surface that loses the water.", location: { kind: "text", section: 1 } },
+        { text: "Evaporation happens below the boiling point of water.", location: { kind: "text", section: 2 } },
+      ],
+    },
+  });
   // The model is down: the run stops after its first request, which is enough to see what was asked.
   h.ai.on("POST", "/api/v1/knowledge/quiz", () => ({ status: 503, body: {} }));
 
@@ -65,7 +76,10 @@ test("a v2 exam is written from several past exams and remembers all of them", a
   }
   expect(exam.status).toBe("FAILED");
   expect(exam.style_ids).toEqual([final.body.id, midterm.body.id]);
-  const hint = h.ai.calls("POST", "/api/v1/knowledge/quiz")[0].body.style_hint as string;
+  expect(exam.note).toContain("modele ulaşılamadığı");
+  const sent = h.ai.calls("POST", "/api/v1/knowledge/quiz")[0].body;
+  expect(sent.evidence).toHaveLength(1); // one chosen source part per request, no search
+  const hint = sent.style_hint as string;
   expect(hint).toContain("2 geçmiş sınav, toplam 6 soru;");
   expect(hint).toContain("Which process changes water to vapour?");
   expect(hint).toContain("Is evaporation a cooling process?");

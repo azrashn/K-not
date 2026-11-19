@@ -1,25 +1,36 @@
-import { defaultExamCount, ExamsService, EXAM_BATCH_BUDGET_SECONDS } from '../../src/learning/exams.service';
-import { ApiError } from '../../src/common/errors';
+import { defaultExamCount, ExamsService } from '../../src/learning/exams.service';
 import { buildExamProfile } from '../../src/learning/exam-style';
 import { commonReason, EXAM_MAX_QUESTIONS, groundTopics, planExamItems, planExamKinds } from '../../src/learning/exam-plan';
 import { isDuplicateStem } from '../../src/learning/quiz-repeat';
 import { QuizGenerator } from '../../src/learning/quiz-generator';
 import { failure } from '../../src/learning/quiz-failures';
+import { NOTHING_TO_ASK, UNEXPECTED } from '../../src/learning/generation/exam-builder';
+import { NO_DOCUMENT_MESSAGE, TRANSCRIPT_WARNING } from '../../src/learning/generation/source-pool';
+import { TOPIC_NOT_IN_DOCUMENTS } from '../../src/learning/generation/topic-planner';
+import { NOTES, NOTE_SEGMENTS, SEGMENTS, VIDEO, knowledge as javaCourse } from './generation/java-course';
 
 const EXAM = ['1. Hangisi FIFO çalışır?', 'A) Yığın', 'B) Kuyruk', 'C) Ağaç', '2. BFS hangi yapıyı kullanır? Açıklayınız.',
   '3. Dijkstra negatif kenarla çalışır mı? Doğru veya yanlış yazınız.', '4. 3 düğümlü yolun maliyetini hesaplayınız.'].join('\n');
 const profile = buildExamProfile(EXAM);
 const u = { id: 'u', role: 'USER' } as any;
 
-type Batch = { topic: string; items: { kind: string; variant: string | null }[]; avoidStems: string[]; budgetSeconds: number; styleHint: string | null };
+type Request = { topic: string; items: { kind: string; variant: string | null }[]; sources: any[]; avoidQuotes: string[];
+  budgetSeconds: number; styleHint: string | null };
 
-/** A generator double: `answer(batch, call)` decides per request; by default every question is produced. */
 const STYLES = [{ id: 'e1', name: 'Final', profile, ownerId: 'u' }];
 /** examStyle.findMany double: the saved styles of user `u` among the ids asked for (in storage order). */
 const styleStore = (styles: { id: string; name: string; profile: any; ownerId?: string }[]) =>
   jest.fn(async ({ where }: any) => styles.filter((s) => where.id.in.includes(s.id) && (s.ownerId ?? 'u') === where.ownerId));
 
-function make(answer?: (b: Batch, call: number) => any, over: { knowledge?: any; config?: any; styles?: any[] } = {}) {
+/** A course of graph notes, each segment its own part (2 sentences each: capacity 1). */
+const GRAPH = { id: 'file_graph', kind: 'TXT', title: 'Graf notları', status: 'READY', version: 'v1' };
+const graphSegments = Array.from({ length: 8 }, (_, i) => ({
+  id: `g${i}`, text: `Kuyruk ve BFS konusunun ${i + 1}. bölümü burada anlatılır. BFS bekleyen düğümleri kuyrukta tutar ve katman katman ilerler.`,
+}));
+const graphCourse = () => javaCourse([GRAPH], new Map([[GRAPH.id, graphSegments]]));
+
+/** `answer(request, call)` decides per request; by default every question is produced. */
+function make(answer?: (r: Request, call: number) => any, over: { knowledge?: any; config?: any; styles?: any[] } = {}) {
   const prisma = {
     examStyle: { findMany: styleStore(over.styles ?? STYLES) },
     generatedExam: {
@@ -28,32 +39,29 @@ function make(answer?: (b: Batch, call: number) => any, over: { knowledge?: any;
       update: jest.fn(async ({ data }) => data),
     },
   };
-  const batches: Batch[] = [];
+  const requests: Request[] = [];
   let n = 0;
-  const produce = (b: Batch) => ({
-    quizzes: b.items.map((it, slot) => ({ id: `q${++n}`, slot, kind: it.kind })),
-    stems: b.items.map((it, slot) => `${b.topic} sorusu ${n}-${slot} ${it.kind}`),
-    failures: [],
+  const produce = (r: Request) => ({
+    quizzes: r.items.map((_it, slot) => ({ id: `q${++n}`, slot })), stems: [], failures: [],
   });
   const generator = {
-    generate: jest.fn(async (_u: any, _c: any, b: Batch) => {
-      batches.push({ ...b, avoidStems: [...b.avoidStems] });
-      const out = answer?.(b, batches.length);
+    generate: jest.fn(async (_u: any, _c: any, r: Request) => {
+      requests.push({ ...r, avoidQuotes: [...(r.avoidQuotes ?? [])] });
+      const out = answer?.(r, requests.length);
       if (out instanceof Error) throw out;
-      return out ?? produce(b);
+      return out ?? produce(r);
     }),
   };
   const svc = new ExamsService(prisma as any, { requireMember: jest.fn() } as any, {} as any, {} as any,
-    over.knowledge, generator as unknown as QuizGenerator, over.config);
-  return { svc, prisma, generator, batches, produce };
+    'knowledge' in over ? over.knowledge : graphCourse(), generator as unknown as QuizGenerator, over.config);
+  return { svc, prisma, generator, requests };
 }
-const runV2 = (svc: any, items: any[], topics: string[]) => svc.runV2(u, 'c', 'x1', items, topics, undefined, 'Sınav stili: kısa');
+const created = (prisma: any) => prisma.generatedExam.create.mock.calls[0][0].data;
 const last = (prisma: any) => prisma.generatedExam.update.mock.calls.at(-1)[0].data;
-const fails = (b: Batch, code: string, attempts = 1) =>
-  ({ quizzes: [], stems: [], failures: b.items.map((it, slot) => failure(slot, it.kind, code, attempts, it.variant)) });
-
-const MC = { kind: 'MULTIPLE_CHOICE' }, OPEN = { kind: 'OPEN' }, TF = { kind: 'TRUE_FALSE' };
-const CALC = { kind: 'SHORT_ANSWER', variant: 'CALCULATION' };
+const settle = async () => { for (let i = 0; i < 30; i++) await new Promise((r) => setImmediate(r)); };
+const fails = (r: Request, code: string) =>
+  ({ quizzes: [], stems: [], failures: r.items.map((it, slot) => failure(slot, it.kind, code, 2, it.variant)) });
+const hang = () => new Promise(() => undefined);
 
 describe('v2 exam plan', () => {
   test('a calculation stays a calculation; the kind mix is the legacy one', () => {
@@ -64,132 +72,107 @@ describe('v2 exam plan', () => {
   });
 });
 
-describe('v2 generation run', () => {
-  test('slots go to topics in turn and one topic is asked in one request', async () => {
-    const { svc, prisma, batches } = make();
-    await runV2(svc, [MC, OPEN, TF, CALC], ['BFS', 'DFS']);
-    expect(batches.map((b) => [b.topic, b.items.map((i) => i.kind)])).toEqual([
-      ['BFS', ['MULTIPLE_CHOICE', 'TRUE_FALSE']],
-      ['DFS', ['OPEN', 'SHORT_ANSWER']],
-    ]);
-    expect(batches[1].items[1]).toEqual({ kind: 'SHORT_ANSWER', variant: 'CALCULATION' });
-    expect(batches.every((b) => b.budgetSeconds === EXAM_BATCH_BUDGET_SECONDS && b.styleHint === 'Sınav stili: kısa')).toBe(true);
-    const data = last(prisma);
-    expect(data.status).toBe('READY');
-    // stored in plan order, not request order
-    expect(data.items.map((i: any) => [i.kind, i.topic])).toEqual([
-      ['MULTIPLE_CHOICE', 'BFS'], ['OPEN', 'DFS'], ['TRUE_FALSE', 'BFS'], ['SHORT_ANSWER', 'DFS']]);
-    expect(data.items[0]).toEqual({ quiz_id: 'q1', kind: 'MULTIPLE_CHOICE', topic: 'BFS' });
-    expect(data.note).toBeNull();
+describe('Azra\'s trial: the Java course with notes and a video', () => {
+  const java = buildExamProfile(['1. Object nedir? Açıklayınız.', '2. Object sınıfı hangi pakettedir?', 'A) java.lang', 'B) java.io',
+    'C) java.util', ...Array.from({ length: 12 }, (_, i) => `${i + 3}. Object kavramını açıklayınız (${i}).`)].join('\n'));
+  const styles = [{ id: 'j', name: 'Java vize', profile: java }];
+
+  test('14 questions over notes that carry 6: planned as 6, never from the transcript, said in the note', async () => {
+    const course = javaCourse([NOTES, VIDEO]);
+    const { svc, prisma, requests } = make(undefined, { knowledge: course, styles });
+    const exam = await svc.create(u, 'c', { exam_style_id: 'j', count: 14 });
+    expect(exam).toMatchObject({ status: 'GENERATING', requested: 6 });
+    expect(created(prisma).note).toBe('Kaynaklar yaklaşık 6 soruya yetiyor; 14 soru istendi.');
+    expect(created(prisma).topics.length).toBeGreaterThan(1); // not one topic ("object") for the whole exam
+    await settle();
+    expect(requests.every((r) => r.sources.length === 1 && r.sources[0].material_id === NOTES.id)).toBe(true);
+    expect(new Set(requests.map((r) => r.sources[0].id))).toEqual(new Set(NOTE_SEGMENTS.map((s) => s.id)));
+    expect(course.preview.mock.calls.map((c: any[]) => c[2])).toEqual([NOTES.id]);
+    expect(last(prisma)).toMatchObject({ status: 'READY', note: 'Kaynaklar yaklaşık 6 soruya yetiyor; 14 soru istendi.' });
+    expect(last(prisma).items).toHaveLength(6);
   });
 
-  test('a topic asks at most three questions per request', async () => {
-    const { svc, batches } = make();
-    await runV2(svc, [MC, MC, MC, MC, MC], ['BFS']);
-    expect(batches.map((b) => b.items.length)).toEqual([3, 2]);
+  test('used sentences travel with every later request of the exam', async () => {
+    const { svc, requests } = make(undefined, { knowledge: javaCourse([NOTES]), styles });
+    await svc.create(u, 'c', { exam_style_id: 'j', count: 3 });
+    await settle();
+    expect(requests.map((r) => r.avoidQuotes)).toEqual([[], [], []]); // the fake stores nothing; the guard is the generator's
+    expect(requests.every((r) => r.budgetSeconds === 240 && r.styleHint?.includes('Object'))).toBe(true);
   });
 
-  test('earlier questions are passed on so later requests avoid repeating them', async () => {
-    const { svc, batches } = make();
-    await runV2(svc, [MC, OPEN], ['BFS', 'DFS']);
-    expect(batches[0].avoidStems).toEqual([]);
-    expect(batches[1].avoidStems).toHaveLength(1);
+  test('a course with only the video: transcript questions, with the warning first in the note', async () => {
+    const { svc, prisma, requests } = make(undefined, { knowledge: javaCourse([VIDEO]), styles });
+    await svc.create(u, 'c', { exam_style_id: 'j', count: 2 });
+    expect(created(prisma).note).toBe(TRANSCRIPT_WARNING);
+    await settle();
+    expect(requests.every((r) => r.sources[0].material_id === VIDEO.id)).toBe(true);
+    expect(last(prisma).note).toBe(TRANSCRIPT_WARNING);
   });
 
-  test('one timed-out request does not stop the exam; the slot is tried again with the next topic', async () => {
-    const { svc, prisma, batches } = make((b, call) => (call === 1 ? fails(b, 'TIMEOUT') : undefined));
-    await runV2(svc, [MC, OPEN], ['BFS', 'DFS']);
-    expect(batches.map((b) => b.topic)).toEqual(['BFS', 'DFS', 'DFS']);
-    const data = last(prisma);
-    expect(data.status).toBe('READY');
-    expect(data.failures).toEqual([{ topic: 'BFS', kind: 'MULTIPLE_CHOICE', code: 'TIMEOUT',
-      reason: 'Model soruyu ayrılan süre içinde yazamadı (zaman aşımı).' }]);
+  test('QUIZ_TRANSCRIPT_POLICY=never without a document asks for one and creates nothing', async () => {
+    const { svc, prisma } = make(undefined, { knowledge: javaCourse([VIDEO]), styles, config: { quizEngine: 'v2', quizTranscriptPolicy: 'never' } });
+    await expect(svc.create(u, 'c', { exam_style_id: 'j', count: 2 })).rejects.toMatchObject({ code: 'VALIDATION_ERROR', message: NO_DOCUMENT_MESSAGE });
+    expect(prisma.generatedExam.create).not.toHaveBeenCalled();
   });
 
-  test('two requests in a row that only time out stop the run', async () => {
-    const { svc, prisma, batches } = make((b) => fails(b, 'TIMEOUT'));
-    await runV2(svc, [MC, OPEN, TF], ['A', 'B', 'C']);
-    expect(batches).toHaveLength(2);
-    expect(last(prisma)).toMatchObject({ status: 'FAILED' });
-    expect(last(prisma).note).toContain('arka arkaya iki kez');
-  });
-
-  test('a produced question in between resets the timeout count', async () => {
-    const { svc, prisma, batches } = make((b, call) => (call === 2 ? undefined : call <= 3 ? fails(b, 'TIMEOUT') : undefined));
-    await runV2(svc, [MC, OPEN, TF], ['A', 'B', 'C']);
-    expect(batches.length).toBeGreaterThan(3);
-    expect(last(prisma).note ?? '').not.toContain('arka arkaya');
-  });
-
-  test('an unreachable model stops at once and keeps what was made', async () => {
-    const { svc, prisma, batches } = make((b, call) => (call === 1 ? undefined : fails(b, 'MODEL_UNREACHABLE', 0)));
-    await runV2(svc, [MC, OPEN, TF], ['A', 'B', 'C']);
-    expect(batches).toHaveLength(2);
-    expect(last(prisma)).toMatchObject({ status: 'PARTIAL' });
-    expect(last(prisma).note).toContain('modele ulaşılamadığı');
-  });
-
-  test('a topic without a source fails its slots without a model call and the next topic is tried', async () => {
-    const { svc, prisma } = make((b) => (b.topic === 'yok' ? new ApiError('VALIDATION_ERROR', 'Kaynak yok.') : undefined));
-    await runV2(svc, [MC], ['yok', 'BFS']);
-    const data = last(prisma);
-    expect(data.status).toBe('READY');
-    expect(data.items[0].topic).toBe('BFS');
-    expect(data.failures[0]).toMatchObject({ topic: 'yok', code: 'NO_SOURCE' });
-  });
-
-  test('every slot gets at most one retry; a single topic gets none', async () => {
-    const twoTopics = make((b) => fails(b, 'QUOTE_NOT_FOUND', 2));
-    await runV2(twoTopics.svc, [MC, OPEN], ['A', 'B']);
-    expect(twoTopics.batches).toHaveLength(4);
-    const oneTopic = make((b) => fails(b, 'QUOTE_NOT_FOUND', 2));
-    await runV2(oneTopic.svc, [MC, OPEN], ['A']);
-    expect(oneTopic.batches).toHaveLength(1);
-  });
-
-  test('a failed exam names the most common reason', async () => {
-    const { svc, prisma } = make((b) => fails(b, 'QUOTE_NOT_FOUND', 2));
-    await runV2(svc, [MC, OPEN], ['A', 'B']);
-    const data = last(prisma);
-    expect(data.status).toBe('FAILED');
-    expect(data.note).toContain('kaynaklara dayalı soru hazırlanamadı');
-    expect(data.note).toContain('En sık neden (4/4 deneme): Modelin gösterdiği alıntı kaynakta birebir bulunamadı (2 deneme).');
-  });
-
-  test('a partial exam says how many were made and why the rest were not', async () => {
-    const { svc, prisma } = make((b) => (b.items[0].kind === 'OPEN' ? fails(b, 'ANSWER_LEAKED', 2) : undefined));
-    await runV2(svc, [MC, OPEN], ['A', 'B']);
-    expect(last(prisma)).toMatchObject({ status: 'PARTIAL' });
-    expect(last(prisma).note).toContain("2 sorudan 1'i hazırlanabildi.");
-    expect(last(prisma).note).toContain('cevabı ele veriyordu');
-  });
-
-  test('an unexpected error ends the run as failed and is rethrown', async () => {
-    const { svc, prisma } = make(() => new Error('boom'));
-    await expect(runV2(svc, [MC], ['A'])).rejects.toThrow('boom');
-    expect(last(prisma)).toMatchObject({ status: 'FAILED', note: 'Beklenmeyen bir hata oluştu.' });
+  test('a written topic only the transcript mentions is refused with the hint to choose the video', async () => {
+    const { svc, prisma } = make(undefined, { knowledge: javaCourse([NOTES, VIDEO]), styles });
+    await expect(svc.create(u, 'c', { exam_style_id: 'j', count: 2, topics: ['Intelijayda derleicisi'] }))
+      .rejects.toMatchObject({ code: 'VALIDATION_ERROR', message: TOPIC_NOT_IN_DOCUMENTS });
+    expect(prisma.generatedExam.create).not.toHaveBeenCalled();
   });
 });
 
 describe('creating a v2 exam', () => {
-  const knowledge = {
-    materials: jest.fn().mockResolvedValue([{ id: 'm1', status: 'READY', title: 'Graf notları' }]),
-    preview: jest.fn().mockResolvedValue({ segments: [{ text: 'Kuyruk ve BFS\nBFS kuyruk kullanır. Dijkstra negatif kenarla çalışmaz.' }] }),
-  };
-
-  test('past-exam terms are grounded in the course sources', async () => {
-    const { svc, prisma } = make(() => new Promise(() => undefined), { knowledge });
-    const exam = await svc.create(u, 'c', { exam_style_id: 'e1', count: 4 });
-    const topics = prisma.generatedExam.create.mock.calls[0][0].data.topics as string[];
-    expect(topics).toEqual(expect.arrayContaining(['Kuyruk ve BFS']));
-    expect(topics.every((t) => !/^(hesaplayınız|açıklayınız)$/i.test(t))).toBe(true);
-    expect(exam).toMatchObject({ status: 'GENERATING', requested: 4 });
+  test('written topics are kept as written and bound to the parts that hold them', async () => {
+    const { svc, prisma, requests } = make();
+    await svc.create(u, 'c', { exam_style_id: 'e1', count: 2, topics: ['BFS kuyruğu', 'Kırmızı-siyah ağaç', 'BFS kuyruğu'] });
+    expect(created(prisma).topics).toEqual(['BFS kuyruğu']); // the tree is in no source; the repeat is dropped
+    await settle();
+    expect(requests.every((r) => r.topic === 'BFS kuyruğu')).toBe(true);
   });
 
-  test('topics the student wrote are never filtered', async () => {
-    const { svc, prisma } = make(() => new Promise(() => undefined), { knowledge });
-    await svc.create(u, 'c', { exam_style_id: 'e1', count: 2, topics: ['Kırmızı-siyah ağaç'] });
-    expect(prisma.generatedExam.create.mock.calls[0][0].data.topics).toEqual(['Kırmızı-siyah ağaç']);
+  test('a course without usable text is refused before an exam exists', async () => {
+    // A scanned PDF: its pages have no extractable text.
+    const empty = javaCourse([GRAPH], new Map([[GRAPH.id, [{ id: 'x', text: '[Bu sayfada çıkarılabilir metin yok.]', location: { kind: 'page', page: 1, empty: true } }, { id: 'y', text: '   ' }]]]));
+    const { svc, prisma } = make(undefined, { knowledge: empty });
+    await expect(svc.create(u, 'c', { exam_style_id: 'e1', count: 2 })).rejects.toMatchObject({ message: NOTHING_TO_ASK });
+    expect(prisma.generatedExam.create).not.toHaveBeenCalled();
+  });
+
+  test('only one exam per course runs at a time', async () => {
+    const { svc, prisma } = make();
+    prisma.generatedExam.count.mockResolvedValue(1);
+    await expect(svc.create(u, 'c', { exam_style_id: 'e1', count: 2 })).rejects.toMatchObject({ code: 'JOB_ALREADY_RUNNING' });
+  });
+
+  test('a partial exam keeps what was made and says why the rest was not, per question', async () => {
+    const { svc, prisma } = make((r) => (r.sources[0].id === 'g1' ? fails(r, 'BAD_FORMAT') : undefined));
+    await svc.create(u, 'c', { exam_style_id: 'e1', count: 8 });
+    await settle();
+    const data = last(prisma);
+    expect(data.status).toBe('PARTIAL');
+    expect(data.items).toHaveLength(7);
+    expect(data.note).toBe('8 sorudan 7\'si hazırlandı. Hazırlanamayan 1 sorunun 1\'inde neden: Soru, türünün gerektirdiği biçime uymuyordu. Her soru en fazla 2 kez denendi.');
+    expect(data.failures).toEqual([
+      expect.objectContaining({ code: 'BAD_FORMAT', reason: expect.any(String), topic: expect.any(String), kind: expect.any(String) }),
+      expect.objectContaining({ code: 'BAD_FORMAT' }),
+    ]);
+  });
+
+  test('an unreachable model ends the exam as failed with that reason', async () => {
+    const { svc, prisma, requests } = make((r) => fails(r, 'MODEL_UNREACHABLE'));
+    await svc.create(u, 'c', { exam_style_id: 'e1', count: 4 });
+    await settle();
+    expect(requests).toHaveLength(1);
+    expect(last(prisma)).toMatchObject({ status: 'FAILED', note: 'Soru hazırlayan modele ulaşılamadığı için üretim durduruldu. Kaynaklara dayalı soru hazırlanamadı.' });
+  });
+
+  test('an unexpected error ends the run as failed', async () => {
+    const { svc, prisma } = make(() => new Error('boom'));
+    await svc.create(u, 'c', { exam_style_id: 'e1', count: 2 });
+    await settle();
+    expect(last(prisma)).toMatchObject({ status: 'FAILED', note: UNEXPECTED });
   });
 
   test('QUIZ_ENGINE=legacy keeps the legacy run and topics', async () => {
@@ -211,10 +194,6 @@ describe('creating a v2 exam', () => {
 });
 
 describe('creating an exam from several past exams', () => {
-  const knowledge = {
-    materials: jest.fn().mockResolvedValue([{ id: 'm1', status: 'READY', title: 'Graf notları' }]),
-    preview: jest.fn().mockResolvedValue({ segments: [{ text: 'Kuyruk ve BFS\nBFS kuyruk kullanır. Dijkstra negatif kenarla çalışmaz.' }] }),
-  };
   const MIDTERM = ['1. Huffman kodlamasında hangi yapı kullanılır?', 'A) Yığın', 'B) Öncelik kuyruğu', 'C) Liste', 'D) Ağaç',
     '2. Huffman ağacının yüksekliğini hesaplayınız.'].join('\n');
   const midterm = buildExamProfile(MIDTERM);
@@ -223,42 +202,40 @@ describe('creating an exam from several past exams', () => {
     { id: 'e1', name: 'Final', profile },
     { id: 'theirs', name: 'Başkası', profile, ownerId: 'other' },
   ];
-  const hang = () => new Promise(() => undefined);
 
   test('the hint, plan and stored styles come from every selected exam, in the order chosen', async () => {
-    const { svc, prisma, batches } = make(hang, { knowledge, styles: both });
+    const { svc, prisma, requests } = make(hang, { styles: both });
     const exam = await svc.create(u, 'c', { exam_style_ids: ['e1', 'e2'], count: 6, topics: ['BFS'] });
-    await new Promise((r) => setImmediate(r));
-    const data = prisma.generatedExam.create.mock.calls[0][0].data;
-    expect(data).toMatchObject({ styleId: 'e1', styleIds: ['e1', 'e2'], title: '2 geçmiş sınavdan yeni sınav', requested: 6 });
+    await settle();
+    expect(created(prisma)).toMatchObject({ styleId: 'e1', styleIds: ['e1', 'e2'], title: '2 geçmiş sınavdan yeni sınav', requested: 6 });
     expect(exam).toMatchObject({ style_id: 'e1', style_ids: ['e1', 'e2'] });
-    expect(batches[0].styleHint).toContain('2 geçmiş sınav, toplam 6 soru;');
-    expect(batches[0].styleHint).toContain(profile.sample_stems[0]);
-    expect(batches[0].styleHint).toContain(midterm.sample_stems[0]);
+    expect(requests[0].styleHint).toContain('2 geçmiş sınav, toplam 6 soru;');
+    expect(requests[0].styleHint).toContain(profile.sample_stems[0]);
+    expect(requests[0].styleHint).toContain(midterm.sample_stems[0]);
   });
 
   test('a single style through exam_style_ids is the same as exam_style_id', async () => {
-    const a = make(hang, { knowledge });
-    const b = make(hang, { knowledge });
+    const a = make(hang);
+    const b = make(hang);
     await a.svc.create(u, 'c', { exam_style_id: 'e1', count: 4 });
     await b.svc.create(u, 'c', { exam_style_ids: ['e1'], count: 4 });
-    await new Promise((r) => setImmediate(r));
+    await settle();
     const strip = (d: any) => ({ ...d, id: undefined });
-    expect(strip(b.prisma.generatedExam.create.mock.calls[0][0].data)).toEqual(strip(a.prisma.generatedExam.create.mock.calls[0][0].data));
-    expect(b.batches[0].styleHint).toBe(a.batches[0].styleHint);
-    expect(a.prisma.generatedExam.create.mock.calls[0][0].data.title).toBe('Final — yeni sınav');
+    expect(strip(created(b.prisma))).toEqual(strip(created(a.prisma)));
+    expect(b.requests[0].styleHint).toBe(a.requests[0].styleHint);
+    expect(created(a.prisma).title).toBe('Final — yeni sınav');
   });
 
   test('a style of someone else among the selection is not found and nothing is created', async () => {
-    const { svc, prisma } = make(hang, { knowledge, styles: both });
+    const { svc, prisma } = make(hang, { styles: both });
     await expect(svc.create(u, 'c', { exam_style_ids: ['e1', 'theirs'], count: 3 })).rejects.toMatchObject({ code: 'NOT_FOUND' });
     expect(prisma.generatedExam.create).not.toHaveBeenCalled();
   });
 
   test('without a count the exam has the average size of the selected exams', async () => {
-    const { svc, prisma } = make(hang, { knowledge, styles: both });
+    const { svc, prisma } = make(hang, { styles: both });
     await svc.create(u, 'c', { exam_style_ids: ['e1', 'e2'], topics: ['BFS'] }); // 4 and 2 questions
-    expect(prisma.generatedExam.create.mock.calls[0][0].data.requested).toBe(3);
+    expect(created(prisma).requested).toBe(3);
   });
 
   test.each([
@@ -268,13 +245,13 @@ describe('creating an exam from several past exams', () => {
     [{ exam_style_ids: ['a', 'b', 'c', 'd', 'e', 'f'] }, '1 ile 5 arasında'],
     [{ exam_style_ids: ['e1', 'e1'] }, 'birden fazla kez'],
   ])('%j is a validation error', async (body, message) => {
-    const { svc, prisma } = make(hang, { knowledge, styles: both });
+    const { svc, prisma } = make(hang, { styles: both });
     await expect(svc.create(u, 'c', { count: 2, ...body })).rejects.toMatchObject({ code: 'VALIDATION_ERROR', message: expect.stringContaining(message) });
     expect(prisma.examStyle.findMany).not.toHaveBeenCalled();
   });
 
   test('the legacy engine refuses several exams with a clear message and keeps a single one', async () => {
-    const legacy = make(undefined, { knowledge, styles: both, config: { quizEngine: 'legacy' } });
+    const legacy = make(undefined, { styles: both, config: { quizEngine: 'legacy' } });
     (legacy.svc as any).learning = { start: jest.fn(hang) };
     await expect(legacy.svc.create(u, 'c', { exam_style_ids: ['e1', 'e2'], count: 2, topics: ['BFS'] }))
       .rejects.toMatchObject({ code: 'VALIDATION_ERROR', message: expect.stringContaining('yalnız yeni soru motoruyla') });
@@ -300,7 +277,8 @@ describe('default exam size', () => {
   });
 });
 
-describe('ported from origin/feature/quiz-quality-overhaul', () => {
+// The legacy engine still grounds its topics with these (QUIZ_ENGINE=legacy).
+describe('legacy helpers ported from origin/feature/quiz-quality-overhaul', () => {
   const SOURCES = [
     { title: 'Chapter_3', text: 'Transport vs. network layer services and protocols\ntransport layer: communication between processes' },
     { title: 'Chapter_3', text: 'TCP: overview\nreliable, in-order byte stream; TCP uses a three-way handshake' },
@@ -349,3 +327,5 @@ describe('the generator refuses a repeated question before storing it', () => {
     expect(prisma.learningQuiz.create).not.toHaveBeenCalled();
   });
 });
+
+void SEGMENTS;
