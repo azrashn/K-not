@@ -1,6 +1,6 @@
 /** Plan for a generated exam: which question kinds, in which order, from which topics.
  *  The mix follows the saved exam style (largest remainder), so the new exam keeps the old exam's shape. */
-import type { ExamProfile } from "./exam-style";
+import { cleanTopicTerms, type ExamProfile } from "./exam-style";
 
 export type QuestionKind = "MULTIPLE_CHOICE" | "TRUE_FALSE" | "SHORT_ANSWER" | "OPEN";
 
@@ -38,9 +38,21 @@ export function planExamKinds(profile: ExamProfile, count: number): QuestionKind
   return out;
 }
 
-/** User topics win; otherwise the style's topic terms. Duplicates and blanks are dropped. */
+export type ExamItem = { kind: QuestionKind; variant?: "CALCULATION" };
+
+/** v2 plan: the same mix as planExamKinds, but a calculation stays a calculation (SHORT_ANSWER with
+ *  variant CALCULATION) so the engine recomputes its answer. SHORT_ANSWER only comes from CALCULATION. */
+export function planExamItems(profile: ExamProfile, count: number): ExamItem[] {
+  return planExamKinds(profile, count).map((kind) =>
+    kind === "SHORT_ANSWER" ? { kind, variant: "CALCULATION" } : { kind },
+  );
+}
+
+/** User topics win, as written; otherwise the style's topic terms without question/exam words and one
+ *  per root (profiles saved before those rules may still hold "hangi" or both "bellek" and "belleği").
+ *  Duplicates and blanks are dropped. */
 export function examTopics(userTopics: string[] | undefined, profile: ExamProfile): string[] {
-  const source = userTopics?.length ? userTopics : profile.topic_terms;
+  const source = userTopics?.length ? userTopics : cleanTopicTerms(profile.topic_terms);
   const seen = new Set<string>();
   const out: string[] = [];
   for (const t of source) {
@@ -51,6 +63,7 @@ export function examTopics(userTopics: string[] | undefined, profile: ExamProfil
   return out.slice(0, 12);
 }
 
+// groundTopics and commonReason: ported by hand from origin/feature/quiz-quality-overhaul (Fatih).
 type SourceText = { title?: string; text: string };
 const lower = (s: string) => s.toLocaleLowerCase("tr");
 
@@ -68,11 +81,14 @@ function heading(text: string): string | null {
  * Topics the course sources can actually answer. Terms from the past exam are kept only when they occur in
  * the sources (most frequent first); headings of the sources fill the rest, so a past exam from another
  * wording or language still yields questions. User-written topics are never filtered.
+ * `priority` (lower-cased term → weight, e.g. MergedExamProfile.term_exams) orders the kept terms
+ * before their source frequency does; without it the order is source frequency alone.
  */
 export function groundTopics(
   candidates: string[],
   sources: SourceText[],
   want: number,
+  priority?: Record<string, number>,
 ): { topics: string[]; dropped: string[] } {
   const text = lower(sources.map((s) => s.text).join("\n"));
   const count = (term: string) => {
@@ -82,7 +98,11 @@ export function groundTopics(
     return n;
   };
   const scored = candidates.map((t) => ({ t, n: count(t) }));
-  const kept = scored.filter((x) => x.n > 0).sort((a, b) => b.n - a.n).map((x) => x.t);
+  const rank = (t: string) => priority?.[lower(t.trim())] ?? 0;
+  const kept = scored
+    .filter((x) => x.n > 0)
+    .sort((a, b) => rank(b.t) - rank(a.t) || b.n - a.n)
+    .map((x) => x.t);
   const dropped = scored.filter((x) => x.n === 0).map((x) => x.t);
   const out = [...kept];
   const seen = new Set(out.map(lower));

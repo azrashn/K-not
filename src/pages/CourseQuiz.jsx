@@ -23,13 +23,22 @@ function shortTopic(text) {
   return cut.slice(0, cut.lastIndexOf(" ") > 40 ? cut.lastIndexOf(" ") : 80) + "…";
 }
 
+/** The form also offers "Karışık": the kinds in turn (one question is a multiple-choice one). */
+const kindChoices = { ...labels, MIXED: "Karışık (türler sırayla)" };
+/** 1 question comes back at once; 2-10 are a set written in the background (GET /quiz-sets/:id). */
+const QUIZ_COUNTS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+const SET_POLL_MS = 2000;
 export default function CourseQuiz({ courseId }) {
   const { navigate, takeIntent } = useApp(),
     courses = useResource((signal) => api.courses(signal), []);
   const [course, setCourse] = useState(courseId || ""),
     [topic, setTopic] = useState(""),
     [kind, setKind] = useState("MULTIPLE_CHOICE"),
+    [count, setCount] = useState(1),
     [material, setMaterial] = useState("");
+  // A quiz set: its summary with the questions made so far, and which one is open.
+  const [quizSet, setQuizSet] = useState(null),
+    [setIndex, setSetIndex] = useState(0);
   const [materials, setMaterials] = useState([]),
     [history, setHistory] = useState([]),
     [historyFilter, setHistoryFilter] = useState("all"),
@@ -78,6 +87,38 @@ export default function CourseQuiz({ courseId }) {
     setError("Hazırlama iptal edildi. Sunucu soruyu yine de tamamlayabilir; bittiyse “Önceki alıştırmalar” içinde görünür.");
   }
   useEffect(() => () => { requestEpoch.current += 1; }, []);
+  const setQuestions = (quizSet?.questions ?? []).filter((q) => q.available);
+  const setRunning = quizSet?.status === "GENERATING";
+  const sourceWarning = quiz?.source_warning || quizSet?.source_warning || "";
+  // A set is written in the background: follow it until it is done, then refresh the history.
+  useEffect(() => {
+    if (!course || !quizSet?.id || quizSet.status !== "GENERATING") return;
+    let stopped = false;
+    const timer = setInterval(async () => {
+      try {
+        const next = await api.quizSet(course, quizSet.id);
+        if (stopped) return;
+        setQuizSet(next);
+        if (next.status !== "GENERATING") api.quizzes(course).then((h) => !stopped && setHistory(h)).catch(() => {});
+      } catch (e) {
+        if (!stopped) setError(videoErrorText(e));
+      }
+    }, SET_POLL_MS);
+    return () => {
+      stopped = true;
+      clearInterval(timer);
+    };
+  }, [course, quizSet?.id, quizSet?.status]);
+  // The first question of a set opens as soon as it exists; the student need not wait for the rest.
+  useEffect(() => {
+    if (quizSet && !quiz && setQuestions[setIndex]) setQuiz(setQuestions[setIndex]);
+  }, [quizSet, setIndex]); // eslint-disable-line react-hooks/exhaustive-deps
+  function openSetQuestion(i) {
+    setSetIndex(i);
+    setQuiz(setQuestions[i]);
+    setResult(null);
+    setAnswer("");
+  }
   useEffect(() => {
     if (consumed.current) return;
     consumed.current = true;
@@ -129,6 +170,8 @@ export default function CourseQuiz({ courseId }) {
     const epoch = ++requestEpoch.current;
     setBusy(true);
     setQuiz(null);
+    setQuizSet(null);
+    setSetIndex(0);
     setError("");
     setResult(null);
     setAnswer("");
@@ -146,10 +189,12 @@ export default function CourseQuiz({ courseId }) {
               ? { mode: "selected", material_ids: [material] }
               : { mode: "course" },
         watched_only: watchedOnly,
+        ...(count > 1 ? { count } : {}),
         ...(examStyleId ? { exam_style_id: examStyleId } : {}),
       }, controller.signal);
       if (epoch !== requestEpoch.current) return;
-      setQuiz(q);
+      if (q?.type === "quiz_set") setQuizSet(q);
+      else setQuiz(q);
       const history = await api.quizzes(course);
       if (epoch === requestEpoch.current) setHistory(history);
     } catch (err) {
@@ -203,6 +248,7 @@ export default function CourseQuiz({ courseId }) {
                   setHistory([]);
                   setSelectedMaterials([]);
                   setQuiz(null);
+                  setQuizSet(null);
                   setResult(null);
                   setMaterial("");
                 }}
@@ -243,19 +289,40 @@ export default function CourseQuiz({ courseId }) {
                 value={kind}
                 onChange={(e) => setKind(e.target.value)}
               >
-                {Object.entries(labels).map(([id, label]) => (
+                {Object.entries(kindChoices).map(([id, label]) => (
                   <option key={id} value={id}>
                     {label}
                   </option>
                 ))}
               </select>
             </label>
+            <label>
+              Soru sayısı
+              <select
+                aria-label="Soru sayısı"
+                disabled={busy}
+                value={count}
+                onChange={(e) => setCount(Number(e.target.value))}
+              >
+                {QUIZ_COUNTS.map((n) => (
+                  <option key={n} value={n}>
+                    {n}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {count > 1 && (
+              <p className="product-note">
+                Sorular arka planda tek tek hazırlanır; ilki hazır olunca çözmeye başlayabilirsin.
+              </p>
+            )}
             {scopeNote && <p className="product-note">{scopeNote}</p>}
             <div className="quiz-actions">
               <Btn
                 type="submit"
                 disabled={
                   busy ||
+                  setRunning ||
                   !course ||
                   !topic.trim() ||
                   (scopeMode === "active" && !material) ||
@@ -411,6 +478,7 @@ export default function CourseQuiz({ courseId }) {
                 try {
                   const saved = await api.quiz(course, q.id);
                   if (epoch !== requestEpoch.current) return;
+                  setQuizSet(null);
                   setQuiz(saved);
                   setResult(null);
                   setAnswer("");
@@ -437,13 +505,43 @@ export default function CourseQuiz({ courseId }) {
               )}
             </p>
           )}
-          {busy && !quiz ? <p role="status">Seçtiğin kaynaklardan soru hazırlanıyor ve denetleniyor…</p> : !quiz ? (
+          {quizSet && (
+            <div className="mb-5" aria-label="Alıştırma seti">
+              {setRunning ? (
+                <p role="status" className="product-note">
+                  {quizSet.requested} sorudan {quizSet.produced} tanesi hazır; diğerleri hazırlanıyor…
+                </p>
+              ) : (
+                <p className="product-note">
+                  {quizSet.requested} sorudan {quizSet.produced} tanesi hazırlandı.
+                </p>
+              )}
+              {quizSet.note && <p className="product-note">{quizSet.note}</p>}
+            </div>
+          )}
+          {sourceWarning && (
+            <p className="quiz-source-warning mb-5" role="note">
+              {sourceWarning}
+            </p>
+          )}
+          {busy && !quiz ? <p role="status">Seçtiğin kaynaklardan soru hazırlanıyor ve denetleniyor…</p> : quizSet && !quiz ? (
+            setRunning ? null : (
+              <EmptyState title="Alıştırma seti boş kaldı">
+                Bu konuda soru hazırlanamadı. Nedeni yukarıdaki notta yazıyor.
+              </EmptyState>
+            )
+          ) : !quiz ? (
             <EmptyState title="Öğrendiklerini dene">
               Bir ders, konu ve soru türü seç. Gerçek kaynak bulunduğunda
               alıştırman burada açılır.
             </EmptyState>
           ) : (
             <article className="quiz-question product-panel">
+              {quizSet && setQuestions.length > 0 && (
+                <span className="source-badge">
+                  Soru {setIndex + 1} / {setRunning ? quizSet.requested : setQuestions.length}
+                </span>
+              )}{" "}
               <span className="source-badge">{labels[quiz.kind]}</span>
               {quiz.question_style === "SOURCE_COMPLETION" && <p className="product-note">Kaynakta geçen kavramı hatırlama sorusu</p>}
               {quiz.objective && (
@@ -535,6 +633,14 @@ export default function CourseQuiz({ courseId }) {
                   )}
                   <blockquote>{result.quote}</blockquote>
                   <div className="product-actions">
+                    {quizSet && setIndex + 1 < setQuestions.length && (
+                      <Btn onClick={() => openSetQuestion(setIndex + 1)}>
+                        Sonraki soru →
+                      </Btn>
+                    )}
+                    {quizSet && setIndex + 1 >= setQuestions.length && setRunning && (
+                      <span className="product-note" role="status">Sonraki soru hazırlanıyor…</span>
+                    )}
                     <Btn
                       onClick={() =>
                         navigate(`/dersler/${course}/ogrenme`, {

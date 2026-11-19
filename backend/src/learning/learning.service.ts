@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common";
+import { Inject, Injectable, Optional } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
 import { PrismaService } from "../prisma/prisma.service";
 import { AuthUser } from "../common/request-context";
@@ -6,10 +6,21 @@ import { ApiError, notFound } from "../common/errors";
 import { AccessService } from "../courses/access.service";
 import { KnowledgeService } from "../knowledge/knowledge.service";
 import { AiServiceClient } from "../ai/ai-client";
+import { APP_CONFIG, AppConfig, QuizEngine } from "../config/config";
 import { validSourceCompletion } from "./quiz-validation";
 import { quizHistoryItem } from "./quiz-history";
 import { buildExamProfile, examStyleHint, ExamProfile } from "./exam-style";
 import { matchAnswer, rubricCoverage, rubricTerms } from "./answer-match";
+import { findQuizSources } from "./quiz-sources";
+import { publicQuiz } from "./quiz-public";
+import { QuizGenerator } from "./quiz-generator";
+import { QuizBuilder } from "./generation/quiz-builder";
+import { TRANSCRIPT_WARNING } from "./generation/source-pool";
+
+/** Model time for one question from POST /quizzes: first call plus one repair (see quiz_engine.py). */
+export const SINGLE_QUIZ_BUDGET_SECONDS = 130;
+/** Model time for one request of a quiz set (one or two questions of one source part, plus repairs). */
+export const SET_REQUEST_BUDGET_SECONDS = 240;
 
 @Injectable()
 export class LearningService {
@@ -18,7 +29,14 @@ export class LearningService {
     private readonly access: AccessService,
     private readonly knowledge: KnowledgeService,
     private readonly ai: AiServiceClient,
+    @Optional() private readonly generator?: QuizGenerator,
+    @Optional() @Inject(APP_CONFIG) private readonly config?: AppConfig,
   ) {}
+
+  /** v2 needs the generator; a service built without one (older unit tests) runs the legacy engine. */
+  get quizEngine(): QuizEngine {
+    return this.generator && (this.config?.quizEngine ?? "v2") === "v2" ? "v2" : "legacy";
+  }
   async activity(u: AuthUser, c: string, body: any) {
     await this.access.requireMember(u, c);
     if (body.material_id) {
@@ -150,52 +168,71 @@ export class LearningService {
       mastery_estimated: false,
     };
   }
-  async start(u: AuthUser, c: string, b: any) {
-    const found = await this.knowledge.ask(u, c, {
-      question: b.topic,
-      retrieve_only: true,
-      scope: b.scope,
-      watched_only: Boolean(b.watched_only),
-      ...(b.material_id
-        ? { strategy: "single", active_material_id: b.material_id }
-        : {}),
-    });
-    let candidates = found.evidence
-      .filter(
-        (e: any) =>
-          !b.watched_only ||
-          found.video_learning.some(
-            (l: any) => l.source_id === e.id && l.state === "WATCHED",
-          ),
-      )
-      .slice(0, 4);
-    // A selected ready material can be relevant across languages even when the
-    // text retrieval's lexical guard finds no anchor. The source-fact planner
-    // still rejects unrelated topics; never bypass watched-only restrictions.
-    if (!candidates.length && !b.watched_only &&
-        b.scope?.mode === "selected" && b.scope.material_ids?.length) {
-      const materials = await this.knowledge.materials(u, c);
-      for (const id of b.scope.material_ids.slice(0, 4)) {
-        const m = materials.find((m: any) => m.id === id && m.status === "READY");
-        if (!m) continue;
-        const preview = await this.knowledge.preview(u, c, id);
-        for (const segment of preview.segments) {
-          if (!segment.text?.trim()) continue;
-          candidates.push({...segment, material_id:m.id, version:m.version,
-                           title:m.title, kind:m.kind});
-          if (candidates.length >= 4) break;
-        }
-        if (candidates.length >= 4) break;
+  /**
+   * POST /quizzes. v2: one question is returned at once (the public quiz); 2-10 questions start a quiz set
+   * written in the background, returned as `{ set }` (the controller answers 202). Legacy: one question of one
+   * kind, as before.
+   */
+  async start(u: AuthUser, c: string, b: any): Promise<any> {
+    const count = b.count ?? 1;
+    if (this.quizEngine === "v2") {
+      const styleHint = await this.styleHintFor(u, c, b.exam_style_id);
+      const request = { ...b, count, styleHint };
+      if (count > 1) {
+        await this.access.requireMember(u, c);
+        return { set: this.quizSetSummary(await this.quizBuilder().startSet(u, c, request, SET_REQUEST_BUDGET_SECONDS)) };
+      }
+      return this.quizBuilder().single(u, c, request, SINGLE_QUIZ_BUDGET_SECONDS);
+    }
+    if (count > 1 || b.kind === "MIXED")
+      throw new ApiError("VALIDATION_ERROR", "Birden fazla soru ve “Karışık” tür yalnız yeni soru motoruyla kullanılabilir.");
+    return this.startLegacy(u, c, b);
+  }
+
+  /** The v2 quiz: source pool, the topic's parts, plan and run (generation/quiz-builder.ts). */
+  private quizBuilder(): QuizBuilder {
+    return new QuizBuilder(this.prisma, this.knowledge, this.generator!, this.config?.quizTranscriptPolicy ?? "documents_first");
+  }
+
+  private quizSetSummary(row: any) {
+    // The transcript warning opens the stored note; the screen shows it on its own (as for one question).
+    const warning = typeof row.note === "string" && row.note.startsWith(TRANSCRIPT_WARNING) ? TRANSCRIPT_WARNING : null;
+    return {
+      id: row.id,
+      type: "quiz_set",
+      topic: row.title,
+      status: row.status,
+      requested: row.requested,
+      produced: (row.items as any[]).length,
+      failures: row.failures,
+      note: warning ? row.note.slice(warning.length).trim() || null : row.note,
+      source_warning: warning,
+      created_at: row.createdAt,
+      finished_at: row.finishedAt,
+    };
+  }
+
+  /** GET /quiz-sets/:id: the set with its questions as students see them (no answers, no quotes). */
+  async quizSet(u: AuthUser, c: string, id: string) {
+    await this.access.requireMember(u, c);
+    const row = await this.prisma.generatedExam.findFirst({ where: { id, courseId: c, userId: u.id, purpose: "PRACTICE" } });
+    if (!row) throw notFound("Quiz set");
+    const questions = [];
+    for (const item of row.items as { quiz_id: string; kind: string; topic: string }[]) {
+      try {
+        questions.push({ ...(await this.quiz(u, c, item.quiz_id)), available: true });
+      } catch {
+        // Its source was removed or changed: say so rather than show a stale question.
+        questions.push({ id: item.quiz_id, kind: item.kind, topic: item.topic, available: false });
       }
     }
+    return { ...this.quizSetSummary(row), questions };
+  }
+
+  /** The original engine (ai-service quiz_quality.py) with its original acceptance rules. */
+  private async startLegacy(u: AuthUser, c: string, b: any) {
+    const candidates = await findQuizSources(this.knowledge, u, c, b);
     let source = candidates[0];
-    if (!source)
-      throw new ApiError(
-        "VALIDATION_ERROR",
-        b.watched_only
-          ? "Bu konuda tamamen izlenmiş video bölümü bulunamadı. Son oynatma konumu tek başına izleme kanıtı değildir."
-          : "Bu konuda soru hazırlamaya uygun kaynak bulunamadı.",
-      );
     const styleHint = await this.styleHintFor(u, c, b.exam_style_id);
     const r = await this.ai.call("POST", "/api/v1/knowledge/quiz", {
       body: {
@@ -284,40 +321,7 @@ export class LearningService {
     return this.publicQuiz(row);
   }
   private publicQuiz(row: any) {
-    const d = row.data,
-      s = d.source;
-    // Never leak a complete source excerpt, answer key or option rationale before answering.
-    return {
-      id: row.id,
-      topic: row.topic,
-      kind: row.kind,
-      question: d.question,
-      options: d.options,
-      // A paraphrased objective can disclose the answer despite lexical checks.
-      // Keep detailed objectives server-side until the student has answered.
-      objective: null,
-      note: d.note,
-      experimental: d.experimental,
-      assessment: d.assessment,
-      question_style: d.question_style || "CONCEPTUAL",
-      scope: d.scope,
-      watched_only: d.watched_only || false,
-      quality_state:
-        d.quality?.option_audit_version === 3 && d.quality?.deterministic_source_validation
-          ? "SOURCE_RECALL_CHECKED"
-          : d.quality?.option_audit_version === 2
-          ? "MODEL_REVIEWED_UNVERIFIED"
-          : "LEGACY_NOT_REVIEWED",
-      source: s
-        ? {
-            id: s.id,
-            material_id: s.material_id,
-            title: s.title,
-            kind: s.kind,
-            location: s.location,
-          }
-        : null,
-    };
+    return publicQuiz(row);
   }
   async quiz(u: AuthUser, c: string, id: string) {
     await this.access.requireMember(u, c);

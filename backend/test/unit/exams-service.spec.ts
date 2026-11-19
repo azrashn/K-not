@@ -1,4 +1,5 @@
-import { ExamsService } from '../../src/learning/exams.service';
+import { examNote, ExamsService } from '../../src/learning/exams.service';
+import { DOCUMENTS_ONLY_NOTE } from '../../src/learning/quiz-sources';
 import { ApiError } from '../../src/common/errors';
 import { buildExamProfile } from '../../src/learning/exam-style';
 
@@ -8,7 +9,7 @@ const u = { id: 'u', role: 'USER' } as any;
 
 function make(over: { prisma?: any; ai?: any; learning?: any; knowledge?: any } = {}) {
   const prisma = {
-    examStyle: { findFirst: jest.fn().mockResolvedValue({ id: 'e1', name: 'Final', profile }) },
+    examStyle: { findMany: jest.fn().mockResolvedValue([{ id: 'e1', name: 'Final', profile }]) },
     generatedExam: {
       count: jest.fn().mockResolvedValue(0),
       create: jest.fn(async ({ data }) => ({ ...data, createdAt: new Date(), finishedAt: null })),
@@ -75,7 +76,7 @@ describe('upload of a past exam file', () => {
 
 describe('creating an exam', () => {
   test('an unknown style or one that belongs to someone else is not found', async () => {
-    const { svc } = make({ prisma: { examStyle: { findFirst: jest.fn().mockResolvedValue(null) } } });
+    const { svc } = make({ prisma: { examStyle: { findMany: jest.fn().mockResolvedValue([]) } } });
     await expect(svc.create(u, 'c', { exam_style_id: 'x', count: 3 })).rejects.toMatchObject({ code: 'NOT_FOUND' });
   });
   test('only one exam per course runs at a time', async () => {
@@ -86,7 +87,7 @@ describe('creating an exam', () => {
   test('a style without topic terms and sources without headings needs topics from the student', async () => {
     const empty = { ...profile, topic_terms: [] };
     const { svc } = make({
-      prisma: { examStyle: { findFirst: jest.fn().mockResolvedValue({ id: 'e1', name: 'x', profile: empty }) } },
+      prisma: { examStyle: { findMany: jest.fn().mockResolvedValue([{ id: 'e1', name: 'x', profile: empty }]) } },
       knowledge: { preview: jest.fn().mockResolvedValue({ segments: [] }) },
     });
     await expect(svc.create(u, 'c', { exam_style_id: 'e1', count: 3 })).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
@@ -94,7 +95,7 @@ describe('creating an exam', () => {
   test('past-exam terms the course never mentions are replaced by the headings of the course sources', async () => {
     const other = { ...profile, topic_terms: ['kalıtım', 'polimorfizm'] };
     const { svc, prisma } = make({
-      prisma: { examStyle: { findFirst: jest.fn().mockResolvedValue({ id: 'e1', name: 'x', profile: other }) } },
+      prisma: { examStyle: { findMany: jest.fn().mockResolvedValue([{ id: 'e1', name: 'x', profile: other }]) } },
       knowledge: { preview: jest.fn().mockResolvedValue({ segments: [{ text: 'Link layer: services\nframing, link access' }, { text: 'TCP: overview\nreliable byte stream' }] }) },
     });
     await svc.create(u, 'c', { exam_style_id: 'e1', count: 2 });
@@ -106,6 +107,27 @@ describe('creating an exam', () => {
     await svc.create(u, 'c', { exam_style_id: 'e1', count: 2, topics: ['Benim konum'] });
     expect(prisma.generatedExam.create.mock.calls[0][0].data.topics).toEqual(['Benim konum']);
     expect(knowledge.preview).not.toHaveBeenCalled();
+  });
+  test('when the course also has videos, topics come from documents and the exam says transcripts were left out', async () => {
+    const { svc, prisma, learning, knowledge } = make({
+      knowledge: {
+        materials: jest.fn().mockResolvedValue([
+          { id: 'pdf_m', kind: 'PDF', title: 'Notes', status: 'READY' },
+          { id: 'video_v', kind: 'VIDEO', title: '2 Dakikada Java', status: 'READY' },
+        ]),
+      },
+    });
+    learning.start.mockResolvedValue({ id: 'q1' });
+    await svc.create(u, 'c', { exam_style_id: 'e1', count: 1 });
+    for (let i = 0; i < 10; i++) await new Promise((r) => setImmediate(r));
+    expect(knowledge.preview.mock.calls.map((call: any[]) => call[2])).toEqual(['pdf_m']);
+    expect(lastUpdate(prisma)).toMatchObject({ status: 'READY', note: DOCUMENTS_ONLY_NOTE });
+  });
+  test('the source note comes first and the whole note fits the 300-character column', () => {
+    expect(examNote(null, null)).toBeNull();
+    expect(examNote(DOCUMENTS_ONLY_NOTE, null)).toBe(DOCUMENTS_ONLY_NOTE);
+    expect(examNote(DOCUMENTS_ONLY_NOTE, '3 sorudan 2\'si hazırlanabildi.')).toBe(`${DOCUMENTS_ONLY_NOTE} 3 sorudan 2'si hazırlanabildi.`);
+    expect(examNote(DOCUMENTS_ONLY_NOTE, 'x'.repeat(400))).toHaveLength(300);
   });
   test('it is accepted at once with the planned size, before any question exists', async () => {
     const { svc, prisma, learning } = make();
@@ -195,10 +217,18 @@ describe('reading an exam', () => {
     expect(key[0]).toMatchObject({ index: 1, expected: 'Kuyruk', explanation: 'FIFO.' });
     expect(key[1]).toMatchObject({ index: 2, expected: null });
   });
-  test('removing an exam only removes the caller\'s own', async () => {
+  test('removing an exam only removes the caller\'s own, and never a quiz set (same table)', async () => {
     const { svc, prisma } = make();
     await svc.remove(u, 'c', 'x1');
-    expect(prisma.generatedExam.deleteMany).toHaveBeenCalledWith({ where: { id: 'x1', courseId: 'c', userId: 'u' } });
+    expect(prisma.generatedExam.deleteMany).toHaveBeenCalledWith({ where: { id: 'x1', courseId: 'c', userId: 'u', purpose: 'EXAM' } });
+  });
+  test('the exam list and an exam read only exams, not quiz sets', async () => {
+    const { svc, prisma } = make();
+    await svc.list(u, 'c');
+    expect(prisma.generatedExam.findMany.mock.calls[0][0].where).toEqual({ courseId: 'c', userId: 'u', purpose: 'EXAM' });
+    prisma.generatedExam.findFirst.mockResolvedValue(null);
+    await expect(svc.get(u, 'c', 'set1')).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    expect(prisma.generatedExam.findFirst.mock.calls[0][0].where).toMatchObject({ purpose: 'EXAM' });
   });
   test('after a restart, runs that were generating are marked failed', async () => {
     const { svc, prisma } = make();

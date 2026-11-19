@@ -1,0 +1,10 @@
+{
+  "description": "Sources that state a computable rule, for SHORT_ANSWER + CALCULATION questions of the v2 quiz engine. The model must put every number in the question; the engine recomputes the answer.",
+  "cases": [
+    {"id": "calc-average-speed", "topic": "Ortalama hız", "text": "Ortalama hız, alınan toplam yolun geçen toplam süreye bölünmesiyle bulunur. Yol kilometre, süre saat cinsinden verildiğinde hız km/sa olur."},
+    {"id": "calc-rectangle-area", "topic": "Dikdörtgenin alanı", "text": "Dikdörtgenin alanı, kısa kenar uzunluğu ile uzun kenar uzunluğunun çarpımına eşittir. Kenarlar metre cinsinden ise alan metrekare olur."},
+    {"id": "calc-density", "topic": "Yoğunluk", "text": "Yoğunluk, bir cismin kütlesinin hacmine bölünmesiyle hesaplanır. Kütle gram, hacim santimetreküp ise yoğunluk g/cm³ olur."},
+    {"id": "calc-simple-interest", "topic": "Basit faiz", "text": "Basit faizde faiz tutarı, anapara ile yıllık faiz oranının ve yıl cinsinden sürenin çarpımıdır. Oran yüzde olarak verildiğinde önce 100'e bölünür."},
+    {"id": "calc-loop-operations", "topic": "Döngüdeki işlem sayısı", "text": "Bir döngü n kez çalışıyor ve her turda k işlem yapıyorsa toplam işlem sayısı n ile k'nin çarpımıdır. İç içe iki döngüde turlar çarpılır."}
+  ]
+}

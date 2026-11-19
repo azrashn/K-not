@@ -230,12 +230,15 @@ model LearningQuiz {
   segmentId String @db.VarChar(64)
   version String @db.VarChar(64)
   data Json
+  /// PRACTICE: a quiz question the student asked for. EXAM: a question of a generated exam.
+  purpose String @default("PRACTICE") @db.VarChar(16)
   redacted Boolean @default(false)
   createdAt DateTime @default(now())
   user User @relation(fields: [userId], references: [id])
   course Course @relation(fields: [courseId], references: [id])
   attempts LearningQuizAttempt[]
   @@index([userId, courseId, createdAt])
+  @@index([userId, courseId, purpose])
   @@index([materialId])
 }
 
@@ -295,6 +298,11 @@ model GeneratedExam {
   courseId   String
   userId     String
   styleId    String?
+  /// Every past exam the exam was written from, in the order chosen; styleId is the first of them.
+  /// NULL for exams made before several styles could be combined (then styleId alone).
+  styleIds   Json?
+  /// EXAM: a new exam from past exams. PRACTICE: a quiz set of 2-10 questions on one topic.
+  purpose    String    @default("EXAM") @db.VarChar(16)
   title      String    @db.VarChar(160)
   status     String    @db.VarChar(16)
   requested  Int
@@ -309,6 +317,7 @@ model GeneratedExam {
   style      ExamStyle? @relation(fields: [styleId], references: [id], onDelete: SetNull)
 
   @@index([courseId, userId, createdAt])
+  @@index([courseId, userId, purpose])
 }
 
 model Document {

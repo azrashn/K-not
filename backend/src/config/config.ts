@@ -31,7 +31,16 @@ export interface AppConfig {
   ttsUrlSecret: string | null;
   /** Path the browser reaches this API under (the audio URL is built with it). */
   ttsPublicPrefix: string;
+  /** Quiz question engine: "v2" (one model call, code checks; default) or "legacy" (quiz_quality.py). */
+  quizEngine: QuizEngine;
+  /** Whether quiz/exam questions may come from a video's automatic transcript (QUIZ_TRANSCRIPT_POLICY). */
+  quizTranscriptPolicy: QuizTranscriptPolicy;
 }
+
+export type QuizEngine = 'v2' | 'legacy';
+/** documents_first (default): documents only when the scope has one; a transcript only for a video the
+ *  student chose or a course without documents, with a warning. never: transcripts are not used at all. */
+export type QuizTranscriptPolicy = 'documents_first' | 'never';
 
 export class ConfigError extends Error {}
 
@@ -53,6 +62,20 @@ function required(env: Record<string, string | undefined>, name: string, minLeng
   const v = env[name];
   if (!v || v.length < minLength) throw new ConfigError(`${name} is required${minLength > 1 ? ` (>= ${minLength} characters)` : ''}`);
   return v;
+}
+
+function quizEngine(raw: string | undefined): QuizEngine {
+  const v = (raw ?? '').trim().toLowerCase();
+  if (v === '' || v === 'v2') return 'v2';
+  if (v === 'legacy') return 'legacy';
+  throw new ConfigError('QUIZ_ENGINE must be v2 or legacy');
+}
+
+function quizTranscriptPolicy(raw: string | undefined): QuizTranscriptPolicy {
+  const v = (raw ?? '').trim().toLowerCase();
+  if (v === '' || v === 'documents_first') return 'documents_first';
+  if (v === 'never') return 'never';
+  throw new ConfigError('QUIZ_TRANSCRIPT_POLICY must be documents_first or never');
 }
 
 export function loadConfig(env: Record<string, string | undefined> = process.env): AppConfig {
@@ -85,6 +108,8 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     ingestionTimeoutMs: int(env, 'INGESTION_TIMEOUT_MS', 10_000, 100),
     ttsUrlSecret: env.TTS_URL_SECRET || null,
     ttsPublicPrefix: (env.TTS_PUBLIC_PREFIX || '/api').replace(/\/+$/, ''),
+    quizEngine: quizEngine(env.QUIZ_ENGINE),
+    quizTranscriptPolicy: quizTranscriptPolicy(env.QUIZ_TRANSCRIPT_POLICY),
   };
   if (cfg.ttsUrlSecret !== null) {
     if (cfg.ttsUrlSecret.length < 32) throw new ConfigError('TTS_URL_SECRET must be at least 32 characters');

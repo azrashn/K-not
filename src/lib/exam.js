@@ -36,11 +36,23 @@ export function topicsFromText(text) {
   return out.slice(0, 12)
 }
 
-export function examFormProblem({ styleId, count, hasStyleTopics, topics }) {
-  if (!styleId) return 'Önce bir sınav stili seçin ya da geçmiş sınav ekleyin.'
+/** At most this many past exams are combined into one new exam (the server enforces the same). */
+export const EXAM_STYLES_MAX = 5
+
+/** Suggested size of the new exam: the average question count of the selected past exams, 1..20. */
+export function averageExamCount(profiles) {
+  const list = (profiles || []).filter(Boolean)
+  if (!list.length) return null
+  const total = list.reduce((sum, p) => sum + (Number(p.question_count) || 0), 0)
+  return Math.max(1, Math.min(EXAM_MAX_QUESTIONS, Math.round(total / list.length)))
+}
+
+export function examFormProblem({ styleIds, count, hasStyleTopics, topics }) {
+  if (!styleIds?.length) return 'En az bir geçmiş sınav seçin ya da yeni bir sınav ekleyin.'
+  if (styleIds.length > EXAM_STYLES_MAX) return `En fazla ${EXAM_STYLES_MAX} geçmiş sınav seçilebilir.`
   const n = Number(count)
   if (!Number.isInteger(n) || n < 1 || n > EXAM_MAX_QUESTIONS) return `Soru sayısı 1 ile ${EXAM_MAX_QUESTIONS} arasında olmalı.`
-  if (!topics.length && !hasStyleTopics) return 'Bu stilde yeterli terim yok; en az bir konu yazın.'
+  if (!topics.length && !hasStyleTopics) return 'Seçilen sınavlarda yeterli terim yok; en az bir konu yazın.'
   return ''
 }
 

@@ -58,6 +58,18 @@ class ProviderResponseError(ProviderError):
     """The provider answered, but not with usable content (empty, refused, truncated)."""
 
 
+class ProviderTruncatedError(ProviderResponseError):
+    """The output hit the max-token limit (finish_reason "length"). Keeps the usage it reported,
+    so callers can log how far the model got."""
+
+    def __init__(self, message: str, *, finish_reason: str | None = "length",
+                 output_tokens: int | None = None, max_tokens: int | None = None):
+        super().__init__(message)
+        self.finish_reason = finish_reason
+        self.output_tokens = output_tokens
+        self.max_tokens = max_tokens
+
+
 class LLMProvider(Protocol):
     @property
     def name(self) -> str: ...
