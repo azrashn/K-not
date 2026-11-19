@@ -28,6 +28,7 @@ LIGHT_WORDS = frozenset(
     """.split()
 )
 _MIN_SUBSTRING = 6
+_GOOD = ("SUPPORTED", "ANCHORED")
 
 
 def _collapsed(text):
@@ -140,7 +141,20 @@ def check_claims(claims, evidence):
     """Adds `support` to each claim and returns (claims, summary). `sources` are 1-based evidence numbers."""
     out = []
     for claim in claims:
-        cited = [evidence[n - 1]["text"] for n in sorted(set(claim["sources"])) if 1 <= n <= len(evidence)]
-        out.append({**claim, "support": check_claim(claim["text"], cited)})
+        cited_numbers = [n for n in sorted(set(claim["sources"])) if 1 <= n <= len(evidence)]
+        cited = [evidence[n - 1]["text"] for n in cited_numbers]
+        support = check_claim(claim["text"], cited)
+        if support["label"] not in _GOOD:
+            # The model may have cited the wrong [n]. Look for support in the other evidence of the same
+            # answer before telling the student the claim is missing from the sources.
+            for n, item in enumerate(evidence, start=1):
+                if n in cited_numbers:
+                    continue
+                other = check_claim(claim["text"], [item["text"]])
+                if other["label"] in _GOOD:
+                    support = {**other, "reason": "WRONG_SOURCE_CITED", "suggested_sources": [n],
+                               "cited_sources": cited_numbers}
+                    break
+        out.append({**claim, "support": support})
     summary = {k: sum(1 for c in out if c["support"]["label"] == k) for k in ("SUPPORTED", "ANCHORED", "PARTIAL", "UNSUPPORTED", "UNCHECKED")}
     return out, {**summary, "total": len(out), "method": METHOD, "verified": False}

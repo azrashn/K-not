@@ -60,6 +60,11 @@ export default function ClaimSupport({ claims }) {
                 {c.support.unmatched_numbers?.length > 0 && ` Kaynakta olmayan sayı: ${c.support.unmatched_numbers.join(", ")}.`}
               </small>
             )}
+            {c.support.reason === "WRONG_SOURCE_CITED" && c.support.suggested_sources?.length > 0 && (
+              <small>
+                Yanlış kaynağa atıf: [{(c.support.cited_sources || []).join(", ")}] yerine [{c.support.suggested_sources.join(", ")}] olmalı.
+              </small>
+            )}
             {c.support.label === "ANCHORED" && c.support.matched_terms?.length > 0 && (
               <small>Kaynakta geçen: {c.support.matched_terms.join(", ")}</small>
             )}
