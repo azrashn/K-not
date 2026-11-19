@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { QuizGenerator, validV2Question } from '../../src/learning/quiz-generator';
 import { LearningService } from '../../src/learning/learning.service';
 import { quizError, describeFailure, failure, FAILURE_MESSAGES } from '../../src/learning/quiz-failures';
@@ -176,6 +178,18 @@ describe('failure texts and quality labels', () => {
     for (const m of Object.values(FAILURE_MESSAGES)) expect(m.length).toBeGreaterThan(10);
     expect(describeFailure(failure(0, 'OPEN', 'SOMETHING_NEW', 1))).toBe('Soru hazırlanamadı (SOMETHING_NEW).');
     expect(quizError([]).code).toBe('GENERATION_FAILED');
+  });
+  test('a truncated answer has its own reason and counts as a failed question, not a model outage', () => {
+    expect(describeFailure(failure(0, 'TRUE_FALSE', 'TRUNCATED', 2)))
+      .toBe('Modelin yanıtı izin verilen uzunluğa ulaştığı için yarıda kesildi (2 deneme).');
+    expect(quizError([failure(0, 'TRUE_FALSE', 'TRUNCATED', 2)]).code).toBe('GENERATION_FAILED');
+  });
+  test('every failure code of the ai-service has a Turkish message', () => {
+    const source = readFileSync(join(__dirname, '../../../ai-service/src/knot_rag/quiz_checks.py'), 'utf8');
+    const names = /FAILURE_CODES = \(([^)]*)\)/.exec(source)![1].split(',').map((s) => s.trim()).filter(Boolean);
+    const codes = names.map((n) => new RegExp(`^${n} = "([A-Z_]+)"`, 'm').exec(source)![1]);
+    expect(codes).toContain('TRUNCATED');
+    for (const code of codes) expect(FAILURE_MESSAGES[code]).toBeDefined();
   });
   test('stored quizzes keep the label of the engine that wrote them', () => {
     expect(qualityState(QUALITY)).toBe('SOURCE_CHECKED');

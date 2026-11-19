@@ -1,7 +1,9 @@
 """Quiz engine v2 with a scripted provider and a fake clock; no real model is called."""
 
 import json
+import logging
 
+import httpx
 import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
@@ -12,10 +14,12 @@ from knot_rag.api import create_app
 from knot_rag.bootstrap import build_components
 from knot_rag.config import Settings
 from knot_rag.generation.providers.base import (
+    LLMRequest,
     LLMResponse,
     ProviderAuthError,
     ProviderResponseError,
     ProviderTimeoutError,
+    ProviderTruncatedError,
     ProviderUnavailableError,
 )
 from knot_rag.generation.providers.openai_compatible import OpenAICompatibleProvider
@@ -150,10 +154,159 @@ def test_unreadable_responses_are_named_and_repaired_once(raw, code):
     assert out["failures"][0]["code"] == code and len(provider.requests) == 2
 
 
-def test_truncated_provider_output_is_invalid_json():
-    provider = Scripted(ProviderResponseError("provider output truncated (max tokens)"), [mc()])
+def test_an_unusable_provider_answer_is_invalid_json_and_repaired():
+    provider = Scripted(ProviderResponseError("empty provider output"), [mc()])
     out = run(request("MULTIPLE_CHOICE"), provider)
     assert out["questions"][0]["quality"]["attempts"] == 2
+
+
+# ── truncation: TRUNCATED, then one retry with twice the limit ───────────────────────────────
+def truncated(output_tokens=None):
+    return ProviderTruncatedError("provider output truncated (max tokens)", output_tokens=output_tokens)
+
+
+def test_truncated_output_is_retried_once_with_twice_the_limit_instead_of_a_repair():
+    provider = Scripted(truncated(440), [mc()])
+    out = run(request("MULTIPLE_CHOICE"), provider)
+    assert out["failures"] == [] and out["questions"][0]["quality"]["attempts"] == 2
+    first, retry = provider.requests
+    assert first.max_output_tokens == qe.output_tokens("MULTIPLE_CHOICE", 1) == 440
+    assert retry.max_output_tokens == 2 * first.max_output_tokens
+    user = json.loads(retry.user)
+    assert "previous_draft" not in user and "problem" not in user  # a fresh attempt, not a repair
+
+
+def test_truncated_twice_is_reported_as_truncated():
+    provider = Scripted(truncated(), truncated())
+    out = run(request("TRUE_FALSE"), provider)
+    failure = out["failures"][0]
+    assert failure["code"] == qc.TRUNCATED and failure["attempts"] == 2
+    assert "token limit" in failure["detail"] and len(provider.requests) == 2
+
+
+def test_a_truncated_batch_retries_each_question_alone_with_twice_its_own_limit():
+    provider = Scripted(truncated(), [mc()], [MC2])
+    out = run(request("MULTIPLE_CHOICE", "MULTIPLE_CHOICE"), provider)
+    assert len(out["questions"]) == 2
+    assert provider.requests[0].max_output_tokens == qe.output_tokens("MULTIPLE_CHOICE", 2)
+    assert [r.max_output_tokens for r in provider.requests[1:]] == [2 * qe.output_tokens("MULTIPLE_CHOICE", 1)] * 2
+
+
+def test_no_time_for_the_larger_retry_keeps_truncated_as_the_reason():
+    clock = Clock()
+    provider = Scripted(truncated(), clock=clock, seconds=60)
+    out = run(request("TRUE_FALSE", budget_seconds=130), provider, speed=qe.Speed(7, 50), clock=clock)
+    failure = out["failures"][0]
+    assert failure["code"] == qc.TRUNCATED and failure["attempts"] == 1
+    assert "süre kalmadı" in failure["detail"] and len(provider.requests) == 1
+
+
+def test_truncation_is_logged_with_the_tokens_used_and_the_finish_reason(caplog):
+    with caplog.at_level(logging.WARNING, logger="knot_rag.quiz_engine"):
+        run(request("TRUE_FALSE"), Scripted(truncated(340), truncated()))
+    lines = [r.getMessage() for r in caplog.records if "quiz_call truncated" in r.getMessage()]
+    assert lines[0] == ("quiz_call truncated kind=TRUE_FALSE count=1 max_tokens=340 output_tokens=340 "
+                        "finish_reason=length")
+    assert "max_tokens=680 output_tokens=? " in lines[1]
+    assert any("code=TRUNCATED" in r.getMessage() for r in caplog.records)
+
+
+def test_the_provider_keeps_usage_when_the_output_is_cut():
+    def reply(request):
+        body = json.loads(request.content)
+        assert body["max_tokens"] == 320 and body["response_format"]["type"] == "json_schema"
+        return httpx.Response(200, json={"choices": [{"message": {"content": '{"questions": [{"quo'},
+                                                      "finish_reason": "length"}],
+                                         "usage": {"prompt_tokens": 600, "completion_tokens": 320}})
+    provider = OpenAICompatibleProvider("http://127.0.0.1:11436/v1", "m",
+                                        client=httpx.Client(transport=httpx.MockTransport(reply)))
+    with pytest.raises(ProviderTruncatedError) as exc:
+        provider.complete(LLMRequest(system="s", user="u", max_output_tokens=320, response_schema={"type": "object"}))
+    assert isinstance(exc.value, ProviderResponseError)  # older callers still see a response error
+    assert (exc.value.output_tokens, exc.value.max_tokens, exc.value.finish_reason) == (320, 320, "length")
+    assert str(exc.value) == "provider output truncated (max tokens)"
+
+
+# ── output caps ──────────────────────────────────────────────────────────────────────────────
+def test_output_caps_per_kind(monkeypatch):
+    monkeypatch.delenv("QUIZ_OUTPUT_TOKEN_SCALE", raising=False)
+    caps = {key: qe.output_tokens(key, 1) - qe.OUTPUT_TOKENS_OVERHEAD for key in qe.OUTPUT_TOKENS}
+    assert caps == {"MULTIPLE_CHOICE": 420, "TRUE_FALSE": 320, "CLOZE": 280, "SHORT_ANSWER": 280,
+                    "OPEN": 320, "CALCULATION": 400}
+    assert qe.output_tokens("TRUE_FALSE", 3) == 3 * 320 + 20
+    assert qe.output_tokens("TRUE_FALSE", 1, 2) == 2 * (320 + 20)
+
+
+@pytest.mark.parametrize("value,scale", [("1.5", 1.5), ("", 1.0), ("x", 1.0), ("-2", 1.0), ("0.1", 0.25), ("9", 4.0)])
+def test_output_token_scale_setting(monkeypatch, value, scale):
+    monkeypatch.setenv("QUIZ_OUTPUT_TOKEN_SCALE", value)
+    assert qe.output_token_scale() == scale
+    assert qe.output_tokens("TRUE_FALSE", 1) == round(320 * scale) + 20
+
+
+def test_the_time_estimate_uses_the_scaled_caps(monkeypatch):
+    slow = qe.Speed(7, 50)
+    monkeypatch.setenv("QUIZ_OUTPUT_TOKEN_SCALE", "1")
+    assert run(request("TRUE_FALSE", budget_seconds=130), Scripted([{"quote": DFS_QUOTE, "statement": "DFS kuyruk kullanır.",
+                                                                     "is_true": False, "explanation": "DFS yığın kullanır, kuyruk değil."}]),
+               speed=slow)["questions"]
+    monkeypatch.setenv("QUIZ_OUTPUT_TOKEN_SCALE", "4")  # 1300 tokens at 7 tok/s: ~190 s > 130 s
+    provider = Scripted([mc()])
+    out = run(request("TRUE_FALSE", budget_seconds=130), provider, speed=slow)
+    assert provider.requests == [] and out["failures"][0]["code"] == qc.BUDGET_EXHAUSTED
+    monkeypatch.setenv("QUIZ_OUTPUT_TOKEN_SCALE", "1.5")
+    provider = Scripted([mc()])
+    run(request("MULTIPLE_CHOICE"), provider)
+    assert provider.requests[0].max_output_tokens == round(420 * 1.5) + 20
+
+
+# ── explanation ──────────────────────────────────────────────────────────────────────────────
+def test_the_schema_and_prompt_ask_for_one_short_explanation():
+    provider = Scripted([mc()])
+    run(request("MULTIPLE_CHOICE"), provider)
+    item = provider.requests[0].response_schema["properties"]["questions"]["items"]["properties"]
+    assert item["explanation"]["maxLength"] == qc.EXPLANATION_MAX == 200
+    assert all(qe.FIELDS[k]["explanation"]["maxLength"] == 200 for k in qe.FIELDS)
+    assert "ONE short sentence (at most 200 characters)" in provider.requests[0].system
+
+
+def test_a_long_explanation_is_cut_to_its_first_sentence():
+    long = ("Kaynak, BFS'nin bekleyen düğümler için kuyruk kullandığını açıkça söyler. "
+            "Ayrıca kuyruk ilk giren ilk çıkar mantığıyla çalışır ve bu yüzden katman katman ilerler.")
+    q = run(request("MULTIPLE_CHOICE"), Scripted([mc(explanation=long)]))["questions"][0]
+    assert q["explanation"] == "Kaynak, BFS'nin bekleyen düğümler için kuyruk kullandığını açıkça söyler."
+
+
+# ── startup log ──────────────────────────────────────────────────────────────────────────────
+def test_the_quiz_model_and_address_are_logged_without_secrets(monkeypatch, caplog):
+    monkeypatch.delenv("QUIZ_LLM_BASE_URL", raising=False)
+    monkeypatch.delenv("QUIZ_LLM_MODEL", raising=False)
+    monkeypatch.delenv("QUIZ_OUTPUT_TOKEN_SCALE", raising=False)
+    monkeypatch.setenv("UNIFIED_LLM_BASE_URL", "http://user:s3cret@127.0.0.1:11436/v1?api_key=abc#x")
+    monkeypatch.setenv("UNIFIED_LLM_MODEL", "qwen3-vl:2b-instruct")
+    monkeypatch.setenv("UNIFIED_LLM_API_KEY", "sk-should-not-appear")
+    with caplog.at_level(logging.INFO, logger="knot_rag.quiz_engine"):
+        qe.log_model_settings()
+    message = caplog.records[-1].getMessage()
+    assert message == ("quiz_model engine=v2 configured=true source=UNIFIED_LLM model=qwen3-vl:2b-instruct "
+                       "base_url=http://127.0.0.1:11436/v1 local=True output_token_scale=1.0")
+    assert "s3cret" not in message and "abc" not in message and "sk-" not in message
+
+
+def test_quiz_llm_settings_win_and_a_missing_model_is_logged(monkeypatch, caplog):
+    monkeypatch.setenv("QUIZ_LLM_BASE_URL", "http://127.0.0.1:11434/v1")
+    monkeypatch.setenv("QUIZ_LLM_MODEL", "qwen2.5:3b")
+    monkeypatch.setenv("UNIFIED_LLM_BASE_URL", "http://127.0.0.1:11436/v1")
+    monkeypatch.setenv("UNIFIED_LLM_MODEL", "other")
+    assert qe.model_settings() == ("http://127.0.0.1:11434/v1", "qwen2.5:3b")
+    with caplog.at_level(logging.INFO, logger="knot_rag.quiz_engine"):
+        qe.log_model_settings()
+    assert "source=QUIZ_LLM model=qwen2.5:3b base_url=http://127.0.0.1:11434/v1" in caplog.records[-1].getMessage()
+    for name in ("QUIZ_LLM_BASE_URL", "QUIZ_LLM_MODEL", "UNIFIED_LLM_BASE_URL", "UNIFIED_LLM_MODEL"):
+        monkeypatch.delenv(name, raising=False)
+    with caplog.at_level(logging.INFO, logger="knot_rag.quiz_engine"):
+        qe.log_model_settings()
+    assert "configured=false" in caplog.records[-1].getMessage()
 
 
 def test_json_in_a_code_fence_or_bare_object_is_read():

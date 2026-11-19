@@ -306,4 +306,19 @@ def test_duplicate_stem_rejects_a_repeated_question():
 
 
 def test_failure_codes_are_unique_strings():
-    assert len(set(qc.FAILURE_CODES)) == len(qc.FAILURE_CODES) == 14
+    assert len(set(qc.FAILURE_CODES)) == len(qc.FAILURE_CODES) == 15 and qc.TRUNCATED in qc.FAILURE_CODES
+
+
+@pytest.mark.parametrize("text,expected", [
+    ("Kaynak kuyruğu açıkça anlatır. İkinci cümle gereksizdir.", "Kaynak kuyruğu açıkça anlatır."),
+    ("Doğru. Kaynak, BFS'nin kuyruk kullandığını söyler.", "Doğru. Kaynak, BFS'nin kuyruk kullandığını söyler."),
+    ("  Satır\nsonları   ve boşluklar sadeleşir.  ", "Satır sonları ve boşluklar sadeleşir."),
+    ("Noktasız kısa açıklama", "Noktasız kısa açıklama"),
+])
+def test_short_explanation_keeps_one_sentence(text, expected):
+    assert qc.short_explanation(text) == expected
+
+
+def test_short_explanation_cuts_a_long_sentence_at_a_word():
+    out = qc.short_explanation("kelime " * 60)
+    assert len(out) <= qc.EXPLANATION_MAX and out.endswith("kelime…")

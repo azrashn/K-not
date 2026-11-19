@@ -32,12 +32,14 @@ CALC_MISMATCH = "CALC_MISMATCH"
 CALC_DATA_MISSING = "CALC_DATA_MISSING"
 DUPLICATE_STEM = "DUPLICATE_STEM"
 BUDGET_EXHAUSTED = "BUDGET_EXHAUSTED"
+TRUNCATED = "TRUNCATED"  # the output hit the token limit (finish_reason "length")
 
 FAILURE_CODES = (
     TIMEOUT, MODEL_UNREACHABLE, INVALID_JSON, SCHEMA_MISMATCH, QUOTE_NOT_FOUND,
     ANSWER_NOT_IN_OPTIONS, DUPLICATE_OPTIONS, ANSWER_LEAKED, ANSWER_NOT_IN_SOURCE, BAD_FORMAT,
-    CALC_MISMATCH, CALC_DATA_MISSING, DUPLICATE_STEM, BUDGET_EXHAUSTED,
+    CALC_MISMATCH, CALC_DATA_MISSING, DUPLICATE_STEM, BUDGET_EXHAUSTED, TRUNCATED,
 )
+EXPLANATION_MAX = 200
 
 KINDS = ("MULTIPLE_CHOICE", "TRUE_FALSE", "CLOZE", "SHORT_ANSWER", "OPEN")
 CALCULATION = "CALCULATION"
@@ -116,8 +118,22 @@ def _quote(draft: dict, evidence: list[dict]) -> tuple[int, str]:
     return find_quote(_text(draft, "quote", 1, 600), evidence)
 
 
+def short_explanation(text: str, limit: int = EXPLANATION_MAX) -> str:
+    """One sentence, at most `limit` characters: the first sentence, cut at a word if still too long.
+    A longer explanation is shortened here rather than costing the question."""
+    text = re.sub(r"\s+", " ", text).strip()
+    end = re.search(r"[.!?…](?=\s|$)", text)
+    # A very short first "sentence" ("Doğru.") is not an explanation on its own; keep reading then.
+    sentence = text[: end.end()] if end and end.end() >= 20 else text
+    if len(sentence) <= limit:
+        return sentence
+    cut = sentence[: limit - 1]
+    space = cut.rfind(" ")
+    return (cut[:space] if space > limit // 2 else cut).rstrip(" ,;:") + "…"
+
+
 def _explanation(draft: dict) -> str:
-    return _text(draft, "explanation", 10, 700)
+    return short_explanation(_text(draft, "explanation", 10, 700))
 
 
 def _objective(draft: dict) -> str | None:
