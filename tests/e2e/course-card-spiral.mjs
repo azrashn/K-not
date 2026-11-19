@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 /**
- * Browser end-to-end for the course-card spiral wire: hovering a card draws the coil down its spine (top to
- * bottom), leaving erases it bottom to top, the card itself does not change, and no hover on touch.
+ * Browser end-to-end for the notebook wire on the course cards: every card shows the same grey wire with one ring
+ * per binding hole, the wire sticks out of the card without overlapping its neighbour or widening the page,
+ * and the card itself (size, content, click) is unchanged.
  *
  *   npm run build && (cd backend && npm run build) && npm run test:e2e:spiral
  */
@@ -17,23 +18,36 @@ async function step(name, fn) {
   catch (e) { results.push({ name, ok: false }); console.log(`  ✗ ${name}\n    ${String(e.message).split('\n')[0]}`); throw e }
 }
 
+async function login(page, web) {
+  await page.goto(web)
+  await page.getByLabel('E-posta').fill('ayse@knot.local')
+  await page.getByLabel('Parola').fill(PASSWORD)
+  await page.getByRole('button', { name: 'Giriş yap' }).click()
+  await page.getByRole('button', { name: 'Giriş yap' }).waitFor({ state: 'detached' }) // works on desktop and phone (logout sits in the menu)
+}
+
+// Computed gradients list their stops as rgb(r, g, b) or, for mixed colours, color(srgb r g b) (0..1).
+const stops = (bg) => [
+  ...[...bg.matchAll(/rgb\((\d+), (\d+), (\d+)\)/g)].map((m) => [Number(m[1]), Number(m[2]), Number(m[3])]),
+  ...[...bg.matchAll(/color\(srgb ([\d.]+) ([\d.]+) ([\d.]+)\)/g)].map((m) => [m[1], m[2], m[3]].map((v) => Math.round(Number(v) * 255))),
+]
+const greyish = (bg, what) => {
+  const rgb = stops(bg)
+  check(rgb.length >= 3, `no colour stops found in ${bg}`)
+  for (const [r, g, b] of rgb) check(Math.max(r, g, b) - Math.min(r, g, b) < 40, `${what} must be grey, got rgb(${r}, ${g}, ${b})`)
+  return rgb
+}
+
 async function main() {
   const stack = await startStack({ python: process.env.PYTHON })
   const { web, browser, work } = stack
-  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } })
-  const shot = (n) => page.screenshot({ path: path.join(work, `${n}.png`) })
-  // How many loops are (mostly) visible, and which ones, right now.
-  const visible = (card) => card.evaluate((el) => [...el.querySelectorAll('.card-spiral path')]
-    .map((p, i) => ({ i, o: Number(getComputedStyle(p).opacity) })).filter((x) => x.o > 0.5).map((x) => x.i))
-  const card = () => page.locator('.course-card').first()
+  const page = await browser.newPage({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 2 })
+  const shots = []
+  const shot = async (n, opts = {}) => { await page.screenshot({ path: path.join(work, `${n}.png`), ...opts }); shots.push(n) }
+  const cards = () => page.locator('.course-card')
   try {
-    await page.goto(web)
-    await step('login and open the courses list', async () => {
-      await page.getByLabel('E-posta').fill('ayse@knot.local')
-      await page.getByLabel('Parola').fill(PASSWORD)
-      await page.getByRole('button', { name: 'Giriş yap' }).click()
-      await page.getByRole('button', { name: 'Çıkış yap' }).waitFor()
-      // The sample stack has one course; more cards are needed to see that every card has its own colour.
+    await login(page, web)
+    await step('open the courses list with four cards', async () => {
       for (const name of ['JAVA 1', 'Computer Network', 'Algoritmalar']) {
         const r = await page.evaluate(async (n) => {
           const { token } = JSON.parse(sessionStorage.getItem('knot.session'))
@@ -44,112 +58,78 @@ async function main() {
       }
       await page.goto(`${web}/#/dersler`)
       await page.reload()
-      await card().waitFor()
-      await page.waitForTimeout(900) // let the page entrance animations settle
+      await cards().first().waitFor()
+      await page.waitForTimeout(900)
+      check((await cards().count()) >= 4, 'expected at least four cards')
     })
 
-    await step('at rest there is no spiral and the card is unchanged', async () => {
-      check((await visible(card())).length === 0, 'spiral visible without hover')
-    })
-    const before = await card().boundingBox()
-    const cardStyle = await card().evaluate((el) => { const s = getComputedStyle(el); return [s.backgroundColor, s.borderTopColor, s.borderTopLeftRadius, s.paddingLeft].join('|') })
-
-    await step('hover draws the loops one after another, from the top down', async () => {
-      await card().hover()
-      await page.waitForTimeout(45)
-      const early = await visible(card())
-      await page.waitForTimeout(400)
-      const full = await visible(card())
-      check(full.length === 9, `expected 9 loops after the draw, got ${full.length}`)
-      check(early.length < 9, `the draw must be progressive, but ${early.length} loops were already there at 45 ms`)
-      check(early.every((v, k) => v === k), `loops must appear from the top: ${early}`)
-      await shot('01-hover-full')
+    await step('every card carries the same grey wire, aligned to its binding holes', async () => {
+      const wires = await cards().evaluateAll((els) => els.map((el) => {
+        const w = getComputedStyle(el, '::after')
+        const b = getComputedStyle(el, '::before')
+        return { content: w.content, width: w.width, size: w.backgroundSize, mask: w.maskImage || w.webkitMaskImage, holes: b.backgroundSize, bg: w.backgroundImage, pe: w.pointerEvents }
+      }))
+      for (const w of wires) {
+        check(w.content !== 'none' && w.width === '40px', `wire missing or wrong width: ${JSON.stringify(w)}`)
+        check(/svg/.test(w.mask), 'wire has no ring mask')
+        check(w.size.split(' ')[1] === w.holes.split(' ')[1], `ring rhythm ${w.size} must equal hole rhythm ${w.holes}`)
+        check(w.pe === 'none', 'the wire must not catch clicks')
+      }
+      check(new Set(wires.map((w) => w.bg)).size === 1, 'all cards must have the same grey wire, not their own colours')
+      greyish(wires[0].bg, 'the wire')
     })
 
-    await step('the loops stick out of the card on the left and use the card spine colour', async () => {
-      const m = await card().evaluate((el) => {
-        const r = el.getBoundingClientRect()
-        const paths = [...el.querySelectorAll('.card-spiral path')].map((p) => p.getBoundingClientRect())
-        const bar = getComputedStyle(el, '::before').backgroundColor
-        return { cardLeft: r.left, minLeft: Math.min(...paths.map((b) => b.left)), maxRight: Math.max(...paths.map((b) => b.right)), stroke: getComputedStyle(el.querySelector('.card-spiral path')).stroke, bar, top: Math.min(...paths.map((b) => b.top)) - r.top, bottom: r.bottom - Math.max(...paths.map((b) => b.bottom)) }
-      })
-      check(m.minLeft < m.cardLeft - 20, `loops should reach left of the card: ${m.minLeft} vs ${m.cardLeft}`)
-      check(m.maxRight <= m.cardLeft + 30, 'loops must end on the spine')
-      check(m.stroke === m.bar, `stroke ${m.stroke} must equal the spine ${m.bar}`)
-      check(m.top < 14 && m.bottom < 14, `the coil should span the whole spine (top ${m.top}, bottom ${m.bottom})`)
+    await step('the wire sticks out of the card without touching the neighbouring card', async () => {
+      const boxes = await cards().evaluateAll((els) => els.slice(0, 4).map((el) => { const r = el.getBoundingClientRect(); return { left: r.left, right: r.right, top: r.top } }))
+      const wireLeft = (b) => b.left - 12
+      const rightCol = boxes.find((b, i) => i > 0 && b.left > boxes[0].right && Math.abs(b.top - boxes[0].top) < 5)
+      check(rightCol, 'expected a second column of cards')
+      check(wireLeft(rightCol) > boxes[0].right, 'the wire of a right-hand card overlaps its neighbour')
     })
 
-    await step('the card content is untouched by the effect', async () => {
-      const after = await card().boundingBox()
-      check(Math.abs(after.width - before.width) < 0.5 && Math.abs(after.height - before.height) < 0.5, 'card size changed on hover')
-      const style = await card().evaluate((el) => { const s = getComputedStyle(el); return [s.backgroundColor, s.borderTopColor, s.borderTopLeftRadius, s.paddingLeft].join('|') })
-      check(style.split('|')[0] === cardStyle.split('|')[0] && style.split('|')[3] === cardStyle.split('|')[3], `card style changed: ${cardStyle} → ${style}`)
-    })
-
-    await step('leaving erases the loops in reverse, from the bottom up', async () => {
-      await page.mouse.move(5, 5)
-      await page.waitForTimeout(45)
-      const early = await visible(card())
-      await page.waitForTimeout(400)
-      const gone = await visible(card())
-      check(gone.length === 0, `all loops must be gone, ${gone.length} left`)
-      check(early.length > 0 && early.length < 9, `the erase must be progressive (${early.length} loops at 45 ms)`)
-      check(early.every((v, k) => v === k), `the top loops must remain while the bottom ones go first: ${early}`)
-    })
-
-    await step('a quick in-and-out does not leave a half-drawn or stuck spiral', async () => {
-      for (let k = 0; k < 6; k++) { await card().hover(); await page.waitForTimeout(25); await page.mouse.move(5, 5); await page.waitForTimeout(15) }
-      await page.waitForTimeout(500)
-      check((await visible(card())).length === 0, 'spiral stuck after fast hover in/out')
-      await card().hover(); await page.waitForTimeout(450)
-      check((await visible(card())).length === 9, 'spiral did not fully draw after the fast in/out')
-      await page.mouse.move(5, 5); await page.waitForTimeout(450)
-    })
-
-    await step('each card uses its own spine colour', async () => {
-      const colours = await page.locator('.course-card').evaluateAll((els) => els.map((el) => getComputedStyle(el.querySelector('.card-spiral path')).stroke))
-      check(colours.length >= 4 && new Set(colours).size === 4, `the first four cards should have four spine colours: ${colours}`)
-      await page.locator('.course-card').nth(1).hover(); await page.waitForTimeout(450)
-      await shot('02-hover-second-card')
-      await page.mouse.move(5, 5)
-    })
-
-    await step('keyboard focus draws it too, and the card still opens on click', async () => {
-      await page.keyboard.press('Tab')
-      for (let k = 0; k < 40 && !(await card().evaluate((el) => el.matches(':has(:focus-visible)'))); k++) await page.keyboard.press('Tab')
-      await page.waitForTimeout(450)
-      check((await visible(card())).length === 9, 'focus should show the spiral')
-      await page.mouse.move(5, 5)
-      await card().locator('.course-card-main').click()
+    await step('the card itself is unchanged: same box with the wire hidden, click still opens the course', async () => {
+      const withWire = await cards().first().boundingBox()
+      await page.addStyleTag({ content: '.course-card::after { display: none !important }' })
+      const without = await cards().first().boundingBox()
+      check(withWire.width === without.width && withWire.height === without.height && withWire.x === without.x && withWire.y === without.y, `wire changed the card box: ${JSON.stringify(withWire)} vs ${JSON.stringify(without)}`)
+      await page.reload()
+      await cards().first().waitFor()
+      await page.waitForTimeout(900)
+      await shot('01-courses')
+      const box = await cards().first().boundingBox()
+      await page.screenshot({ path: path.join(work, '02-wire-detail.png'), clip: { x: Math.max(0, box.x - 30), y: box.y - 6, width: 150, height: 230 } })
+      shots.push('02-wire-detail')
+      await cards().first().locator('.course-card-main').click()
       await page.waitForURL((u) => /#\/dersler\/.+\/ogrenme/.test(u.hash), { timeout: 10000 })
     })
 
-    await step('no spiral on a touch device, and none with reduced motion animating', async () => {
-      const touch = await browser.newContext({ viewport: { width: 390, height: 800 }, hasTouch: true, isMobile: true })
-      const t = await touch.newPage()
-      await t.goto(web)
-      await t.getByLabel('E-posta').fill('ayse@knot.local')
-      await t.getByLabel('Parola').fill(PASSWORD)
-      await t.getByRole('button', { name: 'Giriş yap' }).click()
-      await t.goto(`${web}/#/dersler`)
-      await t.locator('.course-card').first().waitFor()
-      const display = await t.locator('.card-spiral').first().evaluate((el) => getComputedStyle(el).display)
-      check(display === 'none', `touch devices must not get the spiral (display: ${display})`)
-      await touch.close()
-      const calm = await browser.newContext({ viewport: { width: 1440, height: 900 }, reducedMotion: 'reduce' })
-      const c = await calm.newPage()
-      await c.goto(web)
-      await c.getByLabel('E-posta').fill('ayse@knot.local')
-      await c.getByLabel('Parola').fill(PASSWORD)
-      await c.getByRole('button', { name: 'Giriş yap' }).click()
-      await c.goto(`${web}/#/dersler`)
-      await c.locator('.course-card').first().waitFor()
-      const dur = await c.locator('.card-spiral path').first().evaluate((el) => getComputedStyle(el).transitionDuration)
-      check(/^0s(, 0s)*$/.test(dur), `reduced motion must not animate (transition-duration: ${dur})`)
-      await calm.close()
+    await step('the page does not get a horizontal scrollbar on desktop or phone', async () => {
+      await page.goto(`${web}/#/dersler`)
+      await cards().first().waitFor()
+      check(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), 'desktop page is wider than the window')
+      const phone = await browser.newContext({ viewport: { width: 390, height: 800 }, hasTouch: true, isMobile: true, deviceScaleFactor: 2 })
+      const p = await phone.newPage()
+      await login(p, web)
+      await p.goto(`${web}/#/dersler`)
+      await p.locator('.course-card').first().waitFor()
+      await p.waitForTimeout(700)
+      check(await p.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), 'phone page is wider than the window')
+      await p.screenshot({ path: path.join(work, '03-phone.png') })
+      shots.push('03-phone')
+      await phone.close()
+    })
+
+    await step('the night desk keeps the wire grey and visible', async () => {
+      await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'dark'))
+      await page.waitForTimeout(400)
+      const bg = await cards().first().evaluate((el) => getComputedStyle(el, '::after').backgroundImage)
+      const rgb = greyish(bg, 'the dark wire')
+      check(rgb.some(([r]) => r > 110), 'dark wire is too dark to see')
+      await shot('04-dark')
     })
   } finally {
-    try { mkdirSync(process.env.SPIRAL_SHOTS || work, { recursive: true }); if (process.env.SPIRAL_SHOTS) for (const f of ['01-hover-full', '02-hover-second-card']) copyFileSync(path.join(work, `${f}.png`), path.join(process.env.SPIRAL_SHOTS, `${f}.png`)) } catch { /* screenshots are optional */ }
+    const out = process.env.SPIRAL_SHOTS
+    if (out) { mkdirSync(out, { recursive: true }); for (const f of shots) { try { copyFileSync(path.join(work, `${f}.png`), path.join(out, `${f}.png`)) } catch { /* optional */ } } }
     await stack.stop()
   }
   console.log(`\nEND-TO-END PASSED (${results.length} steps). Screenshots: ${work}`)

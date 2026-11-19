@@ -1,4 +1,3 @@
-import CardSpiral from '../components/CardSpiral'
 import { CaretRight } from '@phosphor-icons/react'
 import { api } from '../api/endpoints'
 import { errorText } from '../api/messages'
@@ -148,7 +147,6 @@ export default function Courses() {
             const r = courseReadiness(c.documents)
             return (
               <li key={c.id} className="course-card">
-                <CardSpiral />
                 <button
                   type="button"
                   disabled={c.lifecycle === 'DELETING'}

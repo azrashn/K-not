@@ -2376,51 +2376,35 @@ nav[aria-label='Ana gezinme'] { z-index: 2; }
   letter-spacing: -0.03em;
 }
 
-/* ── Defter teli: ders kartında üzerine gelince çizilen spiral ─────────────────────────────
-   Çizilme yalnızca transform + opacity ile, toplam ≤ 300 ms: halkalar yukarıdan aşağıya sırayla şeritten
-   dışarı uzar; fare ayrılınca sıra tersine döner, halkalar aşağıdan yukarıya şeride geri çekilir. */
-.course-card { overflow: visible; } /* halkalar kartın solundan taşar */
+/* ── Spiral defter teli ─────────────────────────────────────────────────────────────────
+   Ders kartlarının sol şeridindeki her deliğe (her 34 px) bir tel halkası geçer; halkalar kartın
+   solundan hafifçe taşar. Tel gridir (hepsinde aynı), metal gibi hafif parlaktır. Süstür: kartın
+   boyutunu, içeriğini ve tıklamasını etkilemez; hareketi yoktur. */
+:root {
+  --wire: color-mix(in srgb, var(--color-ink-3) 82%, var(--color-sheet));
+  --wire-hi: color-mix(in srgb, var(--color-sheet) 62%, var(--color-ink-3));
+  --wire-lo: color-mix(in srgb, var(--color-ink-2) 62%, var(--color-ink-3));
+}
+:root[data-theme='dark'] {
+  --wire: color-mix(in srgb, var(--color-ink-3) 88%, var(--color-sheet));
+  --wire-hi: color-mix(in srgb, var(--color-ink) 70%, var(--color-ink-3));
+  --wire-lo: color-mix(in srgb, var(--color-ink-3) 70%, var(--color-sheet));
+}
+.course-card { overflow: visible; } /* tel kartın solundan taşar */
 .course-card::before { border-radius: 3px 0 0 3px; } /* şerit, taşma kırpması kalkınca eski köşelerini korur */
-.card-spiral {
-  display: none;
+.course-card::after {
+  content: '';
   position: absolute;
   top: 0;
   bottom: 0;
-  left: -46px; /* halkaların sol ucu kartın dışında; sağ uçları şeridin içinde biter */
-  width: 80px;
-  height: 100%;
-  overflow: visible;
+  left: -13px; /* halkanın deliğe giren ucu şeritteki deliğin ortasına (x = 13 px) gelir */
+  width: 40px;
   pointer-events: none;
   z-index: 2;
-  color: var(--spine, var(--metro-1));
-}
-.card-spiral path {
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 3;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  vector-effect: non-scaling-stroke; /* kart yüksekliğine göre esneyince çizgi kalınlığı sabit kalır */
-  transform-box: fill-box;
-  transform-origin: 100% 50%;
-  transform: scaleX(0.02);
-  opacity: 0;
-  /* silinirken: son halka önce (aşağıdan yukarıya) */
-  transition:
-    transform 110ms var(--ease-out) calc((var(--n) - var(--i)) * 23ms),
-    opacity 80ms linear calc((var(--n) - var(--i)) * 23ms);
-}
-/* Yalnızca gerçek fareyle: dokunmatik cihazlarda hover olmadığı için mevcut tasarım olduğu gibi kalır. */
-@media (hover: hover) and (pointer: fine) {
-  .card-spiral { display: block; }
-  .course-card:hover .card-spiral path,
-  .course-card:has(:focus-visible) .card-spiral path {
-    transform: scaleX(1);
-    opacity: 1;
-    /* çizilirken: ilk halka önce (yukarıdan aşağıya) */
-    transition-delay: calc(var(--i) * 23ms), calc(var(--i) * 23ms);
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .card-spiral path { transition: none; } /* hareket yok: tel hover'da bir anda görünür */
+  background: linear-gradient(165deg, var(--wire-hi) 0%, var(--wire) 42%, var(--wire-lo) 100%);
+  background-size: 100% 34px; /* delik aralığı (.course-card::before) ile aynı */
+  background-repeat: repeat-y;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 34'%3E%3Cpath d='M26 14C21 13.2 11 14.4 6.4 19.6C3.2 23.2 5.4 28.6 10.2 28.2C11.8 28 12.8 27.6 13.6 27.2' fill='none' stroke='black' stroke-width='3.2' stroke-linecap='round'/%3E%3C/svg%3E") 0 0 / 100% 34px repeat-y;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 34'%3E%3Cpath d='M26 14C21 13.2 11 14.4 6.4 19.6C3.2 23.2 5.4 28.6 10.2 28.2C11.8 28 12.8 27.6 13.6 27.2' fill='none' stroke='black' stroke-width='3.2' stroke-linecap='round'/%3E%3C/svg%3E") 0 0 / 100% 34px repeat-y;
+  filter: drop-shadow(0.5px 1px 0.6px color-mix(in srgb, var(--color-ink) 32%, transparent));
 }
