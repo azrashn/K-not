@@ -162,7 +162,7 @@ export default function SourceViewer({ view, setView, active, evidence, pulse, s
                       className={`press relative h-7 min-w-8 rounded-md px-1 font-mono text-[12px] num ${cur ? 'bg-ink font-semibold text-white' : 'text-ink-3 hover:bg-ink/[0.06] hover:text-ink'}`}
                     >
                       {p}
-                      {ev && <span aria-hidden className={`absolute -top-px left-1/2 size-[5px] -translate-x-1/2 rounded-full ${cur ? 'bg-[#9db0f2]' : 'bg-accent'}`} />}
+                      {ev && <span aria-hidden className={`absolute -top-px left-1/2 size-[5px] -translate-x-1/2 rounded-full ${cur ? 'bg-accent-line' : 'bg-accent'}`} />}
                     </button>
                   )
                 })}

@@ -152,12 +152,12 @@ export default function CourseDetail({ courseId }) {
               <p className="m-0 text-[16px] font-medium text-ink">PDF bırak ya da seç</p>
               <p className="m-0 mt-1 text-[13.5px] text-ink-3">Yalnızca metin içeren PDF (en fazla 30 MB). Taranmış sayfalar okunamaz.</p>
               <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
-                <select aria-label="Yüklenecek dosyanın türü" value={docType} onChange={(e) => setDocType(e.target.value)} className="h-9 rounded-[10px] bg-white px-2.5 text-[13.5px] text-ink shadow-[0_0_0_1px_rgba(22,24,30,0.1)]">
+                <select aria-label="Yüklenecek dosyanın türü" value={docType} onChange={(e) => setDocType(e.target.value)} className="h-9 rounded-[10px] bg-sheet px-2.5 text-[13.5px] text-ink shadow-[0_0_0_1px_var(--color-line)]">
                   <option value="auto">Tür: dosya adından</option>
                   {DOC_TYPES.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
                 </select>
                 {instructor && (
-                  <select aria-label="Görünürlük" value={visibility} onChange={(e) => setVisibility(e.target.value)} className="h-9 rounded-[10px] bg-white px-2.5 text-[13.5px] text-ink shadow-[0_0_0_1px_rgba(22,24,30,0.1)]">
+                  <select aria-label="Görünürlük" value={visibility} onChange={(e) => setVisibility(e.target.value)} className="h-9 rounded-[10px] bg-sheet px-2.5 text-[13.5px] text-ink shadow-[0_0_0_1px_var(--color-line)]">
                     <option value="PRIVATE">Yalnızca ben</option>
                     <option value="COURSE">Tüm ders</option>
                   </select>

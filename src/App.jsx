@@ -3,7 +3,7 @@ import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import { X } from '@phosphor-icons/react'
 import { AppProvider, useApp, pathFor } from './app/store'
 import { useMediaQuery } from './hooks/useMediaQuery'
-import NavRail, { NAV, NavButton, KnotMark, UserBadge } from './components/NavRail'
+import NavRail, { NAV, NavButton, KnotMark, UserBadge, ThemeToggle } from './components/NavRail'
 import { AuthProvider, useAuth } from './app/auth'
 import Login from './pages/Login'
 import { EASE_DRAWER, EASE_OUT } from './lib/motion'
@@ -90,7 +90,7 @@ function Shell() {
                   <li key={item.id}><NavButton item={item} vertical={false} current={item.id === route.section} onSelect={onNav} /></li>
                 ))}
               </ul>
-              <div className="mt-auto px-1"><UserBadge vertical={false} /></div>
+              <div className="mt-auto flex flex-col gap-1 px-1"><ThemeToggle /><UserBadge vertical={false} /></div>
             </motion.nav>
           </>
         )}

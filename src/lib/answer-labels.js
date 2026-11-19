@@ -43,3 +43,21 @@ export function statusLabel(turn) {
   if (status === 'INVALID_CITATIONS') return 'Model geçerli kaynak göstermedi; kaynaktaki ilgili cümleler gösteriliyor, model yorumu değil.'
   return STATUS_LABELS[status] || 'Kaynak durumu doğrulanamadı'
 }
+
+const STAMPS = {
+  SOURCE_EXCERPTS: { tone: 'ok', text: 'KAYNAKTA BULUNDU' },
+  NO_EVIDENCE: { tone: 'no', text: 'KAYNAKTA YOK' },
+  GENERATED_UNVERIFIED: { tone: 'warn', text: 'DOĞRULANMADI' },
+}
+
+/** Kütüphane kataloğu damgası. Yalnızca durumu gerçekten söyleyen yanıtlara; bilinmeyen durumda null. */
+export function stampFor(turn) {
+  return STAMPS[turn?.status] || null
+}
+
+const EXCERPT_STATUSES = ['SOURCE_EXCERPTS', 'GENERATION_FAILED_SOURCE_EXCERPTS', 'INVALID_CITATIONS']
+
+/** Yanıt metni model üretimi değil, kaynaktan alınan cümleler mi? Yalnızca durum bunu söylüyorsa true. */
+export function isExcerpt(turn) {
+  return EXCERPT_STATUSES.includes(turn?.status)
+}

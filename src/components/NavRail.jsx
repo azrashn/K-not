@@ -1,4 +1,5 @@
-import { House, BookOpen, Exam, ChartLineUp, SignOut } from '@phosphor-icons/react'
+import { useEffect, useState } from 'react'
+import { House, BookOpen, Exam, ChartLineUp, SignOut, Moon, Sun } from '@phosphor-icons/react'
 import { useAuth } from '../app/auth'
 
 export const NAV = [
@@ -12,9 +13,9 @@ export function KnotMark({ size = 32 }) {
   // K harfi: gövde + iki kol, kolların buluştuğu yerde düğüm.
   return (
     <svg width={size} height={size} viewBox="0 0 32 32" fill="none" aria-hidden>
-      <rect x="0.5" y="0.5" width="31" height="31" rx="8" fill="#16181e" />
-      <path d="M11 8v16M11 16.5L21.5 8M11 16.5L21.5 24" stroke="#fff" strokeWidth="2" strokeLinecap="round" />
-      <circle cx="11" cy="16.5" r="3" fill="#16181e" stroke="#9db0f2" strokeWidth="1.6" />
+      <rect x="0.5" y="0.5" width="31" height="31" rx="8" fill="var(--color-ink)" />
+      <path d="M11 8v16M11 16.5L21.5 8M11 16.5L21.5 24" stroke="var(--color-white)" strokeWidth="2" strokeLinecap="round" />
+      <circle cx="11" cy="16.5" r="3" fill="var(--color-ink)" stroke="var(--color-accent)" strokeWidth="1.6" />
     </svg>
   )
 }
@@ -26,12 +27,28 @@ export function NavButton({ item, current, onSelect, vertical = true }) {
       type="button"
       onClick={() => onSelect(item.id)}
       aria-current={current ? 'page' : undefined}
-      className={`press group flex ${vertical ? 'w-14 flex-col items-center gap-1 py-2' : 'w-full flex-row items-center gap-3 px-3 py-2.5'} rounded-xl ${
+      data-tone={item.id}
+      className={`nav-tab press group flex ${vertical ? 'w-14 flex-col items-center gap-1 py-2' : 'w-full flex-row items-center gap-3 px-3 py-2.5'} rounded-xl ${
         current ? 'bg-ink text-white' : 'text-ink-3 hover:bg-white/70 hover:text-ink'
       }`}
     >
       <Icon size={vertical ? 22 : 20} weight={current ? 'fill' : 'regular'} aria-hidden />
       <span className={vertical ? 'text-[10.5px] font-medium leading-none' : 'text-[14px] font-medium'}>{item.label}</span>
+    </button>
+  )
+}
+
+// Gündüz / gece masası. Tercih tarayıcıda saklanır; ilk boyamadan önce index.html uygular.
+export function ThemeToggle() {
+  const [dark, setDark] = useState(() => document.documentElement.dataset.theme === 'dark')
+  useEffect(() => {
+    document.documentElement.dataset.theme = dark ? 'dark' : 'light'
+    try { localStorage.setItem('knot-theme', dark ? 'dark' : 'light') } catch { /* özel mod */ }
+  }, [dark])
+  const label = dark ? 'Gündüz masasına geç' : 'Gece masasına geç'
+  return (
+    <button type="button" onClick={() => { const root = document.documentElement; root.classList.add('theme-fade'); window.setTimeout(() => root.classList.remove('theme-fade'), 400); setDark((d) => !d) }} aria-label={label} title={label} className="press mb-2 grid size-9 place-items-center rounded-lg text-ink-3 hover:bg-white/70 hover:text-ink">
+      {dark ? <Sun size={18} aria-hidden /> : <Moon size={18} aria-hidden />}
     </button>
   )
 }
@@ -45,7 +62,10 @@ export default function NavRail({ current, onSelect }) {
           <li key={item.id}><NavButton item={item} current={current === item.id} onSelect={onSelect} /></li>
         ))}
       </ul>
-      <UserBadge />
+      <div className="mt-auto flex flex-col items-center">
+        <ThemeToggle />
+        <UserBadge />
+      </div>
     </nav>
   )
 }

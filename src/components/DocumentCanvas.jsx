@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api } from "../api/endpoints";
 import { videoErrorText } from "../lib/video";
 export default function DocumentCanvas({
+  onShowText,
   courseId,
   material,
   source,
@@ -165,7 +166,12 @@ export default function DocumentCanvas({
         {error && (
           <p role="alert" className="product-error">
             Görüntü açılamadı: {error} Özgün dosyayı indirerek de
-            inceleyebilirsin.
+            inceleyebilirsin.{" "}
+            {onShowText && (
+              <button type="button" className="product-link" onClick={onShowText}>
+                Çıkarılan metni göster →
+              </button>
+            )}
           </p>
         )}
         {url?.page === page && (

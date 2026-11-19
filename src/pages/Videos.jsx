@@ -163,7 +163,7 @@ export default function Videos({ courseId }) {
     <MobileBar />
     <header className="border-b border-hair py-7">
       <button className="text-[13px] text-accent" onClick={() => navigate(`/dersler/${courseId}`)}>← Derse dön</button>
-      <h1 className="mt-4 text-3xl font-semibold tracking-[-0.03em]">Ders videoları</h1>
+      <div className="mt-4"><h1 className="page-h1">Ders videoları</h1><span className="title-note" aria-hidden>anı yakala</span></div>
       <p className="mt-2 text-sm text-ink-2">Videonu yükle, anlatımda ara, kaynak anına dön. Bu videolar yalnızca sana açıktır.</p>
     </header>
     {(error || loadError) && <div role="alert" className="mt-4 border border-hair p-4 text-sm text-kopuk">{error || loadError} <button onClick={() => { setError(''); refresh() }} className="ml-3 underline">Yenile</button></div>}

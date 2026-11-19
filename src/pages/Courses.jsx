@@ -31,7 +31,7 @@ export function LoadState({ loading, error, onRetry, empty, emptyText }) {
   if (loading) {
     return (
       <p
-        className="m-0 flex items-center gap-3 py-8 text-[14.5px] text-ink-3"
+        className="load-line m-0 flex items-center gap-3 py-8 text-[14.5px] text-ink-3"
         role="status"
       >
         <span className="flex gap-1" aria-hidden>
@@ -96,6 +96,8 @@ export default function Courses() {
       <PageTitle
         eyebrow="Öğrenme alanların"
         title="Derslerin"
+        note="hepsi burada"
+        tone="blue"
         actions={<Btn onClick={() => setEditing({})}>+ Yeni ders oluştur</Btn>}
       >
         Materyallerini bir araya getir. Her derste aynı çalışma bağlamından
@@ -155,7 +157,7 @@ export default function Courses() {
                     <span className="course-glyph" aria-hidden>
                       ▤
                     </span>
-                    <span className="block text-xl font-semibold tracking-tight text-ink">
+                    <span className="course-name block text-ink">
                       {c.name}
                     </span>
                     <span className="mt-1 block text-[13.5px] text-ink-3">

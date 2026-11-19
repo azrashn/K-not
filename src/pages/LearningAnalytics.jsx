@@ -5,6 +5,7 @@ import { PageFrame, Btn } from '../components/ui'
 import { MobileBar } from '../components/PageBits'
 import { PageTitle, Metric, EmptyState } from '../components/ProductUI'
 import { LoadState } from './Courses'
+import TopicMetro from '../components/TopicMetro'
 const watched = (intervals) =>
   (Array.isArray(intervals) ? intervals : []).reduce(
     (n, i) => n + Math.max(0, i.end_ms - i.start_ms),
@@ -20,6 +21,8 @@ export default function LearningAnalytics() {
       <PageTitle
         eyebrow="Gözlenen çalışmalar"
         title="Öğrenme Analizi"
+        note="izlerin burada"
+        tone="sun"
         actions={<Btn onClick={() => navigate('/quiz')}>Yeni alıştırma</Btn>}
       >
         Kayıtlı etkinliklerin ve cevapların. Bir materyali açmak ya da videoyu
@@ -49,6 +52,11 @@ export default function LearningAnalytics() {
               detail="Aralık birleşimi; öğrenme puanı değil"
             />
           </section>
+          <TopicMetro
+            attempts={data.attempts}
+            courseNames={Object.fromEntries(data.activities.map((a) => [a.courseId, a.course.name]))}
+            onOpen={(a) => navigate(`/dersler/${a.course_id}/quiz`, { quizId: a.quiz_id })}
+          />
           <div className="dashboard-grid">
             <section>
               <div className="section-heading">

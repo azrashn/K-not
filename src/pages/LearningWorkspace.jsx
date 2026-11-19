@@ -1,6 +1,6 @@
 import Voice from "../components/Voice";
 import { isSubmitKey } from "../lib/composer-keys";
-import { modeLabel, statusLabel } from "../lib/answer-labels";
+import { modeLabel, statusLabel, stampFor, isExcerpt } from "../lib/answer-labels";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api/endpoints";
 import { useApp } from "../app/store";
@@ -35,6 +35,24 @@ const watchLabel = {
   UNWATCHED: "İlgili aralık izlenmedi",
   UNKNOWN: "İzleme kaydı bilinmiyor",
 };
+
+// Kaynaktan alınan metin: yeniden akıtılır (PDF satır sonları), uzunsa katlanır.
+function QuoteBlock({ text, label }) {
+  const [open, setOpen] = useState(false);
+  const clean = String(text ?? "").replace(/(\p{L})-\n(\p{L})/gu, "$1$2");
+  const long = clean.length > 420;
+  return (
+    <blockquote className="quote-block" data-collapsed={long && !open ? "true" : undefined}>
+      <span className="quote-label">{label}</span>
+      <RichText className="answer-text" text={clean} />
+      {long && (
+        <button type="button" className="quote-more" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
+          {open ? "Daha az göster ▴" : "Devamını göster ▾"}
+        </button>
+      )}
+    </blockquote>
+  );
+}
 
 export default function LearningWorkspace({ courseId }) {
   const { navigate, takeIntent } = useApp();
@@ -80,6 +98,10 @@ export default function LearningWorkspace({ courseId }) {
     intentConsumed = useRef(false),
     chatScroll = useRef(null);
   const initialSeek = useRef(false);
+  const [tab, setTab] = useState("sayfa");
+  useEffect(() => {
+    setTab("sayfa");
+  }, [selected?.id]);
   const input = useRef(null),
     player = useRef(null),
     activeRequest = useRef(null),
@@ -519,7 +541,7 @@ export default function LearningWorkspace({ courseId }) {
     const checked = references.some((r) => r.id === e.id);
     return (
       <div key={e.id} className="answer-source-group">
-        <button onClick={() => openEvidence(e)} className="answer-source">
+        <button onClick={() => openEvidence(e)} className="answer-source" data-kind={e.kind}>
           <span className="source-badge">
             [{e.n}] {e.kind} · {locationLabel(e.location)}
           </span>
@@ -574,6 +596,7 @@ export default function LearningWorkspace({ courseId }) {
             ← Derslerin
           </button>
           <h1>{course?.name || "Ders çalışma alanı"}</h1>
+          <span className="title-note" aria-hidden>masan hazır</span>
           <p>Materyalini incele. Aynı bağlamda sor, öğren ve uygula.</p>
         </div>
         <div className="product-actions">
@@ -610,6 +633,8 @@ export default function LearningWorkspace({ courseId }) {
             <h2>Kaynaklar</h2>
             <span>{materials.length}</span>
           </div>
+          <details className="rail-add" open={materials.length === 0 || undefined}>
+          <summary>+ Ekle</summary>
           <div className="upload-tabs" aria-label="Materyal ekleme yöntemi">
             {[
               ["document", "Belge"],
@@ -682,6 +707,9 @@ export default function LearningWorkspace({ courseId }) {
               />
             </>
           )}
+          </details>
+          <details className="rail-tools">
+          <summary>Ara ve kapsam</summary>
           <label className="sr-only" htmlFor="material-filter">
             Materyallerde ara
           </label>
@@ -722,6 +750,7 @@ export default function LearningWorkspace({ courseId }) {
               <option value="selected">Seçtiğim kaynaklar</option>
             </select>
           </label>
+          </details>
           {selectedMaterials.length > 0 && (
             <p className="product-note">
               {selectedMaterials.length} kaynak seçili{" "}
@@ -784,6 +813,8 @@ export default function LearningWorkspace({ courseId }) {
                     key={m.id}
                     onClick={() => select(m)}
                     className={`material-item ${m.id === selected?.id ? "active" : ""}`}
+                    data-kind={m.kind}
+                    data-type={m.type || m.documentType || ""}
                   >
                     <span className="source-badge">{m.kind}</span>
                     <strong>{m.title}</strong>
@@ -814,6 +845,38 @@ export default function LearningWorkspace({ courseId }) {
             </span>
             <h2>{selected?.title || "Kaynağın burada açılacak"}</h2>
           </header>
+          {selected && selected.status === "READY" && (
+            <div className="viewer-tabs" role="tablist" aria-label="Kaynak görünümü">
+              {[
+                ["sayfa", videoId ? "Video" : "Sayfa"],
+                ["metin", "Metin"],
+                ["bolumler", `Bölümler${segments.length > 1 ? " " + segments.length : ""}`],
+                ["ozet", "Özet"],
+              ].map(([id, label]) => (
+                <button key={id} role="tab" aria-selected={tab === id} data-on={tab === id} onClick={() => setTab(id)}>
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
+          {tab === "sayfa" && selected && (() => {
+            const seen = new Set();
+            const marks = turns
+              .flatMap((t) => t.evidence || [])
+              .filter((e) => e.material_id === selected.id && (e.location?.kind === "page" || e.location?.kind === "slide"))
+              .filter((e) => { const k = locationLabel(e.location); if (seen.has(k)) return false; seen.add(k); return true; });
+            if (!marks.length) return null;
+            return (
+              <nav className="bookmark-rail" aria-label="Cevaplarda kullanılan sayfalar">
+                <span className="bookmark-label">ŞERİTLER</span>
+                {marks.map((e, i) => (
+                  <button key={e.id} type="button" className="bookmark" data-i={i % 4} onClick={() => openEvidence(e)}>
+                    {locationLabel(e.location)}
+                  </button>
+                ))}
+              </nav>
+            );
+          })()}
           {boardTurn && (
             <section className="workspace-board" aria-label="Tahtada anlatım">
               <div className="workspace-board-head">
@@ -840,9 +903,11 @@ export default function LearningWorkspace({ courseId }) {
               onOpen={(m) => select(m)}
             />
           )}
-          {selected?.status === "READY" &&
+          {tab === "sayfa" &&
+            selected?.status === "READY" &&
             ["PDF", "PPTX"].includes(selected.kind) && (
               <DocumentCanvas
+                onShowText={() => setTab("metin")}
                 key={selected.id}
                 courseId={courseId}
                 material={selected}
@@ -852,7 +917,7 @@ export default function LearningWorkspace({ courseId }) {
                 onViewportChange={viewportChanged}
               />
             )}
-          {videoId && selected?.status === "READY" && (
+          {tab === "sayfa" && videoId && selected?.status === "READY" && (
             <div className="video-view">
               {url?.id === videoId ? (
                 <video
@@ -904,10 +969,10 @@ export default function LearningWorkspace({ courseId }) {
               />
             </div>
           )}
-          {source && (
+          {tab === "metin" && source && (
             <details
               className="source-transcript"
-              open={selected?.kind === "TXT"}
+              open
             >
               <summary>
                 {videoId ? "Transkript" : "Çıkarılan kaynak metni"} ·{" "}
@@ -966,7 +1031,7 @@ export default function LearningWorkspace({ courseId }) {
               )}
             </details>
           )}
-          {selected && selected.status === "READY" && (
+          {tab === "bolumler" && selected && selected.status === "READY" && (
             <MaterialFind
               courseId={courseId}
               material={selected}
@@ -976,7 +1041,7 @@ export default function LearningWorkspace({ courseId }) {
               }
             />
           )}
-          {selected && selected.status === "READY" && (
+          {tab === "ozet" && selected && selected.status === "READY" && (
             <MaterialSummary
               courseId={courseId}
               material={selected}
@@ -986,8 +1051,8 @@ export default function LearningWorkspace({ courseId }) {
               }
             />
           )}
-          {segments.length > 1 && (
-            <details className="source-sections">
+          {tab === "bolumler" && segments.length > 1 && (
+            <details className="source-sections" open>
               <summary>
                 Kaynak bölümleri <span>{segments.length}</span>
               </summary>
@@ -1008,6 +1073,8 @@ export default function LearningWorkspace({ courseId }) {
             </details>
           )}
           {selected && (
+            <details className="viewer-more">
+            <summary aria-label="Diğer işlemler">⋯ İşlemler</summary>
             <footer className="viewer-actions">
               {selected.can_manage && (
                 <button
@@ -1088,6 +1155,7 @@ export default function LearningWorkspace({ courseId }) {
                   </button>
                 ))}
             </footer>
+            </details>
           )}
         </section>
         {assistantOpen && (
@@ -1173,8 +1241,13 @@ export default function LearningWorkspace({ courseId }) {
                       <span>Sen</span>
                       <p>{t.question || "Önceki soru"}</p>
                     </div>
-                    <div className="assistant-message">
+                    <div className="assistant-message" data-tone={stampFor(t)?.tone || "none"}>
+                      <div className="message-head">
                       <span className="message-author">✳ K-NOT</span>
+                      {stampFor(t) && (
+                        <span className="catalog-stamp" data-tone={stampFor(t).tone}>{stampFor(t).text}</span>
+                      )}
+                      </div>
                       {modeLabel(t.response_mode) && (
                         <span className="answer-mode" data-mode={t.response_mode}>
                           {modeLabel(t.response_mode)}
@@ -1202,7 +1275,14 @@ export default function LearningWorkspace({ courseId }) {
                           Kopyala
                         </button>
                       </div>
-                      <RichText className="answer-text" text={t.answer} />
+                      {isExcerpt(t) ? (
+                        <QuoteBlock
+                          text={t.answer}
+                          label={"KAYNAKTAN ALINTI" + ((primary[0] || evidence[0]) ? " · " + locationLabel((primary[0] || evidence[0]).location) : "")}
+                        />
+                      ) : (
+                        <RichText className="answer-text" text={t.answer} />
+                      )}
                       <ClaimSupport claims={t.claims} />
                       {t.visual_analysis?.status === "IMAGE_PROVIDED" && (
                         <p className="product-note">

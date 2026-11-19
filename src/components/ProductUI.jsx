@@ -2,12 +2,13 @@ import { useEffect, useId, useRef, useState } from 'react'
 import { Btn } from './ui'
 import { api } from '../api/endpoints'
 import { videoErrorText } from '../lib/video'
-export function PageTitle({ eyebrow, title, children, actions }) {
+export function PageTitle({ eyebrow, title, note, tone, children, actions }) {
   return (
-    <header className="product-title">
+    <header className="product-title" data-tone={tone}>
       <div>
         <p className="product-eyebrow">{eyebrow}</p>
         <h1>{title}</h1>
+        {note && <span className="title-note" aria-hidden>{note}</span>}
         {children && <p className="product-description">{children}</p>}
       </div>
       <div className="product-actions">{actions}</div>
@@ -17,9 +18,13 @@ export function PageTitle({ eyebrow, title, children, actions }) {
 export function EmptyState({ title, children, action }) {
   return (
     <section className="product-empty">
-      <span className="empty-mark" aria-hidden>
-        +
-      </span>
+      <svg className="empty-doodle" width="84" height="64" viewBox="0 0 84 64" fill="none" aria-hidden>
+        <path d="M10 14 L50 10 L54 52 L14 56 Z" fill="var(--color-sheet)" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+        <path d="M20 24 L42 22 M21 32 L44 30 M22 40 L36 39" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" opacity="0.6" />
+        <path d="M58 46 L76 14 L82 18 L64 50 L56 53 Z" fill="var(--color-mark)" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+        <path d="M76 14 L82 18" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+        <path d="M4 60 q6 -5 12 0 t12 0" stroke="var(--color-accent)" strokeWidth="1.8" strokeLinecap="round" />
+      </svg>
       <h2>{title}</h2>
       <p>{children}</p>
       {action}

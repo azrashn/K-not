@@ -263,3 +263,18 @@ button.board-quote:hover { color: var(--color-accent); }
 @media (prefers-reduced-motion: reduce) {
   .board-step { transition: none; }
 }
+
+/* Tahta: defter sayfası. İnce yatay çizgiler + sol kenar boşluk çizgisi. */
+.board-surface {
+  background-color: var(--color-sheet);
+  background-image:
+    linear-gradient(to right, transparent 2.6rem, var(--color-kopuk-line) 2.6rem, var(--color-kopuk-line) calc(2.6rem + 1px), transparent calc(2.6rem + 1px)),
+    repeating-linear-gradient(to bottom, transparent 0, transparent 31px, color-mix(in srgb, var(--color-hair) 55%, transparent) 31px, color-mix(in srgb, var(--color-hair) 55%, transparent) 32px);
+}
+.board-scroll { background: transparent; }
+
+.board-step button, .board-step [class*='citation'], .board-step [class*='chip'] { background-color: var(--color-sheet); }
+
+/* Öğretmen: adaçayı ceket, sarı işaretleyici kalem. */
+.teacher { --figure-top: #6d4aa8; --figure-sleeve: #7e5cbb; }
+.teacher .t-marker-tip { fill: #f0c419; }

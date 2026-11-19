@@ -3,43 +3,44 @@
 @import "./board.css";
 
 /* K-not · Calm Academic Intelligence
-   Tek vurgu: kobalt (knot blue). Renk, kanıt durumları ve belge işaretleyicisi dışında kullanılmaz. */
+   Tek vurgu: adaçayı (A1 şenlikli pastel; gece masası için [data-theme='dark']). Renk, kanıt durumları ve belge işaretleyicisi dışında kullanılmaz. */
 @theme {
   --font-sans: 'Geist', 'Inter', ui-sans-serif, system-ui, sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', monospace;
   --font-serif: 'Newsreader', 'Source Serif 4', Georgia, serif;
 
-  --color-paper: #f8f6f1;
-  --color-rail: #f1eee7;
-  --color-surface: #fdfcfa;
-  --color-desk: #ebe8e0;
-  --color-sheet: #ffffff;
-  --color-line: #e3dfd4;
-  --color-hair: #ece9e0;
-  --color-line-strong: #cbc6b8;
+  --color-white: #fffdf8;
+  --color-paper: #f6f0e3;
+  --color-rail: #efe7d4;
+  --color-surface: #fffcf5;
+  --color-desk: #eadfc8;
+  --color-sheet: #fffcf5;
+  --color-line: #dccfb4;
+  --color-hair: #e6dcc6;
+  --color-line-strong: #b9ae98;
 
-  --color-ink: #16181e;
-  --color-ink-2: #383d49;
-  --color-ink-3: #5f6575;
+  --color-ink: #2f2b26;
+  --color-ink-2: #4a433a;
+  --color-ink-3: #6e6556;
 
-  --color-accent: #2440a6;
-  --color-accent-deep: #1a3085;
-  --color-accent-tint: #eef1fb;
-  --color-accent-line: #c3cdf0;
+  --color-accent: #6d4aa8;
+  --color-accent-deep: #553787;
+  --color-accent-tint: #ece6f7;
+  --color-accent-line: #cdbfe8;
 
-  --color-mark: #fbe49a;
-  --color-mark-weak: #fbefc4;
-  --color-mark-line: #dfb437;
+  --color-mark: #f7de7a;
+  --color-mark-weak: #faebb0;
+  --color-mark-line: #d9b43a;
 
-  --color-siki: #176b43;
-  --color-siki-tint: #e6f3ec;
-  --color-siki-line: #a9d3bd;
+  --color-siki: #1e7a78;
+  --color-siki-tint: #dcefec;
+  --color-siki-line: #9fcfc9;
   --color-gevesek: #8f5400;
   --color-gevesek-tint: #fbf0d9;
   --color-gevesek-line: #e8c887;
-  --color-kopuk: #a1362b;
-  --color-kopuk-tint: #fbebe8;
-  --color-kopuk-line: #e9b6af;
+  --color-kopuk: #b4543a;
+  --color-kopuk-tint: #f8e4dc;
+  --color-kopuk-line: #e6b5a4;
 
   --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
   --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);

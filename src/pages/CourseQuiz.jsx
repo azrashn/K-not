@@ -156,6 +156,8 @@ export default function CourseQuiz({ courseId }) {
       <PageTitle
         eyebrow="Kaynakla çalış, geri bildirim al"
         title="Alıştırmalar"
+        note="bir deneme çöz"
+        tone="lilac"
         actions={
           <>
             {course && (

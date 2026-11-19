@@ -260,6 +260,8 @@ export default function CourseExams({ courseId, pollMs = 2500 }) {
       <PageTitle
         eyebrow="Geçmiş sınavdan yeni sınav"
         title="Sınavlar"
+        note="geçmişten yarına"
+        tone="pink"
         actions={
           <button className="product-link" onClick={() => navigate(`/dersler/${courseId}/quiz`)}>
             Alıştırmalara dön →

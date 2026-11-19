@@ -64,3 +64,6 @@ __pycache__/
 *.egg-info/
 .chroma/
 
+
+# Tema yedekleri (yerel)
+_yedek-tema/
