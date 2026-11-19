@@ -32,6 +32,8 @@ from knot_rag.generation.providers.policy import is_local_endpoint
 
 # Açık materyalin sıralama puanına eklenen pay (rank_score 0–1.25 aralığında).
 ACTIVE_MATERIAL_BOOST = 0.4
+# En iyi doğal sonucun bu oranından düşük skorlu kaynaklar elenir.
+LOW_SCORE_RATIO = 0.5
 # Açık sayfaya (+0.2) ve komşu sayfalarına (±1, +0.1) ek pay.
 ACTIVE_PAGE_BOOST = 0.2
 
@@ -737,6 +739,17 @@ class UnifiedIndex:
                     continue
                 deduplicated.append(item)
             ranked = deduplicated
+            # Çok düşük skorlu kaynaklar gösterilmez: en iyi doğal sonucun yarısından azını alan
+            # (ör. soruyla ilgisiz başka bir bölümün sayfası) listeye girmez. Açık bağlam ve
+            # kullanıcının seçtiği kaynaklar korunur.
+            protected = {e["id"] for e in explicit} | {e["id"] for e in contexts}
+            organic = [e["rank_score"] for e in ranked if e["id"] not in protected]
+            if organic:
+                floor = max(organic) * LOW_SCORE_RATIO
+                for e in ranked:
+                    if e["id"] not in protected and e["rank_score"] < floor:
+                        excluded.append({"id": e["id"], "material_id": e["material_id"], "reason": "LOW_SCORE"})
+                ranked = [e for e in ranked if e["id"] in protected or e["rank_score"] >= floor]
             selected, seen = list(explicit), {e["material_id"] for e in explicit}
             # Preserve relevant material diversity; do not force unrelated sources.
             for item in ranked:
