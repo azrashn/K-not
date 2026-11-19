@@ -211,7 +211,7 @@ test("a new answer is read aloud on its own while sound is on; a missing start c
   expect(watchdogs).toHaveLength(1);
   act(() => watchdogs[0]());
   expect(screen.getByText("Seslendirme başarısız. Metni okuyabilirsin.")).toBeVisible();
-  expect(screen.getByText("[1] Water evaporates.")).toBeVisible();
+  expect(screen.getByText((_, el) => el?.tagName === "P" && el.textContent === "[1] Water evaporates.")).toBeVisible();
 });
 
 test("after the user turns sound off, answers are no longer read aloud and the choice is remembered", async () => {
@@ -379,7 +379,7 @@ test("an answer with steps opens the board in the workspace; its sources open th
   const user = await askWaterExcerpts();
   const board = screen.getByRole("region", { name: "Tahtada anlatım" });
   expect(board.querySelector(".board-step")).toBeInTheDocument();
-  expect(screen.getByText("[1] Water evaporates.")).toBeInTheDocument();
+  expect(screen.getByText((_, el) => el?.tagName === "P" && el.textContent === "[1] Water evaporates.")).toBeInTheDocument();
 
   await user.click(board.querySelector(".board-sources .board-chip"));
   await waitFor(() => expect(api.knowledgeSource).toHaveBeenCalledWith("course", m.id, evidence.id));
@@ -393,7 +393,7 @@ test("an answer with steps opens the board in the workspace; its sources open th
 test("an answer without steps (or with an empty list) stays a text answer", async () => {
   api.knowledgeAnswer.mockResolvedValue({ ...answer, steps: [] });
   await askWaterExcerpts();
-  expect(screen.getByText("[1] Water evaporates.")).toBeInTheDocument();
+  expect(screen.getByText((_, el) => el?.tagName === "P" && el.textContent === "[1] Water evaporates.")).toBeInTheDocument();
   expect(screen.queryByRole("region", { name: "Tahtada anlatım" })).not.toBeInTheDocument();
   // The button stays in the header but is disabled: there is nothing to explain on the board.
   const show = screen.getByRole("button", { name: "Tahtada göster" });

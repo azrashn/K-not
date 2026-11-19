@@ -25,8 +25,8 @@ function shortTopic(text) {
 
 /** The form also offers "Karışık": the kinds in turn (one question is a multiple-choice one). */
 const kindChoices = { ...labels, MIXED: "Karışık (türler sırayla)" };
-/** 1 question comes back at once; 2-10 are a set written in the background (GET /quiz-sets/:id). */
-const QUIZ_COUNTS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+/** 1 question comes back at once; 2-15 are a set written in the background (GET /quiz-sets/:id). */
+const QUIZ_COUNTS = Array.from({ length: 15 }, (_, i) => i + 1);
 const SET_POLL_MS = 2000;
 export default function CourseQuiz({ courseId }) {
   const { navigate, takeIntent } = useApp(),

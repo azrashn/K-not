@@ -1134,7 +1134,13 @@ export default function LearningWorkspace({ courseId }) {
               {turns.map((t, i) => {
                 const evidence = t.evidence || [],
                   used = t.retrieval?.used_source_ids || [],
-                  primary = evidence.filter((e) => used.includes(e.id)),
+                  // Metinde [n] ile anılan kaynaklar da "kullanılan" sayılır (model atıfı doğrulanamasa bile).
+                  citedNumbers = new Set(
+                    [...String(t.answer || "").matchAll(/\[(\d{1,2})\]/g)].map((m) => Number(m[1])),
+                  ),
+                  primary = evidence.filter(
+                    (e) => used.includes(e.id) || citedNumbers.has(Number(e.n)),
+                  ),
                   shown = primary.length ? primary : evidence,
                   rest = evidence.filter(
                     (e) => !shown.some((s) => s.id === e.id),
@@ -1168,7 +1174,14 @@ export default function LearningWorkspace({ courseId }) {
                           label={"KAYNAKTAN ALINTI" + ((primary[0] || evidence[0]) ? " · " + locationLabel((primary[0] || evidence[0]).location) : "")}
                         />
                       ) : (
-                        <RichText className="answer-text" text={t.answer} />
+                        <RichText
+                          className="answer-text"
+                          text={t.answer}
+                          onCite={(n) => {
+                            const e = evidence.find((x) => Number(x.n) === n);
+                            if (e) void openEvidence(e);
+                          }}
+                        />
                       )}
                       <ClaimSupport claims={t.claims} />
                       {t.visual_analysis?.status === "IMAGE_PROVIDED" && (

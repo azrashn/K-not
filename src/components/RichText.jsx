@@ -18,7 +18,21 @@ function Formula({ nodes }) {
   });
 }
 
-function Inline({ text }) {
+// "[3]" gibi kaynak işaretleri onCite verilmişse tıklanabilir düğme olur.
+function withCites(text, onCite) {
+  if (!onCite) return text;
+  return String(text).split(/(\[\d{1,2}\])/).map((part, i) => {
+    const m = /^\[(\d{1,2})\]$/.exec(part);
+    if (!m) return part;
+    return (
+      <button key={`c${i}`} type="button" className="cite-link" onClick={() => onCite(Number(m[1]))} aria-label={`Kaynak ${m[1]}'e git`}>
+        [{m[1]}]
+      </button>
+    );
+  });
+}
+
+function Inline({ text, onCite }) {
   return parseInline(text).map((p, i) => {
     if (p.type === "code") return <code key={i} className="rich-inline-code">{p.text}</code>;
     if (p.type === "math")
@@ -27,7 +41,7 @@ function Inline({ text }) {
           <Formula nodes={parseMath(p.tex)} />
         </span>
       );
-    return p.text;
+    return <span key={i}>{withCites(p.text, onCite)}</span>;
   });
 }
 
@@ -37,7 +51,7 @@ export function RichInline({ text }) {
 }
 
 // Renders answer / question text with code blocks, inline code and simple formulas.
-export default function RichText({ text, className = "" }) {
+export default function RichText({ text, className = "", onCite }) {
   return (
     <div className={`rich-text ${className}`.trim()}>
       {parseBlocks(text).map((b, i) =>
@@ -46,7 +60,7 @@ export default function RichText({ text, className = "" }) {
             <code>{b.text}</code>
           </pre>
         ) : (
-          <p key={i}><Inline text={b.text} /></p>
+          <p key={i}><Inline text={b.text} onCite={onCite} /></p>
         ),
       )}
     </div>

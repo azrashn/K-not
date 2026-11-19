@@ -28,12 +28,12 @@ async function fill(user, { count, kind } = {}) {
   await user.click(screen.getByRole('button', { name: 'Alıştırma hazırla' }))
 }
 
-test('the count (1-10) and "Karışık" are basics; one question sends no count', async () => {
+test('the count (1-15) and "Karışık" are basics; one question sends no count', async () => {
   const user = userEvent.setup()
   api.createQuiz.mockResolvedValue({ id: 'q', topic: 'nesne', kind: 'OPEN', question: 'Nesne nedir?', options: [] })
   render(<CourseQuiz courseId="c" />)
   const counts = await screen.findByLabelText('Soru sayısı')
-  expect(Array.from(counts.querySelectorAll('option')).map((o) => o.value)).toEqual(['1', '2', '3', '4', '5', '6', '7', '8', '9', '10'])
+  expect(Array.from(counts.querySelectorAll('option')).map((o) => o.value)).toEqual(Array.from({ length: 15 }, (_, i) => String(i + 1)))
   expect(screen.getByText('Gelişmiş ayarlar').closest('details')).not.toContainElement(counts)
   expect(screen.getByRole('option', { name: 'Karışık (türler sırayla)' })).toBeInTheDocument()
   await fill(user)

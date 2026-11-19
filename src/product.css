@@ -2934,3 +2934,17 @@ nav[aria-label='Ana gezinme'] { z-index: 2; }
   padding: 12px 14px;
   font-size: 13px;
 }
+
+/* Yanıt metnindeki tıklanabilir kaynak işareti */
+.cite-link {
+  font-family: var(--font-mono);
+  font-size: 0.82em;
+  padding: 0 2px;
+  margin: 0 1px;
+  color: var(--color-accent);
+  background: none;
+  border: 0;
+  border-bottom: 1px solid var(--color-accent-line);
+  cursor: pointer;
+}
+.cite-link:hover { background: var(--color-accent-tint); }
