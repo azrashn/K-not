@@ -364,6 +364,11 @@ DOWNGRADED = ([("SHORT_ANSWER", None), ("OPEN", None)], {0})
     "Faiz yüzde ile ifade edilir: anaparanın %x kadarı.",
     "Yoğunluk kütlenin hacme bölümüdür: d = m / V.",
     "Güç (P) işin zamana oranıdır, yani W / t.",
+    # "bulunur" / "farkı" next to a number or another formula sign
+    "Ortalama hız, yolun süreye bölünmesiyle bulunur.",
+    "İki sıcaklığın farkı 15 derecedir.",
+    "Kâr, gelir ile gider arasındaki farkı ifade eder: K = G - M.",
+    "The difference between the two speeds is found by subtracting: d = a - b.",
 ])
 def test_a_calculation_is_kept_with_a_number_or_a_formula(text):
     assert plan(text) == KEPT
@@ -375,6 +380,11 @@ def test_a_calculation_is_kept_with_a_number_or_a_formula(text):
     "JVM bytecode'u çalıştırır ve çöp toplayıcı kullanılmayan nesnelerin belleğini geri kazanır.",
     "Ayrıntılar için https://docs.oracle.com/javase adresine bakın. // yorum satırları derlenmez.",
     "String sınıfı java/lang paketindedir; /* blok yorumları */ derlenmez.",
+    # Everyday words that also appear in formulas do not make a formula on their own.
+    "Java'da çöp toplayıcı bulunur.",
+    "Bu bölümde sınıf ile nesne arasındaki farkı inceleyeceğiz.",
+    "The answer is found by reading the documentation.",
+    "We discuss the difference between a class and an object.",
 ])
 def test_a_calculation_without_a_number_or_a_formula_becomes_a_short_answer(text):
     assert plan(text) == DOWNGRADED

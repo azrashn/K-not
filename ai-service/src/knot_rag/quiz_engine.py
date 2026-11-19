@@ -477,11 +477,14 @@ def _groups(items: list[QuizItem], size: int) -> list[list[int]]:
 _ADDRESS = re.compile(r"\w+://\S+|www\.\S+")
 _OPERAND = r"(?:(?<!\w)\w(?!\w)|\d|[()])"
 _FORMULA_SYMBOL = re.compile(rf"[=×÷%]|{_OPERAND}\s*[*/]\s*{_OPERAND}")
+# Not in the list: "bulunur", "farkı", "is found by", "difference between". They are everyday words
+# ("Java'da çöp toplayıcı bulunur", "sınıf ile nesne arasındaki farkı") and count only next to a number
+# or another formula sign; since either of those already keeps the calculation, they add nothing alone.
 _FORMULA_WORD = re.compile(
-    r"(?<!\w)(?:bölünmesiyle|bölünür|bölümü|çarpımı|çarpılır|çarpılmasıyla|toplamı|toplanır|farkı|oranı|"
-    r"formül\w*|hesaplanır|hesaplanmasında|bulunur)(?!\w)"
-    r"|(?<!\w)(?:divided\s+by|multiplied\s+by|product\s+of|sum\s+of|difference\s+between|ratio|formula\w*|"
-    r"equals|is\s+calculated|is\s+computed|is\s+found\s+by)(?!\w)"
+    r"(?<!\w)(?:bölünmesiyle|bölünür|bölümü|çarpımı|çarpılır|çarpılmasıyla|toplamı|toplanır|oranı|"
+    r"formül\w*|hesaplanır|hesaplanmasında)(?!\w)"
+    r"|(?<!\w)(?:divided\s+by|multiplied\s+by|product\s+of|sum\s+of|ratio|formula\w*|"
+    r"equals|is\s+calculated|is\s+computed)(?!\w)"
 )
 
 
