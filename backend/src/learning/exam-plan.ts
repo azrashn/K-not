@@ -79,11 +79,14 @@ function heading(text: string): string | null {
  * Topics the course sources can actually answer. Terms from the past exam are kept only when they occur in
  * the sources (most frequent first); headings of the sources fill the rest, so a past exam from another
  * wording or language still yields questions. User-written topics are never filtered.
+ * `priority` (lower-cased term → weight, e.g. MergedExamProfile.term_exams) orders the kept terms
+ * before their source frequency does; without it the order is source frequency alone.
  */
 export function groundTopics(
   candidates: string[],
   sources: SourceText[],
   want: number,
+  priority?: Record<string, number>,
 ): { topics: string[]; dropped: string[] } {
   const text = lower(sources.map((s) => s.text).join("\n"));
   const count = (term: string) => {
@@ -93,7 +96,11 @@ export function groundTopics(
     return n;
   };
   const scored = candidates.map((t) => ({ t, n: count(t) }));
-  const kept = scored.filter((x) => x.n > 0).sort((a, b) => b.n - a.n).map((x) => x.t);
+  const rank = (t: string) => priority?.[lower(t.trim())] ?? 0;
+  const kept = scored
+    .filter((x) => x.n > 0)
+    .sort((a, b) => rank(b.t) - rank(a.t) || b.n - a.n)
+    .map((x) => x.t);
   const dropped = scored.filter((x) => x.n === 0).map((x) => x.t);
   const out = [...kept];
   const seen = new Set(out.map(lower));
