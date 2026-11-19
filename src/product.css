@@ -2375,3 +2375,52 @@ nav[aria-label='Ana gezinme'] { z-index: 2; }
   font-size: 15px;
   letter-spacing: -0.03em;
 }
+
+/* ── Defter teli: ders kartında üzerine gelince çizilen spiral ─────────────────────────────
+   Çizilme yalnızca transform + opacity ile, toplam ≤ 300 ms: halkalar yukarıdan aşağıya sırayla şeritten
+   dışarı uzar; fare ayrılınca sıra tersine döner, halkalar aşağıdan yukarıya şeride geri çekilir. */
+.course-card { overflow: visible; } /* halkalar kartın solundan taşar */
+.course-card::before { border-radius: 3px 0 0 3px; } /* şerit, taşma kırpması kalkınca eski köşelerini korur */
+.card-spiral {
+  display: none;
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -46px; /* halkaların sol ucu kartın dışında; sağ uçları şeridin içinde biter */
+  width: 80px;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+  z-index: 2;
+  color: var(--spine, var(--metro-1));
+}
+.card-spiral path {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke; /* kart yüksekliğine göre esneyince çizgi kalınlığı sabit kalır */
+  transform-box: fill-box;
+  transform-origin: 100% 50%;
+  transform: scaleX(0.02);
+  opacity: 0;
+  /* silinirken: son halka önce (aşağıdan yukarıya) */
+  transition:
+    transform 110ms var(--ease-out) calc((var(--n) - var(--i)) * 23ms),
+    opacity 80ms linear calc((var(--n) - var(--i)) * 23ms);
+}
+/* Yalnızca gerçek fareyle: dokunmatik cihazlarda hover olmadığı için mevcut tasarım olduğu gibi kalır. */
+@media (hover: hover) and (pointer: fine) {
+  .card-spiral { display: block; }
+  .course-card:hover .card-spiral path,
+  .course-card:has(:focus-visible) .card-spiral path {
+    transform: scaleX(1);
+    opacity: 1;
+    /* çizilirken: ilk halka önce (yukarıdan aşağıya) */
+    transition-delay: calc(var(--i) * 23ms), calc(var(--i) * 23ms);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .card-spiral path { transition: none; } /* hareket yok: tel hover'da bir anda görünür */
+}
