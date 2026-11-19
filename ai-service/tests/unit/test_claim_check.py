@@ -56,8 +56,11 @@ def test_each_claim_is_checked_only_against_the_sources_it_cites():
         {"text": "Genişlik öncelikli arama kuyruk kullanır.", "sources": [2]},  # cites the wrong passage
     ]
     checked, summary = check_claims(claims, evidence)
-    assert [c["support"]["label"] for c in checked] == ["SUPPORTED", "UNSUPPORTED"]
-    assert summary == {"SUPPORTED": 1, "PARTIAL": 0, "UNSUPPORTED": 1, "UNCHECKED": 0, "ANCHORED": 0, "total": 2, "method": "lexical-v4", "verified": False}
+    assert [c["support"]["label"] for c in checked] == ["SUPPORTED", "PARTIAL"]
+    # Wrong [n]: the text exists in evidence 1, so it is a misattributed citation, not an unsupported claim.
+    assert checked[1]["support"]["reason"] == "WRONG_SOURCE_CITED"
+    assert checked[1]["support"]["suggested_sources"] == [1]
+    assert summary == {"SUPPORTED": 1, "PARTIAL": 1, "UNSUPPORTED": 0, "UNCHECKED": 0, "ANCHORED": 0, "total": 2, "method": "lexical-v4", "verified": False}
     assert "support" not in claims[0]  # input is not mutated
 
 

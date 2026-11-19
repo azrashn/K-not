@@ -8,6 +8,10 @@ from __future__ import annotations
 
 import io
 import logging
+import re
+import shutil
+import subprocess
+import tempfile
 from dataclasses import dataclass
 
 import pypdf
@@ -24,6 +28,36 @@ PDF_MAGIC = b"%PDF-"
 # Extraction output is part of the c1 contract: a different pypdf version may extract
 # different text, which would require a new indexing_version (wbs2-handoff.md §5).
 PINNED_PYPDF_VERSION = "6.17.0"
+
+
+# pypdf bazı yazı tiplerinde "ti" ligatür glifini ToUnicode tablosu olmadan 8 / D / ) olarak çözer
+# (applica8on, EncapsulaDon, Introduc)on). Kelime içinde küçük harflerle çevrili bu karakterler
+# bozulma işaretidir; ")" kelime ortasında hiç meşru değildir.
+_GARBLED_LIGATURE = re.compile(r"(?<=[a-z]{2})[8D)](?=[a-z]{2})")
+GARBLED_PAGE_THRESHOLD = 3
+
+
+def garbled_ligature_count(text: str) -> int:
+    return len(_GARBLED_LIGATURE.findall(text))
+
+
+def _poppler_page_text(data: bytes, number: int) -> str:
+    """Sayfayı Poppler `pdftotext` ile yeniden çıkarır; program yoksa ya da hata verirse boş döner."""
+    exe = shutil.which("pdftotext")
+    if not exe:
+        return ""
+    with tempfile.TemporaryDirectory() as tmp:
+        path = f"{tmp}/in.pdf"
+        with open(path, "wb") as fh:
+            fh.write(data)
+        try:
+            run = subprocess.run(
+                [exe, "-f", str(number), "-l", str(number), "-enc", "UTF-8", path, "-"],
+                capture_output=True, timeout=30, check=False,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return ""
+    return run.stdout.decode("utf-8", "replace") if run.returncode == 0 else ""
 
 
 @dataclass(frozen=True)
@@ -84,6 +118,12 @@ def extract_pdf(data: bytes, *, max_pages: int, max_empty_page_ratio: float, ocr
             raise IngestFailure(E.ENCRYPTED_PDF, "The PDF is password protected.") from exc
         except Exception as exc:
             raise IngestFailure(E.CORRUPT_PDF, f"Page {number} could not be read.") from exc
+        if garbled_ligature_count(raw) >= GARBLED_PAGE_THRESHOLD:
+            alt = _poppler_page_text(data, number)
+            # Yalnızca gerçekten daha temizse değiştirilir; aksi halde pypdf metni korunur.
+            if alt.strip() and garbled_ligature_count(alt) < garbled_ligature_count(raw):
+                log.info("ingest.extraction.poppler_fallback", extra={"page": number})
+                raw = alt
         texts.append(normalize_page_text(raw))
 
     empty = sum(1 for t in texts if not t)

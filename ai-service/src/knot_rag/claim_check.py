@@ -152,8 +152,10 @@ def check_claims(claims, evidence):
                     continue
                 other = check_claim(claim["text"], [item["text"]])
                 if other["label"] in _GOOD:
-                    support = {**other, "reason": "WRONG_SOURCE_CITED", "suggested_sources": [n],
-                               "cited_sources": cited_numbers}
+                    # The claim is supported, but not by the passage it cites: never SUPPORTED, so the
+                    # student still sees a mismatch, yet no longer a false "term missing from the sources".
+                    support = {**other, "label": "PARTIAL", "reason": "WRONG_SOURCE_CITED", "missing_terms": [],
+                               "suggested_sources": [n], "cited_sources": cited_numbers}
                     break
         out.append({**claim, "support": support})
     summary = {k: sum(1 for c in out if c["support"]["label"] == k) for k in ("SUPPORTED", "ANCHORED", "PARTIAL", "UNSUPPORTED", "UNCHECKED")}

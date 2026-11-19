@@ -87,6 +87,19 @@ function QuoteBlock({ text, label }) {
   );
 }
 
+// Öneri düğmesi etiketi tek başına soru olmaz: arama bir konu ister. Açık materyalin adı (ve sayfa) soruya eklenir.
+function suggestionQuestions(selected, viewport) {
+  const title = (selected?.title || "").replace(/\.[a-z0-9]{2,4}$/i, "").trim();
+  const page = viewport?.page ?? viewport?.location?.page;
+  const where = title ? `${title}${page ? `, sayfa ${page}` : ""}` : "";
+  const about = where ? ` (${where})` : "";
+  return [
+    { label: "Bu bölümü adım adım açıkla", text: `Bu bölümü adım adım açıkla${about}` },
+    { label: "Bir örnek göster", text: `Bu bölümdeki konu için bir örnek göster${about}` },
+    { label: "Kaynakları karşılaştır", text: `Bu konu hakkında kaynakları karşılaştır${about}` },
+  ];
+}
+
 export default function LearningWorkspace({ courseId }) {
   const { navigate, takeIntent } = useApp();
   const limits = useLimits();
@@ -688,6 +701,7 @@ export default function LearningWorkspace({ courseId }) {
       })
       .catch(() => setError("Çalışma konumu kaydedilemedi."));
   }
+  const hasReadyMaterial = materials.some((m) => m.status === "READY");
   const canSend =
     !busy &&
     !chatLoading &&
@@ -1098,15 +1112,17 @@ export default function LearningWorkspace({ courseId }) {
                     bağlayabilirim. Yanıtın kaynağına tek tıkla dönebilirsin.
                   </p>
                   <div>
-                    {[
-                      "Bu bölümü adım adım açıkla",
-                      "Bir örnek göster",
-                      "Kaynakları karşılaştır",
-                    ].map((q) => (
-                      <button key={q} onClick={() => setQuestion(q)}>
-                        {q} ↗
+                    {suggestionQuestions(selected, viewport).map(({ label, text }) => (
+                      <button
+                        key={label}
+                        disabled={!hasReadyMaterial}
+                        title={hasReadyMaterial ? undefined : "Önce bir materyal ekle"}
+                        onClick={() => setQuestion(text)}
+                      >
+                        {label} ↗
                       </button>
                     ))}
+                    {!hasReadyMaterial && <small>Önce bir materyal ekle.</small>}
                   </div>
                 </div>
               )}

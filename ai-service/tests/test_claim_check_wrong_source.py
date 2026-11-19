@@ -9,7 +9,8 @@ def test_claim_cited_to_wrong_source_is_found_in_other_evidence():
     claims = [{"text": "Taşıma katmanı TCP ve UDP protokollerini kullanır (transport layer).", "sources": [2]}]
     out, summary = check_claims(claims, evidence)
     support = out[0]["support"]
-    assert support["label"] in ("SUPPORTED", "ANCHORED")
+    assert support["label"] == "PARTIAL"
+    assert support["missing_terms"] == []
     assert support["reason"] == "WRONG_SOURCE_CITED"
     assert support["suggested_sources"] == [1]
     assert support["cited_sources"] == [2]

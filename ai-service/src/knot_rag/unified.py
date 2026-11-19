@@ -32,6 +32,8 @@ from knot_rag.generation.providers.policy import is_local_endpoint
 
 # Açık materyalin sıralama puanına eklenen pay (rank_score 0–1.25 aralığında).
 ACTIVE_MATERIAL_BOOST = 0.4
+# Açık sayfaya (+0.2) ve komşu sayfalarına (±1, +0.1) ek pay.
+ACTIVE_PAGE_BOOST = 0.2
 
 class Segment(StrictModel):
     id: str = Field(pattern=r"^[a-f0-9]{64}$")
@@ -695,9 +697,22 @@ class UnifiedIndex:
             # Açık olan materyal, soruda "burada" gibi bir işaret olmasa da önceliklidir:
             # öğrenci o belgeyi okurken soru sorar. Diğer materyaller elenmez, yalnızca geride kalır.
             if body.active_material_id and not contextual:
+                active_page = None
+                if body.active_source_id:
+                    try:
+                        found = col.get(ids=[body.active_source_id], where=where)
+                        if found["metadatas"]:
+                            active_page = json.loads(found["metadatas"][0]["location"]).get("page")
+                    except Exception:  # boost is best-effort; ranking still works without it
+                        active_page = None
                 for e in pool.values():
                     if e["material_id"] == body.active_material_id:
                         e["rank_score"] += ACTIVE_MATERIAL_BOOST
+                        page = e["location"].get("page")
+                        if active_page is not None and page is not None:
+                            gap = abs(page - active_page)
+                            if gap <= 1:
+                                e["rank_score"] += ACTIVE_PAGE_BOOST if gap == 0 else ACTIVE_PAGE_BOOST / 2
             ranked = sorted(pool.values(), key=lambda e: e["rank_score"], reverse=True)
             if contextual:
                 ranked = contexts + [
