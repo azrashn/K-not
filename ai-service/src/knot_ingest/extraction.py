@@ -60,6 +60,41 @@ def _poppler_page_text(data: bytes, number: int) -> str:
     return run.stdout.decode("utf-8", "replace") if run.returncode == 0 else ""
 
 
+# Ders slaytlarının her sayfasında tekrar eden son satır ("Transport Layer 3", "Network Layer 4-12")
+# yanıt kanıtına, alıntıya ve seslendirmeye karışıyor. Sayfaların en az yarısında (rakamlar
+# yok sayılarak) aynı olan kısa son satır alt bilgi sayılır ve metinden çıkarılır.
+FOOTER_MIN_PAGES = 3
+FOOTER_MIN_SHARE = 0.5
+FOOTER_MAX_CHARS = 60
+_DIGITS = re.compile(r"\d+")
+
+
+def _footer_key(line: str) -> str:
+    return _DIGITS.sub("#", line.strip().lower())
+
+
+def strip_repeated_footers(texts: list[str]) -> list[str]:
+    nonempty = [t for t in texts if t]
+    if len(nonempty) < FOOTER_MIN_PAGES:
+        return texts
+    last = {}
+    for t in nonempty:
+        line = t.rstrip().split("\n")[-1]
+        if 0 < len(line) <= FOOTER_MAX_CHARS and "\n" in t.strip():
+            last.setdefault(_footer_key(line), 0)
+            last[_footer_key(line)] += 1
+    repeated = {k for k, n in last.items() if n / len(nonempty) >= FOOTER_MIN_SHARE}
+    if not repeated:
+        return texts
+    out = []
+    for t in texts:
+        lines = t.rstrip().split("\n")
+        if t and len(lines) > 1 and _footer_key(lines[-1]) in repeated and len(lines[-1]) <= FOOTER_MAX_CHARS:
+            t = "\n".join(lines[:-1]).rstrip()
+        out.append(t)
+    return out
+
+
 @dataclass(frozen=True)
 class ExtractedDocument:
     page_texts: list[str]  # normalized, physical page order; "" for pages without text
@@ -126,6 +161,7 @@ def extract_pdf(data: bytes, *, max_pages: int, max_empty_page_ratio: float, ocr
                 raw = alt
         texts.append(normalize_page_text(raw))
 
+    texts = strip_repeated_footers(texts)
     empty = sum(1 for t in texts if not t)
     ocr_done: list[int] = []
     if ocr is not None and empty / page_count > max_empty_page_ratio and empty <= ocr.max_pages:

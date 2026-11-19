@@ -20,7 +20,7 @@ const PASSWORD = process.env.PASSWORD || 'knot123456'
 const RUNS = Number(process.env.RUNS || 3)
 const ACTIVE = process.env.ACTIVE === '1'
 const QUESTIONS = (process.env.QUESTIONS || 'transport layer nedir?|TCP ile UDP arasındaki fark nedir?|Bir örnek göster').split('|')
-const KINDS = ['MULTIPLE_CHOICE', 'TRUE_FALSE', 'FILL_BLANK', 'SHORT_ANSWER', 'OPEN']
+const KINDS = ['MULTIPLE_CHOICE', 'TRUE_FALSE', 'CLOZE', 'SHORT_ANSWER', 'OPEN']
 const files = process.argv.slice(2)
 if (!files.length) {
   console.error('Kullanım: node scripts/live-check.mjs ders1.pdf [ders2.pdf ...]')
