@@ -15,6 +15,14 @@ const labels = {
   SHORT_ANSWER: "Kısa yanıt",
   OPEN: "Açık uçlu yansıtma",
 };
+// Sohbetteki sorunun tamamı konu alanına yazılmasın: ilk cümle, en fazla 80 karakter, kelime sınırında.
+function shortTopic(text) {
+  const first = String(text).trim().split(/(?<=[.?!])\s/)[0].replace(/[?!.]+$/, "");
+  if (first.length <= 80) return first;
+  const cut = first.slice(0, 80);
+  return cut.slice(0, cut.lastIndexOf(" ") > 40 ? cut.lastIndexOf(" ") : 80) + "…";
+}
+
 export default function CourseQuiz({ courseId }) {
   const { navigate, takeIntent } = useApp(),
     courses = useResource((signal) => api.courses(signal), []);
@@ -74,7 +82,7 @@ export default function CourseQuiz({ courseId }) {
     if (consumed.current) return;
     consumed.current = true;
     const intent = takeIntent?.();
-    if (intent?.topic) setTopic(intent.topic.slice(0, 200));
+    if (intent?.topic) setTopic(shortTopic(intent.topic));
     if (intent?.materialId) {
       // Started from the study screen: keep the quiz on the material the student was looking at.
       setScopeMode("active");

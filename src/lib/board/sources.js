@@ -15,12 +15,19 @@ export function parseTime(text) {
   return ((Number(h || 0) * 60 + Number(min)) * 60 + Number(sec)) * 1000
 }
 
+// Birden çok belge açıkken "Sayfa 3" tek başına belirsiz; belge adı kısaltılıp öne eklenir.
+function docPrefix(e) {
+  const t = String(e.title || '').replace(/\.[a-z0-9]{2,4}$/i, '').trim()
+  if (!t) return ''
+  return (t.length > 22 ? `${t.slice(0, 21)}…` : t) + ' · '
+}
+
 function fromEvidence(source, e) {
   const loc = e.location || {}
   const ms = loc.kind === 'video' ? loc.start_ms : e.timestamp_ms
   if (Number.isFinite(ms)) return { source, evidence: e, ms, label: videoTime(ms / 1000) }
-  if (loc.kind === 'page') return { source, evidence: e, page: loc.page, label: `Sayfa ${loc.page}` }
-  if (loc.kind === 'slide') return { source, evidence: e, slide: loc.slide, label: `Slayt ${loc.slide}` }
+  if (loc.kind === 'page') return { source, evidence: e, page: loc.page, label: `${docPrefix(e)}Sayfa ${loc.page}` }
+  if (loc.kind === 'slide') return { source, evidence: e, slide: loc.slide, label: `${docPrefix(e)}Slayt ${loc.slide}` }
   return { source, evidence: e, label: e.n != null ? `[${e.n}]` : source }
 }
 

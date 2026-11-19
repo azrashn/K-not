@@ -12,7 +12,7 @@ const evidence = [
 
 describe('source resolution: evidence id → [n] → mm:ss', () => {
   test('evidence id wins', () => {
-    expect(resolveSource('seg-b', evidence)).toMatchObject({ evidence: evidence[1], page: 4, label: 'Sayfa 4' })
+    expect(resolveSource('seg-b', evidence)).toMatchObject({ evidence: evidence[1], page: 4, label: 'Notlar · Sayfa 4' })
   })
   test('[n] number', () => {
     expect(resolveSource('[1]', evidence)).toMatchObject({ evidence: evidence[0], ms: 290000, label: '4:50' })

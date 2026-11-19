@@ -15,7 +15,7 @@ export function parseHash(hash) {
   }
   if (parts[0] === 'quiz') return { section: 'quiz', view: 'quiz' }
   if (parts[0] === 'sinav') return { section: 'exams', view: 'exams' }
-  if (parts[0] === 'analitik') return { section: 'analytics', view: 'analytics' }
+  if (parts[0] === 'analitik' || parts[0] === 'analiz') return { section: 'analytics', view: 'analytics' }
   return { section: 'home', view: 'home' }
 }
 

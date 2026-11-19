@@ -151,7 +151,7 @@ export default function Voice({ text, autoPlay = false, onAutoPlay }) {
           Çevrimiçi Türkçe sesleri de dene
         </label>
         {' '}
-        <span>Daha doğal yerel ses için: <code className="font-mono">npm run tts:install</code></span>
+        {import.meta.env.DEV && <span>Daha doğal yerel ses için: <code className="font-mono">npm run tts:install</code></span>}
       </p>
     )
   }
@@ -227,7 +227,7 @@ export default function Voice({ text, autoPlay = false, onAutoPlay }) {
           )}
           {engine === 'browser' && prefs.online && <p>Çevrimiçi seslerde metin tarayıcının ses sağlayıcısına gidebilir.</p>}
           {engine === 'local' && <p>Metin bu bilgisayardan çıkmaz.</p>}
-          {engine === 'browser' && !local.available && <p>Daha doğal yerel ses için: <code className="font-mono">npm run tts:install</code></p>}
+          {engine === 'browser' && !local.available && import.meta.env.DEV && <p>Daha doğal yerel ses için: <code className="font-mono">npm run tts:install</code></p>}
         </div>
       </details>
       {statusText && <small className="voice-status" role="status">{statusText}</small>}

@@ -30,6 +30,9 @@ from knot_rag.generation.providers.openai_compatible import OpenAICompatibleProv
 from knot_rag.generation.providers.policy import is_local_endpoint
 
 
+# Açık materyalin sıralama puanına eklenen pay (rank_score 0–1.25 aralığında).
+ACTIVE_MATERIAL_BOOST = 0.4
+
 class Segment(StrictModel):
     id: str = Field(pattern=r"^[a-f0-9]{64}$")
     text: str = Field(min_length=1, max_length=2200)
@@ -689,6 +692,12 @@ class UnifiedIndex:
                         ):
                             shared.add(b["material_id"])
                     a["rank_score"] += min(len(shared), 3) * 0.03
+            # Açık olan materyal, soruda "burada" gibi bir işaret olmasa da önceliklidir:
+            # öğrenci o belgeyi okurken soru sorar. Diğer materyaller elenmez, yalnızca geride kalır.
+            if body.active_material_id and not contextual:
+                for e in pool.values():
+                    if e["material_id"] == body.active_material_id:
+                        e["rank_score"] += ACTIVE_MATERIAL_BOOST
             ranked = sorted(pool.values(), key=lambda e: e["rank_score"], reverse=True)
             if contextual:
                 ranked = contexts + [

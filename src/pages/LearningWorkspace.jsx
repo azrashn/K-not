@@ -1114,7 +1114,7 @@ export default function LearningWorkspace({ courseId }) {
                 const evidence = t.evidence || [],
                   used = t.retrieval?.used_source_ids || [],
                   primary = evidence.filter((e) => used.includes(e.id)),
-                  shown = (primary.length ? primary : evidence).slice(0, 2),
+                  shown = primary.length ? primary : evidence,
                   rest = evidence.filter(
                     (e) => !shown.some((s) => s.id === e.id),
                   );
