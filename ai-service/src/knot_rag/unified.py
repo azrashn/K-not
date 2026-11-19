@@ -810,6 +810,18 @@ def install(app, components, auth):
     router.add_api_route("/index", index.upsert, methods=["POST"])
     router.add_api_route("/search", index.search, methods=["POST"])
 
+    @router.post("/links")
+    def links(body: dict = Body(...)):
+        from pydantic import ValidationError
+        from fastapi.exceptions import RequestValidationError
+        from knot_rag.links import Links, find_links
+
+        try:
+            request = Links.model_validate(body)
+        except ValidationError as exc:
+            raise RequestValidationError(exc.errors(include_url=False)) from exc
+        return find_links(index, request)
+
     @router.post("/extract")
     def extract(body: Extract):
         try:
