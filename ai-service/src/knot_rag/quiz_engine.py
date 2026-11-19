@@ -488,8 +488,13 @@ _FORMULA_WORD = re.compile(
 )
 
 
+# A year on its own (1900-2099: "1995'te", "2004 yılında") is a date, not data to compute with.
+_YEAR = re.compile(r"(?<![\d.,])(?:19|20)\d{2}(?![\d.,])")
+
+
 def has_numbers(sources: list[dict]) -> bool:
-    return any(re.search(r"\d", s["text"]) for s in sources)
+    """A number other than a lone year in the source texts."""
+    return any(re.search(r"\d", _YEAR.sub(" ", s["text"])) for s in sources)
 
 
 def has_formula(sources: list[dict]) -> bool:

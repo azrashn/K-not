@@ -364,6 +364,12 @@ DOWNGRADED = ([("SHORT_ANSWER", None), ("OPEN", None)], {0})
     "Faiz yüzde ile ifade edilir: anaparanın %x kadarı.",
     "Yoğunluk kütlenin hacme bölümüdür: d = m / V.",
     "Güç (P) işin zamana oranıdır, yani W / t.",
+    # numbers that are not lone years still count
+    "Java 8 sürümü 2014'te yayımlandı.",
+    "Nüfus 1990'da 56 milyondu.",
+    "Bir kütüphanede 1850 kitap vardır.",
+    "Değer 2100 birimdir.",
+    "Uzunluk 1995,5 metredir.",
     # "bulunur" / "farkı" next to a number or another formula sign
     "Ortalama hız, yolun süreye bölünmesiyle bulunur.",
     "İki sıcaklığın farkı 15 derecedir.",
@@ -380,6 +386,10 @@ def test_a_calculation_is_kept_with_a_number_or_a_formula(text):
     "JVM bytecode'u çalıştırır ve çöp toplayıcı kullanılmayan nesnelerin belleğini geri kazanır.",
     "Ayrıntılar için https://docs.oracle.com/javase adresine bakın. // yorum satırları derlenmez.",
     "String sınıfı java/lang paketindedir; /* blok yorumları */ derlenmez.",
+    # A lone year (1900-2099) is a date, not a number to compute with.
+    "Java 1995 yılında Sun Microsystems tarafından yayımlandı.",
+    "Python 1991'de, Java 1995'te, C# 2000 yılında çıktı.",
+    "Lambda ifadeleri 2014'te dile eklendi.",
     # Everyday words that also appear in formulas do not make a formula on their own.
     "Java'da çöp toplayıcı bulunur.",
     "Bu bölümde sınıf ile nesne arasındaki farkı inceleyeceğiz.",
