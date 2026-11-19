@@ -227,6 +227,83 @@ def test_the_provider_keeps_usage_when_the_output_is_cut():
     assert str(exc.value) == "provider output truncated (max tokens)"
 
 
+# ── quote_id: the model names a numbered sentence, the server writes the quote ──────────────────
+def by_id(draft, quote_id):
+    return {"quote_id": quote_id, **{k: v for k, v in draft.items() if k != "quote"}}
+
+
+def test_sentences_are_numbered_across_sources_as_exact_substrings():
+    sources = qe.trim_sources([{"text": BFS}, {"text": "Kısa.\nYığın son giren ilk çıkar mantığıyla çalışır. Evet."}])
+    sentences = qe.number_sentences(sources)
+    assert [(s["id"], s["source"]) for s in sentences] == [(1, 1), (2, 1), (3, 1), (4, 2)]
+    assert sentences[1]["text"] == QUOTE and sentences[2]["text"] == DFS_QUOTE
+    # "Kısa." and "Evet." are too short for a quote: they join the sentence next to them.
+    assert sentences[3]["text"] == "Kısa.\nYığın son giren ilk çıkar mantığıyla çalışır. Evet."
+    for s in sentences:
+        assert s["text"] in sources[s["source"] - 1]["text"]
+
+
+def test_a_sentence_without_punctuation_is_cut_into_quotable_pieces():
+    slide = " ".join(["kelime"] * 300)  # 2099 characters, no sentence end
+    sentences = qe.number_sentences([{"source": 1, "text": slide}])
+    assert len(sentences) > 3 and all(len(s["text"]) <= qe.SENTENCE_MAX for s in sentences)
+    assert all(s["text"] in slide for s in sentences)
+
+
+def test_the_model_reads_numbered_sentences_and_returns_only_a_number():
+    provider = Scripted([by_id(mc(), 2)])
+    out = run(request("MULTIPLE_CHOICE"), provider)
+    q = out["questions"][0]
+    assert q["quote"] == QUOTE and q["source_index"] == 1 and out["failures"] == []
+    r = provider.requests[0]
+    assert json.loads(r.user)["sources"][0]["text"].startswith("[1] BFS (genişlik")
+    assert f"[2] {QUOTE} [3] {DFS_QUOTE}" in json.loads(r.user)["sources"][0]["text"]
+    assert "quote_id" in r.system and "do not copy the sentence" in r.system
+    fields = r.response_schema["properties"]["questions"]["items"]["properties"]
+    assert "quote" not in fields and fields["quote_id"] == {"type": "integer", "minimum": 1, "maximum": 3}
+
+
+def test_the_quote_comes_from_the_right_source():
+    second = "Dijkstra algoritması negatif ağırlıklı kenarlarla doğru çalışmaz."
+    draft = {"quote_id": 4, "statement": "Dijkstra negatif kenarlarla doğru çalışır.", "is_true": False,
+             "explanation": "Kaynak, Dijkstra'nın negatif kenarlarla doğru çalışmadığını söyler."}
+    out = run(request("TRUE_FALSE", evidence=[{"text": BFS}, {"text": second}]), Scripted([draft]))
+    q = out["questions"][0]
+    assert q["quote"] == second and q["source_index"] == 2
+
+
+@pytest.mark.parametrize("quote_id", ["2", "[2]", " 2 "])
+def test_a_number_written_as_text_is_read(quote_id):
+    assert run(request("MULTIPLE_CHOICE"), Scripted([by_id(mc(), quote_id)]))["questions"][0]["quote"] == QUOTE
+
+
+def test_an_unknown_number_is_quote_not_found_and_the_repair_names_quote_id():
+    provider = Scripted([by_id(mc(), 9)], [by_id(mc(), 2)])
+    out = run(request("MULTIPLE_CHOICE"), provider)
+    assert out["failures"] == [] and out["questions"][0]["quality"]["attempts"] == 2
+    repair = json.loads(provider.requests[1].user)
+    assert repair["problem"].startswith(qc.QUOTE_NOT_FOUND) and "quote_id" in repair["problem"]
+    assert repair["previous_draft"]["quote_id"] == 9  # the model's own draft, not the server's version
+
+
+@pytest.mark.parametrize("quote_id", [0, None, True, "yok", 1.5])
+def test_a_missing_or_invalid_number_fails_with_quote_not_found(quote_id):
+    out = run(request("MULTIPLE_CHOICE"), Scripted([by_id(mc(), quote_id)], [by_id(mc(), quote_id)]))
+    assert out["failures"][0]["code"] == qc.QUOTE_NOT_FOUND
+
+
+def test_the_answer_must_still_rest_on_the_chosen_sentence():
+    # Sentence 3 is about DFS; the answer "Kuyruk" is not in it.
+    out = run(request("MULTIPLE_CHOICE"), Scripted([by_id(mc(), 3)], [by_id(mc(), 3)]))
+    assert out["failures"][0]["code"] == qc.ANSWER_NOT_IN_SOURCE
+
+
+def test_a_copied_quote_is_still_accepted_when_the_server_ignores_the_schema():
+    assert run(request("MULTIPLE_CHOICE"), Scripted([mc()]))["questions"][0]["quote"] == QUOTE
+    # an out-of-range number next to a copied quote: the copy is checked like before
+    assert run(request("MULTIPLE_CHOICE"), Scripted([{**mc(), "quote_id": 99}]))["questions"][0]["quote"] == QUOTE
+
+
 # ── output caps ──────────────────────────────────────────────────────────────────────────────
 def test_output_caps_per_kind(monkeypatch):
     monkeypatch.delenv("QUIZ_OUTPUT_TOKEN_SCALE", raising=False)

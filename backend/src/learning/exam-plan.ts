@@ -1,6 +1,6 @@
 /** Plan for a generated exam: which question kinds, in which order, from which topics.
  *  The mix follows the saved exam style (largest remainder), so the new exam keeps the old exam's shape. */
-import type { ExamProfile } from "./exam-style";
+import { cleanTopicTerms, type ExamProfile } from "./exam-style";
 
 export type QuestionKind = "MULTIPLE_CHOICE" | "TRUE_FALSE" | "SHORT_ANSWER" | "OPEN";
 
@@ -48,9 +48,11 @@ export function planExamItems(profile: ExamProfile, count: number): ExamItem[] {
   );
 }
 
-/** User topics win; otherwise the style's topic terms. Duplicates and blanks are dropped. */
+/** User topics win, as written; otherwise the style's topic terms without question/exam words and one
+ *  per root (profiles saved before those rules may still hold "hangi" or both "bellek" and "belleği").
+ *  Duplicates and blanks are dropped. */
 export function examTopics(userTopics: string[] | undefined, profile: ExamProfile): string[] {
-  const source = userTopics?.length ? userTopics : profile.topic_terms;
+  const source = userTopics?.length ? userTopics : cleanTopicTerms(profile.topic_terms);
   const seen = new Set<string>();
   const out: string[] = [];
   for (const t of source) {

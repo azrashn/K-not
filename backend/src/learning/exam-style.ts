@@ -16,12 +16,101 @@ export type ExamProfile = {
 
 const QUESTION_START = /^\s*(\d{1,2})[.)]\s+(.+)$/;
 const OPTION_LINE = /^\s*[A-Ea-e][.)]\s+\S/;
-const STOP = new Set([
+/** Words of the question and of the exam paper, never a subject. Includes the list from
+ *  origin/feature/quiz-quality-overhaul (Fatih): header and scoring words. */
+export const TOPIC_STOP = new Set([
   "aşağıdaki", "aşağıda", "verilen", "olarak", "hangisi", "hangileri", "nedir", "bulunuz",
   "hesaplayınız", "hesaplayın", "açıklayınız", "açıklayın", "şıklardan", "şıklar", "doğru", "yanlış",
   "olan", "olanı", "için", "ile", "gibi", "daha", "içinde", "bunların", "değildir", "karşılık",
   "following", "which", "calculate", "explain", "answer", "question", "true", "false",
+  // Exam boilerplate (Fatih): header lines and scoring, never a subject.
+  "puan", "puanı", "puanlık", "soru", "sorular", "sorusu", "soruları", "cevap", "cevaplayınız", "cevabı",
+  "adı", "soyadı", "soyad", "tarih", "numara", "numarası", "öğrenci", "sınav", "sınavı", "süre", "dakika",
+  "points", "point", "marks", "name", "date", "student", "exam", "midterm", "final", "total", "score",
+  "page", "please", "write", "each", "both", "part", "show", "your", "work", "minutes",
+  // Question words and instructions.
+  "hangi", "hangisidir", "hangileridir", "nelerdir", "neler", "nasıl", "neden", "niçin", "nedeni",
+  "nedenini", "nedenleri", "kaçtır", "kısaca", "kısaltması", "yazınız", "yazın", "yazıp", "veriniz",
+  "belirtiniz", "belirtin", "tanımlayınız", "tanımlayın", "karşılaştırınız", "listeleyiniz", "sıralayınız",
+  "gösteriniz", "çiziniz", "doldurunuz", "işaretleyiniz", "eşleştiriniz", "tamamlayınız", "örnek",
+  "örnekler", "örneği", "örnekle", "örnekleyiniz", "açıklama", "açıklaması", "midir", "mıdır", "mudur",
+  "müdür", "değil", "şekilde", "durumunda", "arasındaki", "farkı", "farkları", "aşağıdakilerden",
+  "yukarıdaki", "boşluk", "boşluğa", "boşlukları", "kullanarak", "olduğunu", "olduğu", "puanlar", "toplam",
+  "tarihi", "cevaplar", "cevapları", "describe", "define", "compare", "briefly", "below",
 ]);
+/** "Ability" verb forms (çalışabilmesinin, yapılabilmesi) describe an action, never a topic. */
+const VERB_FORM = /[ae]bilme/;
+
+/** Inflection suffixes for comparing roots (bellek / belleği / belleğin). Longest first. */
+const SUFFIXES = [
+  "lerinin", "larının", "lerini", "larını", "lerine", "larına", "lerden", "lardan", "lerin", "ların",
+  "lerde", "larda", "leri", "ları", "sinin", "sının", "sunun", "sünün", "inin", "ının", "unun", "ünün",
+  "sini", "sını", "sunu", "sünü", "sine", "sına", "suna", "süne", "ler", "lar", "nin", "nın", "nun",
+  "nün", "den", "dan", "ten", "tan", "yla", "yle", "de", "da", "te", "ta", "in", "ın", "un", "ün",
+  "si", "sı", "su", "sü", "yi", "yı", "yu", "yü", "ye", "ya", "la", "le", "i", "ı", "u", "ü", "e", "a",
+].sort((a, b) => b.length - a.length);
+/** A stem shorter than this is not compared (dizi / dizin must stay apart). */
+const ROOT_MIN = 4;
+const SOFTENED: Record<string, string> = { ğ: "k", c: "ç", b: "p", d: "t" };
+
+const lowerTr = (s: string) => String(s).trim().toLocaleLowerCase("tr");
+
+/** The word and every stem it could have under one inflection suffix, with the final consonant
+ *  hardened (belleğ → bellek). Two words share a root when these sets meet. */
+function rootForms(word: string): Set<string> {
+  const w = lowerTr(word);
+  const forms = new Set([w]);
+  for (const suffix of SUFFIXES) {
+    if (!w.endsWith(suffix)) continue;
+    const stem = w.slice(0, -suffix.length);
+    if (stem.length < ROOT_MIN) continue;
+    forms.add(stem);
+    const last = stem.at(-1)!;
+    if (SOFTENED[last]) forms.add(stem.slice(0, -1) + SOFTENED[last]);
+  }
+  return forms;
+}
+
+/** True when two terms are inflections of one word: bellek / belleği, nesne / nesneler. */
+export function sameRoot(a: string, b: string): boolean {
+  const fa = rootForms(a);
+  for (const f of rootForms(b)) if (fa.has(f)) return true;
+  return false;
+}
+
+/** A term that can be a topic: not a question/exam word, not an "ability" verb form. */
+export function isTopicTerm(term: string): boolean {
+  const w = lowerTr(term);
+  return Boolean(w) && !TOPIC_STOP.has(w) && !VERB_FORM.test(w);
+}
+
+/** Terms in their order without question/exam words, one per root: the first (most frequent) form wins.
+ *  Also cleans profiles saved before these rules existed. */
+export function cleanTopicTerms(terms: string[] | undefined): string[] {
+  const out: string[] = [];
+  for (const raw of terms ?? []) {
+    const term = String(raw).trim();
+    if (!isTopicTerm(term) || out.some((t) => sameRoot(t, term))) continue;
+    out.push(term);
+  }
+  return out;
+}
+
+/** Counts of words grouped by root: the sum, under the most frequent form (then the shorter one). */
+function groupByRoot(counts: Map<string, number>): [string, number][] {
+  const groups: { forms: [string, number][]; total: number }[] = [];
+  for (const [word, n] of counts) {
+    const group = groups.find((g) => g.forms.some(([f]) => sameRoot(f, word)));
+    if (group) {
+      group.forms.push([word, n]);
+      group.total += n;
+    } else groups.push({ forms: [[word, n]], total: n });
+  }
+  return groups.map((g) => {
+    const [best] = [...g.forms].sort((a, b) => b[1] - a[1] || a[0].length - b[0].length || a[0].localeCompare(b[0]));
+    return [best[0], g.total] as [string, number];
+  });
+}
 
 function parseQuestions(text: string): { stem: string; options: number; body: string }[] {
   const questions: { stem: string; options: number; body: string }[] = [];
@@ -60,10 +149,10 @@ export function buildExamProfile(text: string): ExamProfile {
     formats[formatOf(q)] += 1;
     stemChars += q.stem.length;
     for (const word of q.body.toLocaleLowerCase("tr").match(/\p{L}{5,}/gu) ?? []) {
-      if (!STOP.has(word)) counts.set(word, (counts.get(word) ?? 0) + 1);
+      if (isTopicTerm(word)) counts.set(word, (counts.get(word) ?? 0) + 1);
     }
   }
-  const topic_terms = [...counts.entries()]
+  const topic_terms = groupByRoot(counts)
     .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
     .slice(0, 8)
     .map(([word]) => word);
@@ -97,19 +186,27 @@ const termKey = (t: string) => String(t).trim().toLocaleLowerCase("tr");
  * Combines past-exam profiles. Pure and deterministic.
  * - formats are summed, so the kind mix is weighted by each exam's question count;
  * - average stem length is weighted by question count;
- * - topic terms are ordered by how many exams contain them, then by their rank inside those exams;
+ * - topic terms lose question/exam words, count once per root (bellek / belleği), and are ordered by
+ *   how many exams contain them, then by their rank inside those exams;
  * - sample stems are taken in turn, so every exam contributes at least one.
- * A single profile comes back unchanged (plus exam_count and term_exams).
+ * A single profile comes back with only its terms cleaned (a new profile is already clean: unchanged).
  */
 export function mergeExamProfiles(profiles: ExamProfile[]): MergedExamProfile {
   if (!profiles.length) throw new Error("NO_PROFILES");
-  const termExams = (list: ExamProfile[]) => {
-    const out: Record<string, number> = {};
-    for (const p of list)
-      for (const key of new Set((p.topic_terms ?? []).map(termKey).filter(Boolean))) out[key] = (out[key] ?? 0) + 1;
-    return out;
-  };
-  if (profiles.length === 1) return { ...profiles[0], exam_count: 1, term_exams: termExams(profiles) };
+  // Terms of every exam, cleaned (question/exam words out, one per root), grouped by root across exams.
+  // The first form seen names the group: the most frequent one of the earliest exam that has it.
+  const groups: { term: string; forms: string[]; exams: number; score: number }[] = [];
+  for (const p of profiles)
+    cleanTopicTerms(p.topic_terms).forEach((term, i) => {
+      let group = groups.find((g) => g.forms.some((f) => sameRoot(f, term)));
+      if (!group) groups.push((group = { term, forms: [], exams: 0, score: 0 }));
+      group.forms.push(term);
+      group.exams += 1;
+      group.score += Math.max(1, 8 - i); // earlier in an exam's list = more frequent in that exam
+    });
+  const term_exams = Object.fromEntries(groups.map((g) => [termKey(g.term), g.exams]));
+  if (profiles.length === 1)
+    return { ...profiles[0], topic_terms: groups.map((g) => g.term), exam_count: 1, term_exams };
 
   const formats: Record<ExamFormat, number> = { MULTIPLE_CHOICE: 0, TRUE_FALSE: 0, CALCULATION: 0, OPEN: 0 };
   let questions = 0;
@@ -120,23 +217,10 @@ export function mergeExamProfiles(profiles: ExamProfile[]): MergedExamProfile {
     stemChars += (p.average_stem_chars ?? 0) * (p.question_count ?? 0);
   }
 
-  const term_exams = termExams(profiles);
-  const terms = new Map<string, { term: string; score: number }>();
-  for (const p of profiles) {
-    const seen = new Set<string>();
-    (p.topic_terms ?? []).forEach((term, i) => {
-      const key = termKey(term);
-      if (!key || seen.has(key)) return;
-      seen.add(key);
-      const cur = terms.get(key) ?? { term: String(term).trim(), score: 0 };
-      cur.score += Math.max(1, 8 - i); // earlier in an exam's list = more frequent in that exam
-      terms.set(key, cur);
-    });
-  }
-  const topic_terms = [...terms.entries()]
-    .sort((a, b) => term_exams[b[0]] - term_exams[a[0]] || b[1].score - a[1].score || a[0].localeCompare(b[0], "tr"))
+  const topic_terms = [...groups]
+    .sort((a, b) => b.exams - a.exams || b.score - a.score || termKey(a.term).localeCompare(termKey(b.term), "tr"))
     .slice(0, MERGED_TERMS_MAX)
-    .map(([, v]) => v.term);
+    .map((g) => g.term);
 
   const sample_stems: string[] = [];
   const rounds = Math.max(...profiles.map((p) => p.sample_stems?.length ?? 0));

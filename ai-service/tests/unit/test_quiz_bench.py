@@ -34,28 +34,31 @@ class GoodModel:
         fields = request.response_schema["properties"]["questions"]["items"]["properties"]
         count = request.response_schema["properties"]["questions"]["minItems"]
         text = json.loads(request.user)["sources"][0]["text"]
-        quote = re.match(r".+?[.!?](?=\s|$)", text, re.S).group(0)
+        # The engine numbers the source sentences ("[1] … [2] …") and expects the number back.
+        numbered = re.match(r"\[(\d+)\] (.+?)(?= \[\d+\] |$)", text, re.S)
+        quote = numbered.group(2) if numbered else re.match(r".+?[.!?](?=\s|$)", text, re.S).group(0)
+        ref = {"quote_id": int(numbered.group(1))} if "quote_id" in fields and numbered else {"quote": quote}
         word = next(w for w in re.findall(r"\w+", quote)
                     if len(w) >= 5 and not w.isdigit()
                     and len(re.findall(r"(?<!\w)" + re.escape(w) + r"(?!\w)", quote)) == 1)
         explanation = "Kaynak cümle bu cevabı doğrudan destekler."
         if "expression" in fields:
-            draft = {"quote": quote, "question": "Bir araç 120 km yolu 2 saatte alıyor. Sonuç kaçtır?",
+            draft = {**ref, "question": "Bir araç 120 km yolu 2 saatte alıyor. Sonuç kaçtır?",
                      "expression": "120 / 2", "answer": "60", "explanation": explanation}
         elif "statement" in fields:
-            draft = {"quote": quote, "statement": quote, "is_true": True, "explanation": explanation}
+            draft = {**ref, "statement": quote, "is_true": True, "explanation": explanation}
         elif "options" in fields:
             answer = "Bambaşka bir şey" if self.broken else word
-            draft = {"quote": quote, "question": "Kaynakta anlatılan kavram hangisidir?", "answer": answer,
+            draft = {**ref, "question": "Kaynakta anlatılan kavram hangisidir?", "answer": answer,
                      "options": [word, "Alfa yapısı", "Beta yapısı", "Gama yapısı"], "explanation": explanation}
         elif "answer" in fields and "question" in fields:
-            draft = {"quote": quote, "question": "Kaynakta anlatılan kavram nedir, kısaca yazınız?", "answer": word,
+            draft = {**ref, "question": "Kaynakta anlatılan kavram nedir, kısaca yazınız?", "answer": word,
                      "explanation": explanation}
         elif "question" in fields:
-            draft = {"quote": quote, "question": "Kaynaktaki fikri kendi cümlelerinle açıklayınız.",
+            draft = {**ref, "question": "Kaynaktaki fikri kendi cümlelerinle açıklayınız.",
                      "explanation": explanation}
         else:
-            draft = {"quote": quote, "answer": word, "explanation": explanation}
+            draft = {**ref, "answer": word, "explanation": explanation}
         input_tokens = (len(request.system) + len(request.user)) // 3
         self.clock.now += 2 + input_tokens / 50 + self.output_tokens / 8
         return LLMResponse(text=json.dumps({"questions": [draft] * count}, ensure_ascii=False),
