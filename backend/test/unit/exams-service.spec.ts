@@ -1,4 +1,5 @@
-import { ExamsService } from '../../src/learning/exams.service';
+import { examNote, ExamsService } from '../../src/learning/exams.service';
+import { DOCUMENTS_ONLY_NOTE } from '../../src/learning/quiz-sources';
 import { ApiError } from '../../src/common/errors';
 import { buildExamProfile } from '../../src/learning/exam-style';
 
@@ -106,6 +107,27 @@ describe('creating an exam', () => {
     await svc.create(u, 'c', { exam_style_id: 'e1', count: 2, topics: ['Benim konum'] });
     expect(prisma.generatedExam.create.mock.calls[0][0].data.topics).toEqual(['Benim konum']);
     expect(knowledge.preview).not.toHaveBeenCalled();
+  });
+  test('when the course also has videos, topics come from documents and the exam says transcripts were left out', async () => {
+    const { svc, prisma, learning, knowledge } = make({
+      knowledge: {
+        materials: jest.fn().mockResolvedValue([
+          { id: 'pdf_m', kind: 'PDF', title: 'Notes', status: 'READY' },
+          { id: 'video_v', kind: 'VIDEO', title: '2 Dakikada Java', status: 'READY' },
+        ]),
+      },
+    });
+    learning.start.mockResolvedValue({ id: 'q1' });
+    await svc.create(u, 'c', { exam_style_id: 'e1', count: 1 });
+    for (let i = 0; i < 10; i++) await new Promise((r) => setImmediate(r));
+    expect(knowledge.preview.mock.calls.map((call: any[]) => call[2])).toEqual(['pdf_m']);
+    expect(lastUpdate(prisma)).toMatchObject({ status: 'READY', note: DOCUMENTS_ONLY_NOTE });
+  });
+  test('the source note comes first and the whole note fits the 300-character column', () => {
+    expect(examNote(null, null)).toBeNull();
+    expect(examNote(DOCUMENTS_ONLY_NOTE, null)).toBe(DOCUMENTS_ONLY_NOTE);
+    expect(examNote(DOCUMENTS_ONLY_NOTE, '3 sorudan 2\'si hazırlanabildi.')).toBe(`${DOCUMENTS_ONLY_NOTE} 3 sorudan 2'si hazırlanabildi.`);
+    expect(examNote(DOCUMENTS_ONLY_NOTE, 'x'.repeat(400))).toHaveLength(300);
   });
   test('it is accepted at once with the planned size, before any question exists', async () => {
     const { svc, prisma, learning } = make();

@@ -15,6 +15,13 @@ import { EXAM_STYLES_MAX, examStyleHint, ExamProfile, mergeExamProfiles } from "
 import { GenerateResult, QuizGenerator } from "./quiz-generator";
 import { describeFailure, failure, INFRASTRUCTURE_CODES, TIME_CODES } from "./quiz-failures";
 import { loadSourceTexts } from "./source-texts";
+import { DOCUMENTS_ONLY_NOTE } from "./quiz-sources";
+
+/** The run's own note after the source note; the column holds at most 300 characters. */
+export function examNote(sourceNote: string | null, note: string | null): string | null {
+  const text = [sourceNote, note].filter(Boolean).join(" ");
+  return text ? text.slice(0, 300) : null;
+}
 
 type Item = { quiz_id: string; kind: string; topic: string };
 /** `code` is set by the v2 engine (quiz-failures.ts); legacy failures carry the message only. */
@@ -162,8 +169,13 @@ export class ExamsService implements OnModuleInit {
     let topics = examTopics(b.topics, profile);
     // Terms from the past exams are only useful when the course sources talk about them (both engines);
     // terms shared by more of the selected exams come first. Topics the student wrote are never filtered.
-    if (this.knowledge && !b.topics?.some((t) => String(t).trim()))
-      topics = groundTopics(topics, await loadSourceTexts(this.knowledge, u, c, b.scope), count, profile.term_exams).topics;
+    // Documents come first: when transcripts were left out the finished exam says so.
+    let sourceNote: string | null = null;
+    if (this.knowledge && !b.topics?.some((t) => String(t).trim())) {
+      const sources = await loadSourceTexts(this.knowledge, u, c, b.scope);
+      topics = groundTopics(topics, sources.texts, count, profile.term_exams).topics;
+      if (sources.documentsOnly) sourceNote = DOCUMENTS_ONLY_NOTE;
+    }
     if (!topics.length)
       throw new ApiError(
         "VALIDATION_ERROR",
@@ -194,8 +206,8 @@ export class ExamsService implements OnModuleInit {
     });
     // Runs in this process. The caller polls GET /exams/:id.
     const generation = plan
-      ? this.runV2(u, c, row.id, plan, topics, b.scope, examStyleHint(profile))
-      : this.run(u, c, row.id, style.id, kinds, topics, b.scope);
+      ? this.runV2(u, c, row.id, plan, topics, b.scope, examStyleHint(profile), sourceNote)
+      : this.run(u, c, row.id, style.id, kinds, topics, b.scope, sourceNote);
     void generation.catch((e) => {
       this.log.error(`exam ${row.id} failed: ${e?.message ?? e}`);
     });
@@ -216,6 +228,7 @@ export class ExamsService implements OnModuleInit {
     topics: string[],
     scope: any,
     styleHint: string | null,
+    sourceNote: string | null = null,
   ) {
     const produced: (Item & { slot: number })[] = [];
     const failures: Failure[] = [];
@@ -231,7 +244,7 @@ export class ExamsService implements OnModuleInit {
           status,
           items: [...produced].sort((a, b) => a.slot - b.slot).map(({ quiz_id, kind, topic }) => ({ quiz_id, kind, topic })) as any,
           failures: failures as any,
-          note,
+          note: examNote(sourceNote, note),
           ...(finished ? { finishedAt: new Date() } : {}),
         },
       });
@@ -306,6 +319,7 @@ export class ExamsService implements OnModuleInit {
     kinds: string[],
     topics: string[],
     scope: any,
+    sourceNote: string | null = null,
   ) {
     const items: Item[] = [];
     const failures: Failure[] = [];
@@ -316,7 +330,7 @@ export class ExamsService implements OnModuleInit {
     const save = (status: string, finished = false) =>
       this.prisma.generatedExam.update({
         where: { id },
-        data: { status, items: items as any, failures: failures as any, note, ...(finished ? { finishedAt: new Date() } : {}) },
+        data: { status, items: items as any, failures: failures as any, note: examNote(sourceNote, note), ...(finished ? { finishedAt: new Date() } : {}) },
       });
     try {
       for (const kind of kinds) {
