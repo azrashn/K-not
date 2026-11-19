@@ -256,7 +256,9 @@ def check_cloze(draft: dict, evidence: list[dict], language: str = "tr") -> dict
         raise QuizCheckError(BAD_FORMAT, "the blank must hide a meaningful term")
     if len(answer) > 0.6 * len(quote):
         raise QuizCheckError(BAD_FORMAT, "the blank hides most of the sentence")
-    found = list(re.finditer(r"(?<!\w)" + re.escape(answer) + r"(?!\w)", quote))
+    # Case-insensitive: a small model often writes "Transport" where the source has "transport". The key
+    # then uses the source's own spelling.
+    found = list(re.finditer(r"(?<!\w)" + re.escape(answer) + r"(?!\w)", quote, re.IGNORECASE))
     if not found:
         raise QuizCheckError(ANSWER_NOT_IN_SOURCE, answer[:120])
     if len(found) > 1:
@@ -264,7 +266,7 @@ def check_cloze(draft: dict, evidence: list[dict], language: str = "tr") -> dict
     m = found[0]
     question = CLOZE_PREFIX[language] + "\n" + quote[: m.start()] + "_____" + quote[m.end():]
     return {
-        "kind": "CLOZE", "question": question, "options": [], "expected": answer, "quote": quote,
+        "kind": "CLOZE", "question": question, "options": [], "expected": m.group(0), "quote": quote,
         "source_index": source_index, "explanation": _explanation(draft), "objective": _objective(draft),
     }
 
