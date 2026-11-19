@@ -87,6 +87,12 @@ export class LearningController {
     }
     return r;
   }
+  @Get("courses/:courseId/quiz-topics") quizTopics(
+    @CurrentUser() u: AuthUser,
+    @Param("courseId") c: string,
+  ) {
+    return this.learning.quizTopics(u, c);
+  }
   @Get("courses/:courseId/quiz-sets/:id") quizSet(
     @CurrentUser() u: AuthUser,
     @Param("courseId") c: string,

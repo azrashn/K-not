@@ -22,7 +22,11 @@ export const TOPIC_NOT_IN_SOURCES =
 const STOP = new Set(
   ("ve veya ile ama fakat ancak çünkü için gibi kadar sonra önce olarak olan olur bir bu şu o her çok daha " +
    "en ise de da mi mı ne nedir nasıl hangi tüm bütün bazı diğer başka aynı yani ayrıca sadece yalnızca " +
-   "bunu buna bunun şimdi vardır yoktur eder edilir yapılır the and or of to in on for with from that this " +
+   "bunu buna bunun şimdi vardır yoktur eder edilir yapılır " +
+   // Postpositions and helpers: "Java, tarafından" is not a topic.
+   "tarafından üzerinde üzerinden sayesinde boyunca arasında içinde dışında yerine göre karşı doğru değil " +
+   "değildir zorunda hale halde şekilde durumda sırasında artık hiçbir " +
+   "the and or of to in on for with from that this " +
    "is are was be by as an a it its into also which when").split(/\s+/).map(fold),
 );
 
@@ -149,4 +153,26 @@ export function examTopics(terms: string[], pool: SourcePool, priority: Record<s
   }
   for (const p of ordered) if (!covered.has(p.key)) add(partLabel(p.text), [p]);
   return topics;
+}
+
+/** Topic ideas for the quiz form (GET /quiz-topics): short labels of what the sources are about, never a
+ *  file or video title. Section headings first (in turn over the materials), then part labels. */
+export const SUGGESTIONS_MAX = 5;
+const LABEL_MAX = 60;
+export function suggestTopics(pool: SourcePool, max = SUGGESTIONS_MAX): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  const add = (label: string | null) => {
+    if (!label || label.length > LABEL_MAX || seen.has(fold(label)) || out.length >= max) return;
+    seen.add(fold(label));
+    out.push(label);
+  };
+  const ordered = byMaterial(pool.parts);
+  for (const p of ordered) add(heading(p.text));
+  // Labels are computed only while more are needed: a long course has thousands of parts.
+  for (const p of ordered) {
+    if (out.length >= max) break;
+    add(partLabel(p.text));
+  }
+  return out;
 }

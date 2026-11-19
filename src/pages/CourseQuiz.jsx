@@ -8,6 +8,7 @@ import { MobileBar } from "../components/PageBits";
 import { PageTitle, EmptyState } from "../components/ProductUI";
 import { videoErrorText } from "../lib/video";
 import { HISTORY_FILTERS, filterHistory, historyLabel, summarizeHistory } from "../lib/quiz-history";
+import { cleanTitle } from "../lib/topic-title";
 const labels = {
   MULTIPLE_CHOICE: "Çoktan seçmeli",
   TRUE_FALSE: "Doğru / yanlış",
@@ -36,6 +37,8 @@ export default function CourseQuiz({ courseId }) {
     [historyFilter, setHistoryFilter] = useState("all"),
     // Questions of generated exams: not practice, shown only under the "Sınavdan" filter.
     [examHistory, setExamHistory] = useState([]),
+    // Short topics from the course sources (GET /quiz-topics); null until they arrive or when unavailable.
+    [sourceTopics, setSourceTopics] = useState(null),
     [quiz, setQuiz] = useState(null),
     [answer, setAnswer] = useState(""),
     [result, setResult] = useState(null),
@@ -54,15 +57,17 @@ export default function CourseQuiz({ courseId }) {
   const visibleHistory = historyFilter === "exam" ? examHistory : filterHistory(history, historyFilter);
   const hasHistory = history.length > 0 || examHistory.length > 0;
   const consumed = useRef(false), requestEpoch = useRef(0);
-  // Topic ideas: what was practised before and what the course materials are called.
+  // Topic ideas: what was practised before, then short topics from the sources (headings, subject words).
+  // Only when the server has none: the material titles, cut to their subject ("2 Dakikada Java   Java
+  // Nedir, …" → "Java Nedir"). The topic field itself starts empty.
   const suggestions = useMemo(() => {
-    const names = materials
-      .filter((m) => m.status === "READY")
-      .map((m) => String(m.title || "").replace(/\.[A-Za-z0-9]+$/, ""));
-    return [...new Set([...history.slice(0, 3).map((h) => h.topic), ...names.slice(0, 3)].map((t) => String(t || "").trim()).filter(Boolean))]
+    const fromSources = sourceTopics?.length
+      ? sourceTopics
+      : materials.filter((m) => m.status === "READY").map((m) => cleanTitle(m.title)).slice(0, 3);
+    return [...new Set([...history.slice(0, 3).map((h) => h.topic), ...fromSources].map((t) => String(t || "").trim()).filter(Boolean))]
       .filter((t) => t !== topic.trim())
       .slice(0, 5);
-  }, [history, materials, topic]);
+  }, [history, materials, sourceTopics, topic]);
   const advancedSummary = [
     scopeMode === "course" ? "Tüm ders kaynakları" : scopeMode === "active" ? "Bir materyal" : `${selectedMaterials.length} materyal`,
     watchedOnly ? "izlenen bölümler" : null,
@@ -147,6 +152,13 @@ export default function CourseQuiz({ courseId }) {
       .catch((e) => {
         if (e.name !== "AbortError") setError(videoErrorText(e));
       });
+    // Topic suggestions are optional: without them the material titles are used.
+    setSourceTopics(null);
+    Promise.resolve(api.quizTopics(course, abort.signal))
+      .then((r) => {
+        if (!abort.signal.aborted) setSourceTopics(Array.isArray(r?.topics) ? r.topics : null);
+      })
+      .catch(() => {});
     // A missing exam list only hides the "Sınavdan" rows; practice still works.
     api
       .quizzes(course, abort.signal, "EXAM")

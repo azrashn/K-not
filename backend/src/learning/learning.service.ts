@@ -15,7 +15,8 @@ import { findQuizSources } from "./quiz-sources";
 import { publicQuiz } from "./quiz-public";
 import { QuizGenerator } from "./quiz-generator";
 import { QuizBuilder } from "./generation/quiz-builder";
-import { TRANSCRIPT_WARNING } from "./generation/source-pool";
+import { loadPool, TRANSCRIPT_WARNING } from "./generation/source-pool";
+import { suggestTopics } from "./generation/topic-planner";
 
 /** Model time for one question from POST /quizzes: first call plus one repair (see quiz_engine.py). */
 export const SINGLE_QUIZ_BUDGET_SECONDS = 130;
@@ -210,6 +211,22 @@ export class LearningService {
       created_at: row.createdAt,
       finished_at: row.finishedAt,
     };
+  }
+
+  /**
+   * GET /quiz-topics: up to five short topics from the course sources (headings, then subject words), by the
+   * same document-first rule as the questions. A course with nothing usable gives an empty list, not an error:
+   * the form then works without suggestions.
+   */
+  async quizTopics(u: AuthUser, c: string): Promise<{ topics: string[] }> {
+    await this.access.requireMember(u, c);
+    try {
+      const pool = await loadPool(this.knowledge, u, c, {}, this.config?.quizTranscriptPolicy ?? "documents_first");
+      return { topics: suggestTopics(pool) };
+    } catch (e: any) {
+      if (e?.code === "VALIDATION_ERROR") return { topics: [] };
+      throw e;
+    }
   }
 
   /** GET /quiz-sets/:id: the set with its questions as students see them (no answers, no quotes). */
