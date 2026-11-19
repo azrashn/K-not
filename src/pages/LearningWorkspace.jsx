@@ -15,6 +15,7 @@ import { MaterialRename } from "../components/ProductUI";
 import MaterialSummary from "../components/MaterialSummary";
 import ClaimSupport from "../components/ClaimSupport";
 import MaterialFind from "../components/MaterialFind";
+import MaterialLinks from "../components/MaterialLinks";
 import WorkspaceStart from "../components/WorkspaceStart";
 import RichText from "../components/RichText";
 import { lastMaterial, rememberMaterial } from "../lib/last-material";
@@ -279,6 +280,12 @@ export default function LearningWorkspace({ courseId }) {
     chatScroll = useRef(null);
   const initialSeek = useRef(false);
   const [tab, setTab] = useState("sayfa");
+  // Opening a page/video from a similar-explanation link changes only what is shown. The
+  // conversation, references and scope stay as they are; the student is told and can go back.
+  const [linkNotice, setLinkNotice] = useState(null);
+  useEffect(() => {
+    setLinkNotice((n) => (n && n.openedId === selected?.id ? n : null));
+  }, [selected?.id]);
   useEffect(() => {
     setTab("sayfa");
   }, [selected?.id]);
@@ -506,6 +513,35 @@ export default function LearningWorkspace({ courseId }) {
       await refresh();
     }
   }
+  const readTime = useCallback(
+    () => Math.round((player.current?.currentTime || 0) * 1000),
+    [],
+  );
+  async function openLink(link) {
+    const material = materials.find((m) => m.id === link.material_id);
+    if (!material) {
+      setError("Bu kaynak kaldırılmış olabilir. Sayfayı yenileyip yeniden dene.");
+      return;
+    }
+    const from = selected;
+    const fromSource = source;
+    await select(material, { id: link.source_id, location: link.location });
+    setTab("sayfa");
+    setLinkNotice({
+      openedId: material.id,
+      text: `${material.title} açıldı`,
+      back: from
+        ? {
+            label: from.kind === "VIDEO" ? "Videoya dön" : "Belgeye dön",
+            go: () => select(from, from.kind === "VIDEO" ? undefined : fromSource ? { id: fromSource.id, location: fromSource.location } : undefined),
+          }
+        : null,
+    });
+  }
+  const readyOf = (kinds) => materials.some((m) => m.status === "READY" && kinds.includes(m.kind));
+  const hasReadyVideo = readyOf(["VIDEO"]);
+  const hasReadyDocument = readyOf(["PDF", "PPTX"]);
+  const shownPage = viewport?.kind === "page" ? viewport.page : viewport?.kind === "slide" ? viewport.slide : null;
   async function upload(file) {
     if (!file) return;
     setUploading(true);
@@ -1436,6 +1472,30 @@ export default function LearningWorkspace({ courseId }) {
           </div>
           <div className="viewer-body">
           <div ref={viewerTop} />
+          {linkNotice && (
+            <p role="status" className="material-links-notice">
+              <span>{linkNotice.text}</span>
+              {linkNotice.back && (
+                <>
+                  {" · "}
+                  <button
+                    type="button"
+                    className="product-link"
+                    onClick={() => {
+                      const back = linkNotice.back;
+                      setLinkNotice(null);
+                      void back.go();
+                    }}
+                  >
+                    {linkNotice.back.label}
+                  </button>
+                </>
+              )}
+              <button type="button" className="product-link" aria-label="Bildirimi kapat" onClick={() => setLinkNotice(null)}>
+                ×
+              </button>
+            </p>
+          )}
           {!selected && (
             <WorkspaceStart
               materials={materials}
@@ -1455,6 +1515,17 @@ export default function LearningWorkspace({ courseId }) {
                 segments={segments}
                 onSource={chooseSegment}
                 onViewportChange={viewportChanged}
+                tools={
+                  hasReadyVideo && shownPage ? (
+                    <MaterialLinks
+                      mode="video"
+                      courseId={courseId}
+                      materialId={selected.id}
+                      page={shownPage}
+                      onOpen={openLink}
+                    />
+                  ) : null
+                }
                 marks={tab === "sayfa" && selected && (() => {
                             const seen = new Set();
                             const marks = turns
@@ -1509,6 +1580,15 @@ export default function LearningWorkspace({ courseId }) {
                 />
               ) : (
                 <p role="status">Video açılıyor…</p>
+              )}
+              {hasReadyDocument && url?.id === videoId && (
+                <MaterialLinks
+                  mode="page"
+                  courseId={courseId}
+                  materialId={selected.id}
+                  getTimeMs={readTime}
+                  onOpen={openLink}
+                />
               )}
               <VideoProgressPanel
                 progress={

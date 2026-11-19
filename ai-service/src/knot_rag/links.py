@@ -124,7 +124,9 @@ def find_links(index, body: Links) -> dict:
         source_topics = topics(source_text)
         source_tech = technical_terms(source_text)
         found = []
-        for text, meta, distance in zip(raw["documents"][0], raw["metadatas"][0], raw["distances"][0]):
+        for sid, text, meta, distance in zip(
+            raw["ids"][0], raw["documents"][0], raw["metadatas"][0], raw["distances"][0]
+        ):
             mat = candidates_allowed.get(meta["material_id"])
             if not mat or meta["version"] != mat.version or meta["course_id"] != body.course_id:
                 continue
@@ -149,6 +151,7 @@ def find_links(index, body: Links) -> dict:
                 continue
             found.append(
                 {
+                    "source_id": sid,
                     "material_id": mat.id,
                     "title": mat.title,
                     "kind": mat.kind,
@@ -174,6 +177,7 @@ def find_links(index, body: Links) -> dict:
         return {
             "links": [
                 {
+                    "source_id": e["source_id"],
                     "material_id": e["material_id"],
                     "title": e["title"],
                     "kind": e["kind"],

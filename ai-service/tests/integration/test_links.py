@@ -83,6 +83,7 @@ def test_page_links_to_matching_video_moment(env):
     assert result[0]["material_id"] == "video_lec"
     assert result[0]["location"] == {"kind": "video", "start_ms": 300000, "end_ms": 340000}
     assert result[0]["estimated"] is True
+    assert len(result[0]["source_id"]) == 64
     assert "TCP" in result[0]["shared_terms"]
     assert len(result[0]["preview"]) <= 160
 

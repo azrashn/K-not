@@ -400,3 +400,34 @@ test("an answer without steps (or with an empty list) stays a text answer", asyn
   expect(show).toBeDisabled();
   expect(show).toHaveAttribute("title", "Tahtada anlatılabilir bir cevap yok");
 });
+const video = { id: "video_v", kind: "VIDEO", source_id: "v", title: "Hafta 3 dersi", status: "READY" };
+const videoSegment = { id: "b".repeat(64), text: "TCP SYN gönderir.", location: { kind: "video", start_ms: 312000, end_ms: 340000 } };
+async function openSlide(user) {
+  render(<LearningWorkspace courseId="course" />);
+  await screen.findByRole("heading", { name: "Physics" });
+  await user.click((await screen.findAllByRole("button", { name: /Water cycle/ }))[0]);
+  await screen.findByRole("region", { name: "Özgün materyal görünümü" });
+}
+test("'Videoda anlatılışı' is hidden while the course has no ready video", async () => {
+  const user = userEvent.setup();
+  await openSlide(user);
+  expect(screen.queryByRole("button", { name: "Videoda anlatılışı" })).toBeNull();
+});
+test("with a ready video the slide's link opens the video at that moment and says what was opened", async () => {
+  const user = userEvent.setup();
+  api.knowledgeMaterials.mockResolvedValue({ materials: [m, video] });
+  api.materialLinks.mockResolvedValue({
+    links: [{ source_id: videoSegment.id, material_id: video.id, title: video.title, kind: "VIDEO", location: videoSegment.location, shared_terms: ["TCP"], estimated: true }],
+  });
+  api.knowledgePreview.mockImplementation(async (_c, id) =>
+    id === video.id ? { material: video, segments: [videoSegment] } : { material: m, segments: [evidence] },
+  );
+  api.videoFile.mockResolvedValue(new Blob(["v"]));
+  await openSlide(user);
+  await user.click(await screen.findByRole("button", { name: "Videoda anlatılışı" }));
+  expect(api.materialLinks).toHaveBeenCalledWith("course", m.id, { page: expect.any(Number) }, expect.any(AbortSignal));
+  await user.click(within(await screen.findByRole("region", { name: "Videoda benzer anlatımlar" })).getByRole("button", { name: /Hafta 3 dersi/ }));
+  await waitFor(() => expect(api.knowledgePreview).toHaveBeenCalledWith("course", video.id, expect.any(AbortSignal)));
+  expect(await screen.findByText("Hafta 3 dersi açıldı")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Belgeye dön" })).toBeInTheDocument();
+});

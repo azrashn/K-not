@@ -10,6 +10,7 @@ export default function DocumentCanvas({
   onSource,
   onViewportChange,
   marks,
+  tools,
 }) {
   const [page, setPage] = useState(
       () => source?.location.page || source?.location.slide || 1,
@@ -127,6 +128,7 @@ export default function DocumentCanvas({
         </div>
         {marks}
         <div>
+          {tools}
           <button
             onClick={() => setZoom((z) => Math.max(50, z - 25))}
             aria-label="Uzaklaştır"
