@@ -66,6 +66,14 @@ def video(a, b):
     return {"kind": "video", "start_ms": a * 1000, "end_ms": b * 1000}
 
 
+@pytest.fixture(autouse=True)
+def hashing_scale(monkeypatch):
+    # The deterministic hashing embedder has its own score scale; the production value is for e5.
+    import knot_rag.links as module
+
+    monkeypatch.setattr(module, "LINK_MIN_SIMILARITY", 0.45)
+
+
 @pytest.fixture
 def env():
     e = Env()
@@ -106,7 +114,14 @@ def test_below_threshold_is_empty(env, monkeypatch):
 
     monkeypatch.setattr(module, "LINK_MIN_SIMILARITY", 0.999)
     assert env.links("pdf_notes", page=4) == []
-    assert LINK_MIN_SIMILARITY < 0.999
+    assert 0.0 < LINK_MIN_SIMILARITY <= 1.0
+
+
+def test_production_threshold_is_the_calibrated_e5_value():
+    import importlib
+    import knot_rag.links as module
+
+    assert importlib.reload(module).LINK_MIN_SIMILARITY == 0.88
 
 
 def test_own_material_is_excluded(env):

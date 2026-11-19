@@ -3003,6 +3003,7 @@ nav[aria-label='Ana gezinme'] { z-index: 2; }
 }
 .video-view .material-links { display: flex; flex-direction: column; align-items: flex-start; margin-top: 10px; }
 .video-view .material-links-panel { position: static; width: 100%; margin-top: 8px; }
+.document-view > .document-toolbar { position: relative; }
 @media (max-width: 600px) {
   .document-toolbar .material-links { position: static; }
   .document-toolbar .material-links-panel { left: 8px; right: 8px; width: auto; top: 100%; }
