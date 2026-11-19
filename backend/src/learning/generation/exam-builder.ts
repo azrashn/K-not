@@ -12,15 +12,14 @@ import type { KnowledgeService } from "../../knowledge/knowledge.service";
 import type { PrismaService } from "../../prisma/prisma.service";
 import { examStyleHint, type MergedExamProfile } from "../exam-style";
 import type { QuizGenerator } from "../quiz-generator";
-import { generationNote } from "./generation-note";
-import { runPlan, type RunState } from "./generation-run";
-import { examItems, planQuestions, type QuestionPlan } from "./question-plan";
+import { examItems, planQuestions } from "./question-plan";
 import { RepeatGuard } from "./repeat-guard";
+import { runInBackground, startNote } from "./set-runner";
 import { loadPool, type SourcePool } from "./source-pool";
 import { examTopics, rankParts, TOPIC_NOT_IN_DOCUMENTS, TOPIC_NOT_IN_SOURCES, type PlannedTopic } from "./topic-planner";
 
+export { UNEXPECTED } from "./set-runner";
 export const NOTHING_TO_ASK = "Ders kaynaklarında soru hazırlamaya uygun metin bulunamadı.";
-export const UNEXPECTED = "Beklenmeyen bir hata oluştu.";
 
 export type ExamInput = {
   styleId: string;
@@ -60,16 +59,12 @@ export class ExamBuilder {
     const topics = writtenTopics(input.topics, pool) ?? examTopics(input.profile.topic_terms, pool, input.profile.term_exams);
     const plan = planQuestions(examItems(input.profile, input.count), topics);
     if (!plan.slots.length) throw new ApiError("VALIDATION_ERROR", NOTHING_TO_ASK);
-    // While it runs the exam already says what is known: the transcript warning and a smaller plan.
-    const startNote = generationNote({
-      requested: plan.requested, planned: plan.slots.length, produced: plan.slots.length, unresolved: [], stopped: null,
-      capacityNote: plan.note, warning: pool.warning,
-    });
     const row = await this.prisma.generatedExam.create({
       data: {
         id: randomUUID(),
         courseId: c,
         userId: u.id,
+        purpose: "EXAM",
         styleId: input.styleId,
         styleIds: input.styleIds,
         title: input.title,
@@ -78,49 +73,16 @@ export class ExamBuilder {
         topics: [...new Set(plan.slots.map((s) => s.topic))],
         items: [],
         failures: [],
-        note: startNote,
+        note: startNote(plan, pool),
       },
     });
-    void this.run(u, c, row.id, plan, pool, input, startNote).catch((e) => this.log.error(`exam ${row.id} failed: ${e?.message ?? e}`));
+    runInBackground(this.log, row.id, {
+      prisma: this.prisma, id: row.id, plan, pool,
+      run: {
+        generator: this.generator, user: u, course: c, scope: input.scope,
+        styleHint: examStyleHint(input.profile), guard: new RepeatGuard(), purpose: "EXAM",
+      },
+    });
     return row;
-  }
-
-  private async run(u: AuthUser, c: string, id: string, plan: QuestionPlan, pool: SourcePool, input: ExamInput, startNote: string | null) {
-    let state: RunState = { produced: [], tries: [], stopped: null };
-    const save = (status: string, note: string | null, finished = false) =>
-      this.prisma.generatedExam.update({
-        where: { id },
-        data: {
-          status,
-          items: state.produced.map(({ quiz_id, kind, topic }) => ({ quiz_id, kind, topic })) as any,
-          failures: state.tries.map(({ topic, kind, reason, code }) => ({ topic, kind, reason, code })) as any,
-          note,
-          ...(finished ? { finishedAt: new Date() } : {}),
-        },
-      });
-    try {
-      const result = await runPlan(plan, {
-        generator: this.generator,
-        user: u,
-        course: c,
-        scope: input.scope,
-        styleHint: examStyleHint(input.profile),
-        guard: new RepeatGuard(),
-        onProgress: (s) => {
-          state = s;
-          return save("GENERATING", startNote);
-        },
-      });
-      state = result;
-      const produced = result.produced.length;
-      const note = generationNote({
-        requested: plan.requested, planned: result.planned, produced, unresolved: result.unresolved,
-        stopped: result.stopped, capacityNote: plan.note, warning: pool.warning,
-      });
-      await save(produced === result.planned ? "READY" : produced ? "PARTIAL" : "FAILED", note, true);
-    } catch (e) {
-      await save(state.produced.length ? "PARTIAL" : "FAILED", UNEXPECTED, true).catch(() => undefined);
-      throw e;
-    }
   }
 }

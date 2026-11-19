@@ -217,10 +217,18 @@ describe('reading an exam', () => {
     expect(key[0]).toMatchObject({ index: 1, expected: 'Kuyruk', explanation: 'FIFO.' });
     expect(key[1]).toMatchObject({ index: 2, expected: null });
   });
-  test('removing an exam only removes the caller\'s own', async () => {
+  test('removing an exam only removes the caller\'s own, and never a quiz set (same table)', async () => {
     const { svc, prisma } = make();
     await svc.remove(u, 'c', 'x1');
-    expect(prisma.generatedExam.deleteMany).toHaveBeenCalledWith({ where: { id: 'x1', courseId: 'c', userId: 'u' } });
+    expect(prisma.generatedExam.deleteMany).toHaveBeenCalledWith({ where: { id: 'x1', courseId: 'c', userId: 'u', purpose: 'EXAM' } });
+  });
+  test('the exam list and an exam read only exams, not quiz sets', async () => {
+    const { svc, prisma } = make();
+    await svc.list(u, 'c');
+    expect(prisma.generatedExam.findMany.mock.calls[0][0].where).toEqual({ courseId: 'c', userId: 'u', purpose: 'EXAM' });
+    prisma.generatedExam.findFirst.mockResolvedValue(null);
+    await expect(svc.get(u, 'c', 'set1')).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    expect(prisma.generatedExam.findFirst.mock.calls[0][0].where).toMatchObject({ purpose: 'EXAM' });
   });
   test('after a restart, runs that were generating are marked failed', async () => {
     const { svc, prisma } = make();

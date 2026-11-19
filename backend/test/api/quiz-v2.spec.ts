@@ -93,6 +93,48 @@ const v2Question = (slot: number, kind: string) => ({
   assessment: "SOURCE_CHECKED_UNVERIFIED", quality: QUALITY, note: "Soru kodla denetlendi.",
 });
 
+test("a quiz of 3 questions is a set: 202 at once, then GET /quiz-sets/:id; exams never list it", async () => {
+  const course = `/courses/${h.world.courses.vy}`;
+  const as = await h.as("ayse");
+  await h.prisma.studyMaterial.create({
+    data: {
+      id: "water-set", courseId: h.world.courses.vy, ownerId: h.world.users.ayse, kind: "TXT",
+      title: "Set notes", filename: "set.txt", sha256: "c".repeat(64),
+      segments: [
+        { text: "Evaporation cools the surface that loses the water.", location: { kind: "text", section: 1 } },
+        { text: "Evaporation happens below the boiling point of water.", location: { kind: "text", section: 2 } },
+      ],
+    },
+  });
+  // Each request carries one source part; the question rests on it.
+  h.ai.on("POST", "/api/v1/knowledge/quiz", (r) => ({
+    status: 200, body: { engine: "v2", failures: [], timing: {}, questions: r.body.items.map((it: any, slot: number) => ({
+      ...v2Question(slot, it.kind), question: `What does the source say: ${r.body.evidence[0].text}`, quote: r.body.evidence[0].text,
+    })) },
+  }));
+  const started = await h.http().post(base()).set(as).send({ topic: "Evaporation", kind: "OPEN", count: 3 }).expect(202);
+  expect(started.body).toMatchObject({ type: "quiz_set", topic: "Evaporation", status: "GENERATING", requested: 3 });
+  let set: any;
+  for (let i = 0; i < 60; i++) {
+    set = (await h.http().get(`${course}/quiz-sets/${started.body.id}`).set(as).expect(200)).body;
+    if (set.status !== "GENERATING") break;
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  expect(set).toMatchObject({ status: "READY", produced: 3 });
+  expect(set.questions).toHaveLength(3);
+  for (const q of set.questions) {
+    expect(q.available).toBe(true);
+    expect(q.quote).toBeUndefined();
+  }
+  const calls = h.ai.calls("POST", "/api/v1/knowledge/quiz");
+  expect(calls.every((c) => c.body.evidence.length === 1)).toBe(true);
+  expect(new Set(calls.map((c) => c.body.evidence[0].text)).size).toBe(3); // three different parts
+  await h.http().get(`${course}/exams/${started.body.id}`).set(as).expect(404);
+  expect((await h.http().get(`${course}/exams`).set(as).expect(200)).body).toEqual([]);
+  await h.http().get(`${course}/quiz-sets/${started.body.id}`).set(await h.as("mehmet")).expect(404);
+  await h.http().post(base()).set(as).send({ topic: "Evaporation", kind: "OPEN", count: 11 }).expect(422);
+});
+
 test("a v2 question is created, answered and graded through the unchanged public API", async () => {
   h.ai.on("POST", "/api/v1/knowledge/quiz", (r) => ({
     status: 200, body: { engine: "v2", questions: [v2Question(0, r.body.items[0].kind)], failures: [], timing: {} },

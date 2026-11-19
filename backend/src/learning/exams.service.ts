@@ -213,7 +213,7 @@ export class ExamsService implements OnModuleInit {
 
   private async refuseWhileRunning(u: AuthUser, c: string) {
     const running = await this.prisma.generatedExam.count({
-      where: { courseId: c, userId: u.id, status: "GENERATING" },
+      where: { courseId: c, userId: u.id, status: "GENERATING", purpose: "EXAM" },
     });
     if (running)
       throw new ApiError("JOB_ALREADY_RUNNING", "Bu ders için bir sınav zaten hazırlanıyor. Bitmesini bekleyin.");
@@ -298,7 +298,8 @@ export class ExamsService implements OnModuleInit {
   async list(u: AuthUser, c: string) {
     await this.access.requireMember(u, c);
     const rows = await this.prisma.generatedExam.findMany({
-      where: { courseId: c, userId: u.id },
+      // Quiz sets (purpose PRACTICE) share the table but are not exams.
+      where: { courseId: c, userId: u.id, purpose: "EXAM" },
       orderBy: { createdAt: "desc" },
       take: 20,
     });
@@ -307,7 +308,7 @@ export class ExamsService implements OnModuleInit {
 
   private async own(u: AuthUser, c: string, id: string) {
     await this.access.requireMember(u, c);
-    const row = await this.prisma.generatedExam.findFirst({ where: { id, courseId: c, userId: u.id } });
+    const row = await this.prisma.generatedExam.findFirst({ where: { id, courseId: c, userId: u.id, purpose: "EXAM" } });
     if (!row) throw notFound("Exam");
     return row;
   }
@@ -359,7 +360,7 @@ export class ExamsService implements OnModuleInit {
 
   async remove(u: AuthUser, c: string, id: string) {
     await this.access.requireMember(u, c);
-    const removed = await this.prisma.generatedExam.deleteMany({ where: { id, courseId: c, userId: u.id } });
+    const removed = await this.prisma.generatedExam.deleteMany({ where: { id, courseId: c, userId: u.id, purpose: "EXAM" } });
     if (!removed.count) throw notFound("Exam");
     return { deleted: true };
   }

@@ -143,7 +143,13 @@ describe('QuizGenerator.generate', () => {
 describe('POST /quizzes start() with QUIZ_ENGINE', () => {
   const service = (reply: any, quizEngine?: 'v2' | 'legacy') => {
     const s = setup(reply);
-    const learning = new LearningService({} as any, {} as any, s.knowledge as any, s.ai as any, s.generator,
+    // The v2 quiz reads its source pool (materials and their segments) and returns the stored row.
+    Object.assign(s.knowledge, {
+      materials: jest.fn().mockResolvedValue([{ id: 'file_bfs', kind: 'TXT', title: 'Graf notları', status: 'READY', version: 'v1' }]),
+      preview: jest.fn().mockResolvedValue({ segments: [{ id: 's1', text: TEXT, location: { section: 1 } }] }),
+    });
+    Object.assign(s.prisma.learningQuiz, { findFirst: jest.fn(async ({ where }: any) => s.created.find((r) => r.id === where.id)) });
+    const learning = new LearningService(s.prisma as any, { requireMember: jest.fn() } as any, s.knowledge as any, s.ai as any, s.generator,
       quizEngine ? ({ quizEngine } as any) : undefined);
     return { learning, ...s };
   };

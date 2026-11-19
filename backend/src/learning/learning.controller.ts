@@ -1,6 +1,10 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, Post } from "@nestjs/common";
+import { Body, Controller, Delete, Get, HttpCode, Param, Post, Res } from "@nestjs/common";
+import type { Response } from "express";
 import {
   IsIn,
+  IsInt,
+  Max,
+  Min,
   IsUUID,
   IsOptional,
   IsString,
@@ -17,8 +21,11 @@ import { AuthUser } from "../common/request-context";
 import { LearningService } from "./learning.service";
 class Start {
   @IsString() @MinLength(1) @MaxLength(200) @Matches(/\S/) topic!: string;
-  @IsIn(["MULTIPLE_CHOICE", "TRUE_FALSE", "CLOZE", "SHORT_ANSWER", "OPEN"])
+  /** MIXED ("Karışık"): the kinds in turn (v2 only). */
+  @IsIn(["MULTIPLE_CHOICE", "TRUE_FALSE", "CLOZE", "SHORT_ANSWER", "OPEN", "MIXED"])
   kind!: string;
+  /** 1 (default): the question is returned at once. 2-10: a quiz set, answered 202 (v2 only). */
+  @IsOptional() @IsInt() @Min(1) @Max(10) count?: number;
   @IsOptional()
   @Matches(/^(pdf|file|video)_[A-Za-z0-9_-]{1,80}$/)
   material_id?: string;
@@ -61,12 +68,26 @@ export class LearningController {
   ) {
     return this.learning.quizzes(u, c);
   }
-  @Post("courses/:courseId/quizzes") start(
+  @Post("courses/:courseId/quizzes") async start(
     @CurrentUser() u: AuthUser,
     @Param("courseId") c: string,
     @Body() b: Start,
+    @Res({ passthrough: true }) res: Response,
   ) {
-    return this.learning.start(u, c, b);
+    const r = await this.learning.start(u, c, b);
+    if (r?.set) {
+      // A quiz set is written in the background: follow it with GET /quiz-sets/:id.
+      res.status(202);
+      return r.set;
+    }
+    return r;
+  }
+  @Get("courses/:courseId/quiz-sets/:id") quizSet(
+    @CurrentUser() u: AuthUser,
+    @Param("courseId") c: string,
+    @Param("id") id: string,
+  ) {
+    return this.learning.quizSet(u, c, id);
   }
   @Get("courses/:courseId/exam-styles") examStyles(
     @CurrentUser() u: AuthUser,

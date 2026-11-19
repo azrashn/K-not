@@ -14,10 +14,13 @@ import { matchAnswer, rubricCoverage, rubricTerms } from "./answer-match";
 import { findQuizSources } from "./quiz-sources";
 import { publicQuiz } from "./quiz-public";
 import { QuizGenerator } from "./quiz-generator";
-import { quizError } from "./quiz-failures";
+import { QuizBuilder } from "./generation/quiz-builder";
+import { TRANSCRIPT_WARNING } from "./generation/source-pool";
 
 /** Model time for one question from POST /quizzes: first call plus one repair (see quiz_engine.py). */
 export const SINGLE_QUIZ_BUDGET_SECONDS = 130;
+/** Model time for one request of a quiz set (one or two questions of one source part, plus repairs). */
+export const SET_REQUEST_BUDGET_SECONDS = 240;
 
 @Injectable()
 export class LearningService {
@@ -165,26 +168,65 @@ export class LearningService {
       mastery_estimated: false,
     };
   }
-  async start(u: AuthUser, c: string, b: any) {
-    if (this.quizEngine === "v2") return this.startV2(u, c, b);
+  /**
+   * POST /quizzes. v2: one question is returned at once (the public quiz); 2-10 questions start a quiz set
+   * written in the background, returned as `{ set }` (the controller answers 202). Legacy: one question of one
+   * kind, as before.
+   */
+  async start(u: AuthUser, c: string, b: any): Promise<any> {
+    const count = b.count ?? 1;
+    if (this.quizEngine === "v2") {
+      const styleHint = await this.styleHintFor(u, c, b.exam_style_id);
+      const request = { ...b, count, styleHint };
+      if (count > 1) {
+        await this.access.requireMember(u, c);
+        return { set: this.quizSetSummary(await this.quizBuilder().startSet(u, c, request, SET_REQUEST_BUDGET_SECONDS)) };
+      }
+      return this.quizBuilder().single(u, c, request, SINGLE_QUIZ_BUDGET_SECONDS);
+    }
+    if (count > 1 || b.kind === "MIXED")
+      throw new ApiError("VALIDATION_ERROR", "Birden fazla soru ve “Karışık” tür yalnız yeni soru motoruyla kullanılabilir.");
     return this.startLegacy(u, c, b);
   }
 
-  /** v2: one ai-service request for one question; a failure names its reason (quiz-failures.ts). */
-  private async startV2(u: AuthUser, c: string, b: any) {
-    const styleHint = await this.styleHintFor(u, c, b.exam_style_id);
-    const r = await this.generator!.generate(u, c, {
-      topic: b.topic,
-      scope: b.scope,
-      watched_only: b.watched_only,
-      material_id: b.material_id,
-      items: [{ kind: b.kind, variant: b.variant ?? null }],
-      styleHint,
-      budgetSeconds: SINGLE_QUIZ_BUDGET_SECONDS,
-    });
-    if (!r.quizzes.length) throw quizError(r.failures);
-    const { slot: _slot, ...quiz } = r.quizzes[0];
-    return quiz;
+  /** The v2 quiz: source pool, the topic's parts, plan and run (generation/quiz-builder.ts). */
+  private quizBuilder(): QuizBuilder {
+    return new QuizBuilder(this.prisma, this.knowledge, this.generator!, this.config?.quizTranscriptPolicy ?? "documents_first");
+  }
+
+  private quizSetSummary(row: any) {
+    // The transcript warning opens the stored note; the screen shows it on its own (as for one question).
+    const warning = typeof row.note === "string" && row.note.startsWith(TRANSCRIPT_WARNING) ? TRANSCRIPT_WARNING : null;
+    return {
+      id: row.id,
+      type: "quiz_set",
+      topic: row.title,
+      status: row.status,
+      requested: row.requested,
+      produced: (row.items as any[]).length,
+      failures: row.failures,
+      note: warning ? row.note.slice(warning.length).trim() || null : row.note,
+      source_warning: warning,
+      created_at: row.createdAt,
+      finished_at: row.finishedAt,
+    };
+  }
+
+  /** GET /quiz-sets/:id: the set with its questions as students see them (no answers, no quotes). */
+  async quizSet(u: AuthUser, c: string, id: string) {
+    await this.access.requireMember(u, c);
+    const row = await this.prisma.generatedExam.findFirst({ where: { id, courseId: c, userId: u.id, purpose: "PRACTICE" } });
+    if (!row) throw notFound("Quiz set");
+    const questions = [];
+    for (const item of row.items as { quiz_id: string; kind: string; topic: string }[]) {
+      try {
+        questions.push({ ...(await this.quiz(u, c, item.quiz_id)), available: true });
+      } catch {
+        // Its source was removed or changed: say so rather than show a stale question.
+        questions.push({ id: item.quiz_id, kind: item.kind, topic: item.topic, available: false });
+      }
+    }
+    return { ...this.quizSetSummary(row), questions };
   }
 
   /** The original engine (ai-service quiz_quality.py) with its original acceptance rules. */

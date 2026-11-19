@@ -25,6 +25,8 @@ export type GenerateRequest = QuizScopeRequest & {
   /** The whole quiz's or exam's repeat guard: a stored question is recorded in it, and a stem or sentence it
    *  already holds is refused (DUPLICATE_STEM / DUPLICATE_QUOTE) before anything is stored. */
   guard?: RepeatGuard;
+  /** PRACTICE (default): shown in the quiz history. EXAM: a question of a generated exam. */
+  purpose?: "EXAM" | "PRACTICE";
 };
 
 export type GenerateResult = {
@@ -153,6 +155,7 @@ export class QuizGenerator {
           materialId: source.material_id,
           segmentId: source.id,
           version: source.version,
+          purpose: b.purpose ?? "PRACTICE",
           data: {
             ...data,
             source,

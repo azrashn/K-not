@@ -20,7 +20,11 @@ export const MAX_TRIES = 2;
 
 export type Produced = { slot: number; quiz_id: string; kind: string; topic: string };
 /** One failed try of one question, kept for the details list. */
-export type TryRecord = { slot: number; kind: string; topic: string; code: string; reason: string; try: number };
+export type TryRecord = {
+  slot: number; kind: string; variant?: string | null; topic: string; code: string; reason: string;
+  /** This request's number for the question (1 or 2), and the model attempts inside it (ai-service repair). */
+  try: number; attempts: number;
+};
 export type Unresolved = { slot: number; kind: string; topic: string; code: string; tries: number };
 export type RunState = {
   produced: Produced[];
@@ -37,6 +41,10 @@ export type RunOptions = {
   styleHint?: string | null;
   budgetSeconds?: number;
   guard?: RepeatGuard;
+  /** Stored with every question: EXAM for an exam, PRACTICE (default) for a quiz. */
+  purpose?: "EXAM" | "PRACTICE";
+  /** 1: no retry (a single quiz question the student waits for); default MAX_TRIES. */
+  maxTries?: number;
   /** Called after every request, e.g. to save progress. */
   onProgress?: (state: RunState) => Promise<unknown> | unknown;
 };
@@ -74,6 +82,7 @@ export async function runPlan(plan: QuestionPlan, o: RunOptions): Promise<RunRes
         budgetSeconds: o.budgetSeconds ?? REQUEST_BUDGET_SECONDS,
         sources: [partEvidence(part)],
         guard,
+        purpose: o.purpose,
       });
     } catch (e: any) {
       if (e?.code !== "VALIDATION_ERROR") throw e;
@@ -88,7 +97,7 @@ export async function runPlan(plan: QuestionPlan, o: RunOptions): Promise<RunRes
     for (const f of result.failures) {
       const s = slots[f.slot];
       if (!s) continue;
-      state.tries.push({ slot: s.slot, kind: s.kind, topic, code: f.code, reason: f.reason, try: tryNo });
+      state.tries.push({ slot: s.slot, kind: s.kind, variant: s.variant ?? null, topic, code: f.code, reason: f.reason, try: tryNo, attempts: f.attempts });
       last.set(s.slot, { code: f.code, tries: tryNo, topic });
       if (!INFRASTRUCTURE_CODES.has(f.code)) failed.push(s);
     }
@@ -109,7 +118,7 @@ export async function runPlan(plan: QuestionPlan, o: RunOptions): Promise<RunRes
   }
 
   // Try 2: a spare part while one is left (each spare once), else the question's own part.
-  if (!state.stopped && failed.length) {
+  if (!state.stopped && failed.length && (o.maxTries ?? MAX_TRIES) > 1) {
     const spare = [...plan.spare];
     const retry = failed.map((slot) => {
       const s = spare.shift();

@@ -2923,3 +2923,14 @@ nav[aria-label='Ana gezinme'] { z-index: 2; }
 .board-tools .board-control svg { width: 12px; height: 12px; }
 .board-tools .board-badge { font-size: 10px; white-space: nowrap; flex: none; padding: 3px 6px; }
 .board-tools [role='status'] { font-size: 10.5px; white-space: nowrap; }
+
+/* Kaynak uyarısı: sorular videonun otomatik transkriptinden hazırlandığında (yazım hataları olabilir).
+   .product-error ile aynı ölçüler; hata değil uyarı olduğu için tema uyarı tonu (gevesek) token'ları. */
+.quiz-source-warning {
+  border: 1px solid var(--color-gevesek-line);
+  border-left: 4px solid var(--color-gevesek);
+  background: var(--color-gevesek-tint);
+  color: var(--color-gevesek);
+  padding: 12px 14px;
+  font-size: 13px;
+}
