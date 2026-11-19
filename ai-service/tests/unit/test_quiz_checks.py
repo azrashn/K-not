@@ -132,8 +132,26 @@ def test_true_false_options_and_key_are_built_by_the_server():
     assert q["options"] == ["True", "False"] and q["expected"] == "0"
 
 
-def test_false_statement_cannot_be_the_source_sentence():
-    assert code_of("TRUE_FALSE", tf(statement=QUOTE, quote=QUOTE)) == qc.BAD_FORMAT
+@pytest.mark.parametrize("statement", [QUOTE, QUOTE.rstrip("."), "  " + QUOTE.upper() + "  "])
+def test_the_whole_source_sentence_marked_false_is_corrected_to_true(statement):
+    q = check_question("TRUE_FALSE", tf(statement=statement, quote=QUOTE,
+                                        explanation="Kaynağa göre bu ifade yanlıştır, çünkü değişmiştir."), EVIDENCE)
+    assert q["expected"] == "0"  # Doğru
+    assert q[qc.CORRECTIONS_KEY] == [qc.COPIED_FALSE_TO_TRUE]
+    assert q["explanation"] == qc.TRUE_COPY_EXPLANATION["tr"]  # not the model's "false" reasoning
+
+
+def test_part_of_the_source_sentence_marked_false_is_still_rejected():
+    # Cut words can change the meaning ("kullanır" → "kullan…"): neither key is safe.
+    part = "BFS, sırada bekleyen düğümleri tutmak için kuyruk"
+    assert code_of("TRUE_FALSE", tf(statement=part, quote=QUOTE)) == qc.BAD_FORMAT
+
+
+def test_a_copied_true_statement_and_a_real_false_one_are_not_corrected():
+    q = check_question("TRUE_FALSE", tf(statement=QUOTE, is_true=True, quote=QUOTE), EVIDENCE)
+    assert q["expected"] == "0" and qc.CORRECTIONS_KEY not in q
+    q = check_question("TRUE_FALSE", tf(), EVIDENCE)
+    assert q["expected"] == "1" and qc.CORRECTIONS_KEY not in q
 
 
 def test_is_true_must_be_boolean():

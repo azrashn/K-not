@@ -405,6 +405,54 @@ def test_a_failed_downgraded_slot_is_reported_as_a_short_answer():
     assert out["failures"][0]["kind"] == "SHORT_ANSWER" and out["failures"][0]["variant"] is None
 
 
+# ── true/false copied and marked false; targeted repair hints ───────────────────────────────
+def test_a_copied_sentence_marked_false_is_accepted_as_true_and_logged(caplog):
+    draft = {"quote_id": 2, "statement": QUOTE, "is_true": False,
+             "explanation": "Kaynağa göre bu ifade yanlıştır."}
+    provider = Scripted([draft])
+    with caplog.at_level(logging.INFO, logger="knot_rag.quiz_engine"):
+        out = run(request("TRUE_FALSE"), provider)
+    q = out["questions"][0]
+    assert out["failures"] == [] and len(provider.requests) == 1  # no repair call
+    assert q["expected"] == "0" and q["explanation"] == qc.TRUE_COPY_EXPLANATION["tr"]
+    assert qc.CORRECTIONS_KEY not in q  # internal: logged, not returned
+    assert any(r.getMessage() == "quiz_item slot=0 kind=TRUE_FALSE corrected: copied_false_to_true"
+               for r in caplog.records)
+
+
+def test_a_partly_copied_false_statement_is_repaired_with_the_concrete_hint():
+    part = {"quote_id": 2, "statement": "BFS, sırada bekleyen düğümleri tutmak için kuyruk", "is_true": False,
+            "explanation": "Kaynak, BFS'nin kuyruk kullandığını söyler."}
+    fixed = {"quote_id": 2, "statement": "BFS, sırada bekleyen düğümleri tutmak için yığın kullanır.",
+             "is_true": False, "explanation": "Kaynağa göre BFS yığın değil kuyruk kullanır."}
+    provider = Scripted([part], [fixed])
+    out = run(request("TRUE_FALSE"), provider)
+    assert out["failures"] == [] and out["questions"][0]["expected"] == "1"
+    problem = json.loads(provider.requests[1].user)["problem"]
+    assert problem.startswith(qc.BAD_FORMAT)
+    assert "change one fact of the chosen sentence (a number, a name or a concept)" in problem
+    assert "(a number, a name or a concept)" in provider.requests[0].system  # the first prompt says it too
+
+
+def test_a_calculation_with_words_in_its_expression_is_repaired_with_an_example():
+    physics = "Ortalama hız, alınan toplam yolun geçen toplam süreye bölünmesiyle bulunur."
+    worded = {"quote_id": 1, "question": "Bir araç 120 km yolu 2 saatte alıyor. Ortalama hızı kaç km/sa?",
+              "expression": "yol / süre", "answer": "60 km/sa", "explanation": "Toplam yol toplam süreye bölünür."}
+    fixed = {**worded, "expression": "120 / 2"}
+    provider = Scripted([worded], [fixed])
+    out = run(request(CALC, evidence=[{"text": physics}]), provider)
+    assert out["failures"] == [] and out["questions"][0]["expected"] == "60"
+    problem = json.loads(provider.requests[1].user)["problem"]
+    assert problem.startswith(qc.BAD_FORMAT)
+    assert '"expression": "120 / 2"' in problem and "No variables, units or words" in problem
+    assert len(problem) <= 400  # the whole hint survives the cap
+
+
+def test_other_kinds_keep_the_general_hint():
+    assert qe.repair_hint("OPEN", qc.BAD_FORMAT) == qe.REPAIR_HINTS[qc.BAD_FORMAT]
+    assert qe.repair_hint("TRUE_FALSE", qc.QUOTE_NOT_FOUND) == qe.REPAIR_HINTS[qc.QUOTE_NOT_FOUND]
+
+
 # ── output caps ──────────────────────────────────────────────────────────────────────────────
 def test_output_caps_per_kind(monkeypatch):
     monkeypatch.delenv("QUIZ_OUTPUT_TOKEN_SCALE", raising=False)

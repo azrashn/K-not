@@ -42,6 +42,14 @@ FAILURE_CODES = (
 )
 EXPLANATION_MAX = 200
 
+# Server corrections of an otherwise valid draft. Internal: quiz_engine logs and removes them.
+CORRECTIONS_KEY = "_corrections"
+COPIED_FALSE_TO_TRUE = "copied_false_to_true"
+TRUE_COPY_EXPLANATION = {
+    "tr": "İfade, kaynaktaki cümleyle birebir aynıdır; bu yüzden doğrudur.",
+    "en": "The statement is the source sentence word for word, so it is true.",
+}
+
 KINDS = ("MULTIPLE_CHOICE", "TRUE_FALSE", "CLOZE", "SHORT_ANSWER", "OPEN")
 CALCULATION = "CALCULATION"
 
@@ -191,13 +199,25 @@ def check_true_false(draft: dict, evidence: list[dict], language: str = "tr") ->
     if type(is_true) is not bool:
         raise QuizCheckError(SCHEMA_MISMATCH, "is_true must be a boolean")
     source_index, quote = _quote(draft, evidence)
-    if not is_true and canonical(statement) in canonical(quote):
+    corrections = []
+    explanation = _explanation(draft)
+    if not is_true and canonical(statement) == canonical(quote):
+        # The whole source sentence, word for word: it is true whatever the model said. The model's
+        # explanation argued "false", so the server writes one that matches the key.
+        is_true = True
+        corrections.append(COPIED_FALSE_TO_TRUE)
+        explanation = TRUE_COPY_EXPLANATION[language]
+    elif not is_true and canonical(statement) in canonical(quote):
+        # Only part of the sentence: cutting words can change the meaning, so neither key is safe.
         raise QuizCheckError(BAD_FORMAT, "a false statement cannot be copied from the source")
-    return {
+    result = {
         "kind": "TRUE_FALSE", "question": statement, "options": list(TRUE_FALSE_OPTIONS[language]),
         "expected": "0" if is_true else "1", "quote": quote, "source_index": source_index,
-        "explanation": _explanation(draft), "objective": _objective(draft),
+        "explanation": explanation, "objective": _objective(draft),
     }
+    if corrections:
+        result[CORRECTIONS_KEY] = corrections
+    return result
 
 
 def check_cloze(draft: dict, evidence: list[dict], language: str = "tr") -> dict:

@@ -160,7 +160,7 @@ RULES = {
                        "the same category. answer is copied exactly from options. Exactly one option is correct. "
                        "The question must not contain the answer.",
     "TRUE_FALSE": "Write one clear statement and set is_true. A false statement changes one fact of the chosen "
-                  "sentence; it must not copy the sentence.",
+                  "sentence (a number, a name or a concept); it must not copy the sentence.",
     "CLOZE": "Choose one meaningful term (1-4 words) that occurs exactly once in the chosen sentence; answer is "
              "that term copied exactly. The server writes the blank.",
     "SHORT_ANSWER": "Write a specific question whose short answer (a few words) is copied exactly from the chosen "
@@ -189,6 +189,21 @@ REPAIR_HINTS = {
     qc.DUPLICATE_STEM: "Ask about a different fact than the questions to avoid.",
     qc.NOT_SELF_CONTAINED: "Name the subject itself; do not start with Bu, Şu, O, Ardından, Daha sonra or Böylece.",
 }
+# A sharper hint where one code covers several rules of one kind.
+KIND_REPAIR_HINTS = {
+    ("TRUE_FALSE", qc.BAD_FORMAT): "A false statement must change one fact of the chosen sentence (a number, "
+                                   "a name or a concept); never copy the sentence or a part of it.",
+    (qc.CALCULATION, qc.BAD_FORMAT): "expression is plain arithmetic with the numbers given in the question "
+                                     "only, for example \"expression\": \"120 / 2\" or \"(3 + 5) * 2\". "
+                                     "No variables, units or words. answer is the result with its unit, "
+                                     "for example \"60 km/sa\".",
+}
+
+
+def repair_hint(key: str, code: str) -> str:
+    return KIND_REPAIR_HINTS.get((key, code)) or REPAIR_HINTS.get(code, "")
+
+
 SELF_CONTAINED_RULE = (
     "Every question or statement must be understandable on its own, without the source: name the subject, "
     "never start with words that point back (Bu, Şu, O, Daha sonra, Ardından, Böylece), and do not copy the "
@@ -424,6 +439,8 @@ class Run:
         result = qc.check_question(item.kind, resolve_quote(draft, self.sentences), self.req.evidence,
                                    variant=item.variant,
                                    language=self.req.language, existing_stems=self.stems())
+        for correction in result.pop(qc.CORRECTIONS_KEY, []):
+            log.info("quiz_item slot=%s kind=%s corrected: %s", slot, _key(item), correction)
         self.questions[slot] = finish(slot, result, attempt)
         if slot in self.downgraded:
             self.questions[slot]["downgraded_from"] = qc.CALCULATION
@@ -564,7 +581,7 @@ def generate(req: QuizRequest, provider, *, speed: Speed | None = None,
                     # Nothing usable to repair: ask once more for this question with a larger limit.
                     repaired = run.call(key, 1, token_factor=TRUNCATION_RETRY_FACTOR)
                 else:
-                    problem = f"{first.code}: {REPAIR_HINTS.get(first.code, '')} {first.detail}".strip()
+                    problem = f"{first.code}: {repair_hint(key, first.code)} {first.detail}".strip()
                     repaired = run.call(key, 1, {"draft": draft, "problem": problem[:400]})
                 if not repaired:
                     raise qc.QuizCheckError(qc.SCHEMA_MISMATCH, "question missing from the response")
