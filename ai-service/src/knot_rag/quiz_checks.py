@@ -33,11 +33,12 @@ CALC_DATA_MISSING = "CALC_DATA_MISSING"
 DUPLICATE_STEM = "DUPLICATE_STEM"
 BUDGET_EXHAUSTED = "BUDGET_EXHAUSTED"
 TRUNCATED = "TRUNCATED"  # the output hit the token limit (finish_reason "length")
+NOT_SELF_CONTAINED = "NOT_SELF_CONTAINED"  # the stem leans on a sentence the student does not see
 
 FAILURE_CODES = (
     TIMEOUT, MODEL_UNREACHABLE, INVALID_JSON, SCHEMA_MISMATCH, QUOTE_NOT_FOUND,
     ANSWER_NOT_IN_OPTIONS, DUPLICATE_OPTIONS, ANSWER_LEAKED, ANSWER_NOT_IN_SOURCE, BAD_FORMAT,
-    CALC_MISMATCH, CALC_DATA_MISSING, DUPLICATE_STEM, BUDGET_EXHAUSTED, TRUNCATED,
+    CALC_MISMATCH, CALC_DATA_MISSING, DUPLICATE_STEM, BUDGET_EXHAUSTED, TRUNCATED, NOT_SELF_CONTAINED,
 )
 EXPLANATION_MAX = 200
 
@@ -236,11 +237,33 @@ def check_short_answer(draft: dict, evidence: list[dict]) -> dict:
     }
 
 
+def _lower_tr(text: str) -> str:
+    return text.replace("I", "ı").replace("İ", "i").lower()
+
+
+# An instruction in the imperative: açıklayınız, yazın, karşılaştırınız, örnek veriniz, explain …
+_DIRECTIVE = re.compile(
+    r"(?<!\w)(?:açıkla|yaz|karşılaştır|tartış|değerlendir|belirt|tanımla|örnekle|göster|yorumla|özetle|"
+    r"listele|sırala|anlat|incele|tasarla|öner|ver|çiz|gerekçelendir|ilişkilendir|açıklayarak|kanıtla)"
+    r"(?:ınız|iniz|unuz|ünüz|yınız|yiniz|yunuz|yünüz|ın|in|un|ün|yın|yin)(?!\w)"
+    r"|(?<!\w)(?:explain|describe|compare|discuss|justify|outline|summari[sz]e|evaluate|why|how)(?!\w)"
+)
+
+
+def is_question_or_instruction(text: str) -> bool:
+    """Ends with a question mark, or gives an instruction (Açıklayınız, Karşılaştırınız …)."""
+    stripped = text.strip().rstrip("\"'”’)» ")
+    return stripped.endswith(("?", "？")) or bool(_DIRECTIVE.search(_lower_tr(text)))
+
+
 def check_open(draft: dict, evidence: list[dict]) -> dict:
     _no_options(draft)
     if isinstance(draft.get("answer"), str) and draft["answer"].strip():
         raise QuizCheckError(BAD_FORMAT, "open questions have no answer key")
     question = _text(draft, "question", 10, 600)
+    if not is_question_or_instruction(question):
+        raise QuizCheckError(BAD_FORMAT, "an open question must end with ? or give an instruction "
+                                         "such as Açıklayınız; this is a plain statement")
     source_index, quote = _quote(draft, evidence)
     return {
         "kind": "OPEN", "question": question, "options": [], "expected": "", "quote": quote,
@@ -385,6 +408,24 @@ def is_duplicate_stem(stem: str, existing: list[str]) -> bool:
     return False
 
 
+# ── self-contained stems ────────────────────────────────────────────────────────────────────
+# Openings that point back to a sentence the student never sees ("Bu yöntem…", "Ardından…").
+# "O" counts only as a word ("O, …" / "O yapı"), so "O(n log n)" is fine.
+_DANGLING_OPENING = re.compile(
+    r"^(?:bu|şu|o|bunlar|şunlar|onlar|bunun|şunun|onun|bunu|şunu|onu|buna|şuna|ona|bundan|ondan|bunda|onda|"
+    r"burada|orada|böyle|şöyle|öyle|daha\s+sonra|sonra|ardından|böylece|dolayısıyla|ayrıca|bununla|"
+    r"this|that|these|those|it|they|then|thus|therefore|afterwards)(?=[\s,;:.!?]|$)"
+)
+
+
+def check_self_contained(text: str) -> None:
+    """NOT_SELF_CONTAINED when the stem starts by pointing at an earlier sentence."""
+    start = re.sub(r"^[\s\"'“‘«(\[]+", "", text)
+    match = _DANGLING_OPENING.match(_lower_tr(start))
+    if match:
+        raise QuizCheckError(NOT_SELF_CONTAINED, f"starts with \"{start[: match.end()]}\"")
+
+
 # ── dispatcher ──────────────────────────────────────────────────────────────────────────────
 def check_question(kind: str, draft, evidence: list[dict], *, variant: str | None = None,
                    language: str = "tr", seed: str | None = None,
@@ -409,6 +450,8 @@ def check_question(kind: str, draft, evidence: list[dict], *, variant: str | Non
         result = check_short_answer(draft, evidence)
     else:
         result = check_open(draft, evidence)
+    if kind != "CLOZE":  # a cloze stem is the source sentence itself, written by the server
+        check_self_contained(result["question"])
     if existing_stems and is_duplicate_stem(result["question"], existing_stems):
         raise QuizCheckError(DUPLICATE_STEM, result["question"][:120])
     return result

@@ -35,7 +35,9 @@ const HTTP_SLACK_MS = 20_000;
 export function validV2Question(q: any, item: QuizItemRequest, sources: any[]): boolean {
   if (!q || typeof q !== "object") return false;
   if (q.quality?.pipeline_version !== V2_PIPELINE || q.quality?.deterministic_validation !== true) return false;
-  if (q.kind !== item.kind || (q.variant ?? null) !== (item.variant ?? null)) return false;
+  // A calculation whose sources hold no number is asked as a plain short answer by the ai-service.
+  const downgraded = item.variant === "CALCULATION" && q.downgraded_from === "CALCULATION" && (q.variant ?? null) === null;
+  if (q.kind !== item.kind || (!downgraded && (q.variant ?? null) !== (item.variant ?? null))) return false;
   if (!Number.isInteger(q.source_index) || q.source_index < 1 || q.source_index > sources.length) return false;
   if (typeof q.quote !== "string" || !q.quote.trim() || !String(sources[q.source_index - 1].text ?? "").includes(q.quote))
     return false;

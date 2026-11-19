@@ -306,7 +306,8 @@ def test_duplicate_stem_rejects_a_repeated_question():
 
 
 def test_failure_codes_are_unique_strings():
-    assert len(set(qc.FAILURE_CODES)) == len(qc.FAILURE_CODES) == 15 and qc.TRUNCATED in qc.FAILURE_CODES
+    assert len(set(qc.FAILURE_CODES)) == len(qc.FAILURE_CODES) == 16
+    assert {qc.TRUNCATED, qc.NOT_SELF_CONTAINED} <= set(qc.FAILURE_CODES)
 
 
 @pytest.mark.parametrize("text,expected", [
@@ -322,3 +323,63 @@ def test_short_explanation_keeps_one_sentence(text, expected):
 def test_short_explanation_cuts_a_long_sentence_at_a_word():
     out = qc.short_explanation("kelime " * 60)
     assert len(out) <= qc.EXPLANATION_MAX and out.endswith("kelime…")
+
+
+# ── open questions ask something ─────────────────────────────────────────────────────────────
+OPEN_BASE = {"quote": QUOTE, "explanation": "Kuyruk ilk giren ilk çıkar; bu katman sırasını korur."}
+
+
+def test_a_plain_statement_is_not_an_open_question():
+    draft = {**OPEN_BASE, "question": "BFS, bekleyen düğümleri kuyrukta tutan bir arama yöntemidir."}
+    with pytest.raises(QuizCheckError) as exc:
+        check_question("OPEN", draft, EVIDENCE)
+    assert exc.value.code == qc.BAD_FORMAT and "plain statement" in exc.value.detail
+
+
+@pytest.mark.parametrize("question", [
+    "BFS neden kuyruk kullanır?",
+    "BFS neden kuyruk kullanır ? ",
+    "BFS'nin kuyruk kullanmasının ziyaret sırasına etkisini açıklayınız.",
+    "BFS ile DFS'nin bekleyen düğümleri tutma biçimini karşılaştırınız.",
+    "BFS'nin kuyruk kullanımına bir örnek veriniz.",
+    "BFS kuyruğu nasıl kullanır, kısaca yazın.",
+    "BFS KUYRUĞU NEDEN KULLANIR, AÇIKLAYINIZ",
+    "Explain why BFS keeps waiting nodes in a queue.",
+])
+def test_a_question_or_an_instruction_is_an_open_question(question):
+    assert check_question("OPEN", {**OPEN_BASE, "question": question}, EVIDENCE)["question"] == question.strip()
+
+
+# ── stems understandable on their own ────────────────────────────────────────────────────────
+@pytest.mark.parametrize("kind,draft", [
+    ("TRUE_FALSE", tf(statement="Bu yöntem bekleyen düğümleri tutmak için kuyruk kullanır.")),
+    ("TRUE_FALSE", tf(statement="O, bekleyen düğümleri tutmak için kuyruk kullanır.")),
+    ("TRUE_FALSE", tf(statement="Ardından bekleyen düğümler kuyrukta tutulur.")),
+    ("TRUE_FALSE", tf(statement="Daha sonra bekleyen düğümler kuyrukta tutulur.")),
+    ("TRUE_FALSE", tf(statement="“Böylece bekleyen düğümler kuyrukta tutulur.”")),
+    ("MULTIPLE_CHOICE", mc(question="Bunlar bekleyen düğümleri hangi veri yapısında tutar?")),
+    ("SHORT_ANSWER", {"question": "Şu algoritma bekleyen düğümleri hangi yapıda tutar?", "answer": "kuyruk",
+                      "quote": QUOTE, "explanation": "Kaynak, BFS'nin kuyruk kullandığını söyler."}),
+    ("OPEN", {**OPEN_BASE, "question": "Bu yaklaşımın ziyaret sırasına etkisini açıklayınız."}),
+])
+def test_a_stem_that_points_at_an_earlier_sentence_is_rejected(kind, draft):
+    with pytest.raises(QuizCheckError) as exc:
+        check_question(kind, draft, EVIDENCE)
+    assert exc.value.code == qc.NOT_SELF_CONTAINED
+
+
+@pytest.mark.parametrize("text", [
+    "O(n log n) karmaşıklığa sahip sıralama algoritması hangisidir?",
+    "Oyun ağacında BFS hangi yapıyı kullanır?",
+    "Bulut bilişimde BFS hangi yapıyı kullanır?",
+    "Sonraki düğüm kuyruktan alınır mı?",
+    "Burak'ın kodunda BFS hangi yapıyı kullanır?",
+])
+def test_a_stem_that_names_its_subject_is_self_contained(text):
+    qc.check_self_contained(text)  # no exception
+
+
+def test_a_cloze_stem_is_the_source_sentence_and_is_not_checked():
+    evidence = [{"text": "Bu nedenle BFS, bekleyen düğümleri tutmak için kuyruk kullanır."}]
+    draft = {"quote": evidence[0]["text"], "answer": "kuyruk", "explanation": "Kaynak, BFS'nin kuyruk kullandığını söyler."}
+    assert check_question("CLOZE", draft, evidence)["kind"] == "CLOZE"

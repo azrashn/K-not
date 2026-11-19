@@ -304,6 +304,59 @@ def test_a_copied_quote_is_still_accepted_when_the_server_ignores_the_schema():
     assert run(request("MULTIPLE_CHOICE"), Scripted([{**mc(), "quote_id": 99}]))["questions"][0]["quote"] == QUOTE
 
 
+# ── self-contained stems and open questions ─────────────────────────────────────────────────
+def test_the_prompt_asks_for_self_contained_stems_and_real_open_questions():
+    provider = Scripted([{"quote_id": 2, "question": "BFS neden kuyruk kullanır?",
+                          "explanation": "Kaynak, BFS'nin bekleyen düğümleri kuyrukta tuttuğunu söyler."}])
+    run(request("OPEN"), provider)
+    system = provider.requests[0].system
+    assert "understandable on its own" in system and "do not copy the source sentence word for word" in system
+    assert "Bu, Şu, O, Daha sonra, Ardından, Böylece" in system
+    assert "Never a plain statement" in system
+
+
+def test_a_dangling_stem_is_repaired_with_its_reason():
+    bad = by_id(mc("Bu yapı bekleyen düğümleri hangi veri yapısında tutar?"), 2)
+    provider = Scripted([bad], [by_id(mc(), 2)])
+    out = run(request("MULTIPLE_CHOICE"), provider)
+    assert out["failures"] == [] and out["questions"][0]["quality"]["attempts"] == 2
+    assert json.loads(provider.requests[1].user)["problem"].startswith(qc.NOT_SELF_CONTAINED)
+
+
+# ── calculation without numbers in the sources ──────────────────────────────────────────────
+CALC = {"kind": "SHORT_ANSWER", "variant": "CALCULATION"}
+
+
+def test_a_calculation_without_numbers_in_the_sources_is_asked_as_a_short_answer(caplog):
+    short = {"quote_id": 2, "question": "Genişlik öncelikli aramada sıradaki öğeler nerede bekletilir?", "answer": "kuyruk",
+             "explanation": "Kaynak, BFS'nin bekleyen düğümleri kuyrukta tuttuğunu söyler."}
+    provider = Scripted([mc()], [short])
+    with caplog.at_level(logging.INFO, logger="knot_rag.quiz_engine"):
+        out = run(request("MULTIPLE_CHOICE", CALC), provider)
+    assert out["failures"] == []
+    q = out["questions"][1]
+    assert (q["slot"], q["kind"], q.get("variant"), q["downgraded_from"]) == (1, "SHORT_ANSWER", None, "CALCULATION")
+    assert q["expected"] == "kuyruk"
+    fields = provider.requests[1].response_schema["properties"]["questions"]["items"]["properties"]
+    assert "expression" not in fields  # the short-answer schema, not the calculation one
+    assert "downgraded_from" not in out["questions"][0]
+    assert any("slot=1 kind=CALCULATION downgraded_to=SHORT_ANSWER reason=no_numbers_in_sources" in r.getMessage()
+               for r in caplog.records)
+
+
+def test_a_calculation_stays_a_calculation_when_the_sources_have_numbers():
+    physics = "Bir araç 120 km yolu 2 saatte alırsa ortalama hızı yolun süreye bölümüdür."
+    items, changed = qe.plan_items([qe.QuizItem(**CALC)], [{"source": 1, "text": physics}])
+    assert items[0].variant == "CALCULATION" and changed == set()
+    items, changed = qe.plan_items([qe.QuizItem(**CALC), qe.QuizItem(kind="OPEN")], [{"source": 1, "text": BFS}])
+    assert [(i.kind, i.variant) for i in items] == [("SHORT_ANSWER", None), ("OPEN", None)] and changed == {0}
+
+
+def test_a_failed_downgraded_slot_is_reported_as_a_short_answer():
+    out = run(request(CALC), Scripted("not json", "not json"))
+    assert out["failures"][0]["kind"] == "SHORT_ANSWER" and out["failures"][0]["variant"] is None
+
+
 # ── output caps ──────────────────────────────────────────────────────────────────────────────
 def test_output_caps_per_kind(monkeypatch):
     monkeypatch.delenv("QUIZ_OUTPUT_TOKEN_SCALE", raising=False)
@@ -489,7 +542,9 @@ def test_calculation_uses_its_own_schema_and_is_checked():
              "expression": "1.200 / 2,5", "answer": "480 km/sa",
              "explanation": "Toplam yol toplam süreye bölünür."}
     provider = Scripted([draft])
-    out = run(request({"kind": "SHORT_ANSWER", "variant": "CALCULATION"}, evidence=[{"text": physics}]), provider)
+    # A source with a number (1 saat = 60 dakika): without any number the slot becomes a short answer.
+    evidence = [{"text": physics + " Bir saat 60 dakikadır."}]
+    out = run(request({"kind": "SHORT_ANSWER", "variant": "CALCULATION"}, evidence=evidence), provider)
     q = out["questions"][0]
     assert (q["kind"], q["variant"], q["expected"]) == ("SHORT_ANSWER", "CALCULATION", "480")
     assert "expression" in provider.requests[0].response_schema["properties"]["questions"]["items"]["properties"]

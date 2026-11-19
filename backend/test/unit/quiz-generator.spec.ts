@@ -48,6 +48,18 @@ describe('validV2Question', () => {
     ['key outside the options', { expected: '4' }],
     ['empty question', { question: ' ' }],
   ])('rejects %s', (_label, over) => expect(validV2Question(mcq(over), item, [SOURCE])).toBe(false));
+  test('a calculation asked as a short answer (no number in the sources) is accepted only when marked', () => {
+    const base = { quote: TEXT, source_index: 1, quality: QUALITY, question: 'Soru metni burada?', options: [], expected: 'kuyruk' };
+    const calcItem = { kind: 'SHORT_ANSWER', variant: 'CALCULATION' as const };
+    expect(validV2Question({ ...base, kind: 'SHORT_ANSWER', downgraded_from: 'CALCULATION' }, calcItem, [SOURCE])).toBe(true);
+    expect(validV2Question({ ...base, kind: 'SHORT_ANSWER' }, calcItem, [SOURCE])).toBe(false); // unmarked
+    expect(validV2Question({ ...base, kind: 'SHORT_ANSWER', downgraded_from: 'CALCULATION' }, { kind: 'SHORT_ANSWER' }, [SOURCE]))
+      .toBe(true); // the mark changes nothing for a plain short answer
+    expect(validV2Question({ ...base, kind: 'OPEN', expected: '', downgraded_from: 'CALCULATION' }, calcItem, [SOURCE])).toBe(false);
+  });
+  test('a stem leaning on an earlier sentence has its own reason', () => {
+    expect(describeFailure(failure(0, 'TRUE_FALSE', 'NOT_SELF_CONTAINED', 2))).toContain('tek başına anlaşılmıyordu (2 deneme).');
+  });
   test('kind specific shapes', () => {
     const base = { quote: TEXT, source_index: 1, quality: QUALITY, question: 'Soru metni burada?' };
     expect(validV2Question({ ...base, kind: 'OPEN', options: [], expected: '' }, { kind: 'OPEN' }, [SOURCE])).toBe(true);

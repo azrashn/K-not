@@ -21,6 +21,7 @@ export const FAILURE_MESSAGES: Record<string, string> = {
   DUPLICATE_STEM: "Soru, daha önce sorulmuş bir soruyla neredeyse aynıydı.",
   BUDGET_EXHAUSTED: "Yerel model için ayrılan süre bu soruya yetmedi.",
   TRUNCATED: "Modelin yanıtı izin verilen uzunluğa ulaştığı için yarıda kesildi.",
+  NOT_SELF_CONTAINED: "Soru, görülmeyen bir önceki cümleye bağlı başlıyordu (ör. \"Bu\", \"Ardından\"); tek başına anlaşılmıyordu.",
   // backend
   NO_SOURCE: "Soru yazmaya uygun kaynak metni bulunamadı.",
   ENGINE_DISABLED: "Yapay zekâ servisinde yeni soru motoru kapalı (QUIZ_ENGINE=legacy).",
