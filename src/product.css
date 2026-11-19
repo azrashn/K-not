@@ -456,6 +456,16 @@
   background: var(--color-sheet);
   cursor: pointer;
 }
+.product-form .quiz-option input {
+  /* `.product-form input` gives every input width:100% and text-field padding; a radio keeps its own size
+     and stays beside its text (otherwise it stretches across the card and pushes the answer to the right). */
+  width: auto;
+  flex: none;
+  padding: 0;
+  margin: 0;
+  accent-color: var(--color-accent);
+}
+.quiz-option span { min-width: 0; }
 .quiz-option.selected {
   border-color: var(--color-accent);
   background: var(--color-accent-tint);
@@ -1516,9 +1526,26 @@
   color: var(--color-ink-3);
 }
 .exam-questions {
-  padding-left: 22px;
+  /* A grid container drops the <ol> numbers, so the question numbers are drawn with a counter: the exam
+     (screen and print) must be numbered so that a student can refer to a question. */
+  list-style: none;
+  counter-reset: exam-q;
+  padding-left: 0;
   display: grid;
   gap: 18px;
+}
+.exam-questions > li {
+  counter-increment: exam-q;
+  position: relative;
+  padding-left: 30px;
+}
+.exam-questions > li::before {
+  content: counter(exam-q) ".";
+  position: absolute;
+  left: 0;
+  top: 0;
+  min-width: 24px;
+  font-weight: 650;
 }
 .exam-stem {
   font-weight: 550;

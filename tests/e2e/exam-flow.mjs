@@ -120,6 +120,13 @@ async function main() {
       check(kinds.join() === 'MULTIPLE_CHOICE,OPEN,SHORT_ANSWER,TRUE_FALSE', `kinds follow the past exam: ${kinds}`)
     })
 
+    await step('every question on the exam sheet carries a counter number (the PDF step reads the real numbers back)', async () => {
+      // Computed ::before content shows the counter expression, not its value; the printed text is checked below.
+      const marks = await page.locator('.exam-sheet .exam-questions > li').evaluateAll((els) => els.map((el) => ({ content: getComputedStyle(el, '::before').content, inc: getComputedStyle(el).counterIncrement })))
+      check(marks.length >= 2, `expected several questions, got ${marks.length}`)
+      check(marks.every((m) => m.content === 'counter(exam-q) "."' && /exam-q/.test(m.inc)), `questions are not numbered: ${JSON.stringify(marks[0])}`)
+    })
+
     await step('the exam hides answers from the student view', async () => {
       const res = await apiJson(`/courses/${courseId}/exams/${examId}`)
       check(res.status === 200 && res.body.questions.length === 4, 'exam read failed')
@@ -146,6 +153,8 @@ async function main() {
       // pypdf splits Turkish diacritics from their letters, so match ASCII-only parts of each line.
       check(/Final 2025/.test(pdfText) && (pdfText.match(/konusunda/g) || []).length >= 4 && /hangisidir/.test(pdfText), `PDF text lacks the exam: "${pdfText.slice(0, 160)}" ${py.stderr.slice(-200)}`)
       check(/Kuyruk/.test(pdfText) && /\(OPEN\)/.test(pdfText) && /\(MULTIPLE_CHOICE\)/.test(pdfText), 'PDF must contain every question')
+      // pypdf reads the absolutely positioned number after its question text: "...(OPEN)1."
+      check([1, 2, 3].every((n) => new RegExp(`(^|[^\\d])${n}\\.(\\s|$)`).test(pdfText)), `PDF questions must be numbered 1., 2., 3.: "${pdfText.slice(0, 260)}"`)
       check(/Cevap anahtarı/.test(pdfText) && /Kuyruk/.test(pdfText), 'PDF must contain the answer key that was requested')
       check(!/Sınav hazırla|Dosyayı oku|Bu soruyu çöz|Çıkış yap|Ana Sayfa/.test(pdfText), 'PDF must not contain page controls')
       check(await page.locator('.exam-print-root').count() === 0, 'the print copy must be removed after printing')
@@ -163,6 +172,23 @@ async function main() {
       await page.getByRole('button', { name: 'Yanıtı değerlendir' }).click()
       await page.locator('.quiz-question').getByText(/kaydedildi|Kaynağı aç|kaynak/i).first().waitFor({ timeout: 30_000 })
       await shot('04-feedback')
+    })
+
+    await step('multiple-choice options keep the radio beside its text (it must not stretch across the card)', async () => {
+      // The same markup the quiz page renders for multiple-choice and true/false questions, inside the real form styles.
+      const m = await page.evaluate(() => {
+        const form = document.querySelector('.quiz-question form.product-form') || document.querySelector('form.product-form')
+        const host = document.createElement('div')
+        host.innerHTML = '<label class="quiz-option"><input type="radio" name="probe"><span>Java, 1990 larin basinda Sun Microsystems te gelistirildi.</span></label>'
+        form.appendChild(host)
+        const radio = host.querySelector('input').getBoundingClientRect()
+        const text = host.querySelector('span').getBoundingClientRect()
+        const label = host.querySelector('label').getBoundingClientRect()
+        host.remove()
+        return { radio: radio.width, textLeft: text.left - label.left, label: label.width }
+      })
+      check(m.radio < 40, `the radio is ${Math.round(m.radio)} px wide (stretched)`)
+      check(m.textLeft < 70, `the answer text starts ${Math.round(m.textLeft)} px from the left edge: the radio pushes it away`)
     })
 
     await step('practice history separates answered from waiting questions', async () => {
