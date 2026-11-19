@@ -340,16 +340,44 @@ def test_a_calculation_without_numbers_in_the_sources_is_asked_as_a_short_answer
     fields = provider.requests[1].response_schema["properties"]["questions"]["items"]["properties"]
     assert "expression" not in fields  # the short-answer schema, not the calculation one
     assert "downgraded_from" not in out["questions"][0]
-    assert any("slot=1 kind=CALCULATION downgraded_to=SHORT_ANSWER reason=no_numbers_in_sources" in r.getMessage()
-               for r in caplog.records)
+    assert any("slot=1 kind=CALCULATION downgraded_to=SHORT_ANSWER reason=no_number_or_formula_in_sources"
+               in r.getMessage() for r in caplog.records)
 
 
-def test_a_calculation_stays_a_calculation_when_the_sources_have_numbers():
-    physics = "Bir araç 120 km yolu 2 saatte alırsa ortalama hızı yolun süreye bölümüdür."
-    items, changed = qe.plan_items([qe.QuizItem(**CALC)], [{"source": 1, "text": physics}])
-    assert items[0].variant == "CALCULATION" and changed == set()
-    items, changed = qe.plan_items([qe.QuizItem(**CALC), qe.QuizItem(kind="OPEN")], [{"source": 1, "text": BFS}])
-    assert [(i.kind, i.variant) for i in items] == [("SHORT_ANSWER", None), ("OPEN", None)] and changed == {0}
+def plan(text):
+    items, changed = qe.plan_items([qe.QuizItem(**CALC), qe.QuizItem(kind="OPEN")], [{"source": 1, "text": text}])
+    return [(i.kind, i.variant) for i in items], changed
+
+
+KEPT = ([("SHORT_ANSWER", "CALCULATION"), ("OPEN", None)], set())
+DOWNGRADED = ([("SHORT_ANSWER", None), ("OPEN", None)], {0})
+
+
+@pytest.mark.parametrize("text", [
+    "Bir araç 120 km yolu 2 saatte alır.",                                         # a number
+    "Ortalama hız, alınan toplam yolun geçen toplam süreye bölünmesiyle bulunur.",  # formula words, no number
+    "Kinetik enerji, kütle ile hızın karesinin çarpımının yarısıdır: E = m * v ** x / iki.",
+    "İki kuvvetin bileşkesi vektörlerin toplamı olarak hesaplanır.",
+    "Verim, faydalı işin harcanan enerjiye oranı olarak tanımlanır.",
+    "Momentum formülü kütle ve hızı içerir.",
+    "Average speed is calculated as distance divided by time.",
+    "Faiz yüzde ile ifade edilir: anaparanın %x kadarı.",
+    "Yoğunluk kütlenin hacme bölümüdür: d = m / V.",
+    "Güç (P) işin zamana oranıdır, yani W / t.",
+])
+def test_a_calculation_is_kept_with_a_number_or_a_formula(text):
+    assert plan(text) == KEPT
+
+
+@pytest.mark.parametrize("text", [
+    BFS,
+    "Java nesne yönelimli bir programlama dilidir. Kaynak kod derleyici tarafından bytecode'a çevrilir. "
+    "JVM bytecode'u çalıştırır ve çöp toplayıcı kullanılmayan nesnelerin belleğini geri kazanır.",
+    "Ayrıntılar için https://docs.oracle.com/javase adresine bakın. // yorum satırları derlenmez.",
+    "String sınıfı java/lang paketindedir; /* blok yorumları */ derlenmez.",
+])
+def test_a_calculation_without_a_number_or_a_formula_becomes_a_short_answer(text):
+    assert plan(text) == DOWNGRADED
 
 
 def test_a_failed_downgraded_slot_is_reported_as_a_short_answer():
@@ -542,9 +570,8 @@ def test_calculation_uses_its_own_schema_and_is_checked():
              "expression": "1.200 / 2,5", "answer": "480 km/sa",
              "explanation": "Toplam yol toplam süreye bölünür."}
     provider = Scripted([draft])
-    # A source with a number (1 saat = 60 dakika): without any number the slot becomes a short answer.
-    evidence = [{"text": physics + " Bir saat 60 dakikadır."}]
-    out = run(request({"kind": "SHORT_ANSWER", "variant": "CALCULATION"}, evidence=evidence), provider)
+    # The source has no number, but it states a formula ("bölünmesiyle bulunur"): still a calculation.
+    out = run(request({"kind": "SHORT_ANSWER", "variant": "CALCULATION"}, evidence=[{"text": physics}]), provider)
     q = out["questions"][0]
     assert (q["kind"], q["variant"], q["expected"]) == ("SHORT_ANSWER", "CALCULATION", "480")
     assert "expression" in provider.requests[0].response_schema["properties"]["questions"]["items"]["properties"]

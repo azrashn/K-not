@@ -470,22 +470,46 @@ def _groups(items: list[QuizItem], size: int) -> list[list[int]]:
     return [slots[i:i + size] for slots in order.values() for i in range(0, len(slots), size)]
 
 
+# A rule a calculation can apply even when the text gives no number ("yolun süreye bölünmesiyle bulunur").
+# Symbols: = × ÷ % anywhere; * and / only between operands (a single letter, a digit or a parenthesis),
+# so paths, "//" comments and addresses do not count. Addresses are removed first. Words: Turkish
+# stems with their inflections, then English.
+_ADDRESS = re.compile(r"\w+://\S+|www\.\S+")
+_OPERAND = r"(?:(?<!\w)\w(?!\w)|\d|[()])"
+_FORMULA_SYMBOL = re.compile(rf"[=×÷%]|{_OPERAND}\s*[*/]\s*{_OPERAND}")
+_FORMULA_WORD = re.compile(
+    r"(?<!\w)(?:bölünmesiyle|bölünür|bölümü|çarpımı|çarpılır|çarpılmasıyla|toplamı|toplanır|farkı|oranı|"
+    r"formül\w*|hesaplanır|hesaplanmasında|bulunur)(?!\w)"
+    r"|(?<!\w)(?:divided\s+by|multiplied\s+by|product\s+of|sum\s+of|difference\s+between|ratio|formula\w*|"
+    r"equals|is\s+calculated|is\s+computed|is\s+found\s+by)(?!\w)"
+)
+
+
 def has_numbers(sources: list[dict]) -> bool:
     return any(re.search(r"\d", s["text"]) for s in sources)
 
 
+def has_formula(sources: list[dict]) -> bool:
+    """A sign that the text states a rule to compute with: an operator symbol or a formula word."""
+    for source in sources:
+        text = _ADDRESS.sub(" ", source["text"])
+        if _FORMULA_SYMBOL.search(text) or _FORMULA_WORD.search(qc._lower_tr(text)):
+            return True
+    return False
+
+
 def plan_items(items: list[QuizItem], sources: list[dict]) -> tuple[list[QuizItem], set[int]]:
-    """Without a single number in the chosen source texts a calculation cannot be grounded:
-    such slots are asked as SHORT_ANSWER instead. Returns the items and the changed slots."""
-    if has_numbers(sources):
+    """A calculation needs a number or a formula in the chosen source texts. Without either it cannot be
+    grounded, so such slots are asked as SHORT_ANSWER instead. Returns the items and the changed slots."""
+    if has_numbers(sources) or has_formula(sources):
         return list(items), set()
     out, changed = [], set()
     for slot, item in enumerate(items):
         if item.variant == qc.CALCULATION:
             out.append(QuizItem(kind="SHORT_ANSWER"))
             changed.add(slot)
-            log.info("quiz_item slot=%s kind=CALCULATION downgraded_to=SHORT_ANSWER reason=no_numbers_in_sources",
-                     slot)
+            log.info("quiz_item slot=%s kind=CALCULATION downgraded_to=SHORT_ANSWER "
+                     "reason=no_number_or_formula_in_sources", slot)
         else:
             out.append(item)
     return out, changed
