@@ -9,9 +9,6 @@ from __future__ import annotations
 import io
 import logging
 import re
-import shutil
-import subprocess
-import tempfile
 from dataclasses import dataclass
 
 import pypdf
@@ -41,23 +38,13 @@ def garbled_ligature_count(text: str) -> int:
     return len(_GARBLED_LIGATURE.findall(text))
 
 
-def _poppler_page_text(data: bytes, number: int) -> str:
-    """Sayfayı Poppler `pdftotext` ile yeniden çıkarır; program yoksa ya da hata verirse boş döner."""
-    exe = shutil.which("pdftotext")
-    if not exe:
-        return ""
-    with tempfile.TemporaryDirectory() as tmp:
-        path = f"{tmp}/in.pdf"
-        with open(path, "wb") as fh:
-            fh.write(data)
-        try:
-            run = subprocess.run(
-                [exe, "-f", str(number), "-l", str(number), "-enc", "UTF-8", path, "-"],
-                capture_output=True, timeout=30, check=False,
-            )
-        except (OSError, subprocess.SubprocessError):
-            return ""
-    return run.stdout.decode("utf-8", "replace") if run.returncode == 0 else ""
+def repair_garbled_ligatures(text: str) -> str:
+    """Bozuk "ti" ligatürünü onarır: yalnızca bozulma eşiği aşılan sayfada, küçük harflerle çevrili
+    8 / D / ) karakteri "ti" olur (applica8on → application). Poppler da aynı glifi çözemez
+    (boşluk bırakır), bu yüzden onarım eşlemeyle yapılır."""
+    if garbled_ligature_count(text) < GARBLED_PAGE_THRESHOLD:
+        return text
+    return _GARBLED_LIGATURE.sub("ti", text)
 
 
 # Ders slaytlarının her sayfasında tekrar eden son satır ("Transport Layer 3", "Network Layer 4-12")
@@ -153,12 +140,7 @@ def extract_pdf(data: bytes, *, max_pages: int, max_empty_page_ratio: float, ocr
             raise IngestFailure(E.ENCRYPTED_PDF, "The PDF is password protected.") from exc
         except Exception as exc:
             raise IngestFailure(E.CORRUPT_PDF, f"Page {number} could not be read.") from exc
-        if garbled_ligature_count(raw) >= GARBLED_PAGE_THRESHOLD:
-            alt = _poppler_page_text(data, number)
-            # Yalnızca gerçekten daha temizse değiştirilir; aksi halde pypdf metni korunur.
-            if alt.strip() and garbled_ligature_count(alt) < garbled_ligature_count(raw):
-                log.info("ingest.extraction.poppler_fallback", extra={"page": number})
-                raw = alt
+        raw = repair_garbled_ligatures(raw)
         texts.append(normalize_page_text(raw))
 
     texts = strip_repeated_footers(texts)

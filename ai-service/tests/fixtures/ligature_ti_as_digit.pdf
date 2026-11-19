@@ -1,0 +1,98 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [6 0 R 8 0 R 10 0 R] /Count 3 >>
+endobj
+3 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>
+endobj
+4 0 obj
+<< /Type /Font /Subtype /Type3 /FontBBox [0 0 700 700] /FontMatrix [0.001 0 0 0.001 0 0] /CharProcs << /eight 5 0 R >> /Encoding << /Type /Encoding /Differences [56 /eight] >> /FirstChar 56 /LastChar 56 /Widths [800] >>
+endobj
+5 0 obj
+<< /Length 108 >>
+stream
+800 0 0 0 700 700 d1 80 w 150 0 m 150 600 l S 50 450 m 300 450 l S 450 0 m 450 450 l S 450 560 m 450 600 l S
+endstream
+endobj
+6 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 7 0 R /Resources << /Font << /F1 3 0 R /F3 4 0 R >> >> >>
+endobj
+7 0 obj
+<< /Length 705 >>
+stream
+BT 14 TL 50 780 Td
+/F1 12 Tf (COMPUTER NETWORKS - LIGATURE TEST) Tj
+T*
+/F1 12 Tf (The applica) Tj /F3 12 Tf (8) Tj /F1 12 Tf (on layer provides services to network applica) Tj /F3 12 Tf (8) Tj /F1 12 Tf (ons.) Tj
+T*
+/F1 12 Tf (Encapsula) Tj /F3 12 Tf (8) Tj /F1 12 Tf (on adds protocol headers as data moves down the stack.) Tj
+T*
+/F1 12 Tf (Introduc) Tj /F3 12 Tf (8) Tj /F1 12 Tf (on to networking: connec) Tj /F3 12 Tf (8) Tj /F1 12 Tf (on, func) Tj /F3 12 Tf (8) Tj /F1 12 Tf (on and transla) Tj /F3 12 Tf (8) Tj /F1 12 Tf (on of addresses.) Tj
+T*
+/F1 12 Tf (A transport func) Tj /F3 12 Tf (8) Tj /F1 12 Tf (on provides logical communica) Tj /F3 12 Tf (8) Tj /F1 12 Tf (on between processes.) Tj
+T*
+ET
+endstream
+endobj
+8 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 9 0 R /Resources << /Font << /F1 3 0 R /F3 4 0 R >> >> >>
+endobj
+9 0 obj
+<< /Length 705 >>
+stream
+BT 14 TL 50 780 Td
+/F1 12 Tf (COMPUTER NETWORKS - LIGATURE TEST) Tj
+T*
+/F1 12 Tf (The applica) Tj /F3 12 Tf (8) Tj /F1 12 Tf (on layer provides services to network applica) Tj /F3 12 Tf (8) Tj /F1 12 Tf (ons.) Tj
+T*
+/F1 12 Tf (Encapsula) Tj /F3 12 Tf (8) Tj /F1 12 Tf (on adds protocol headers as data moves down the stack.) Tj
+T*
+/F1 12 Tf (Introduc) Tj /F3 12 Tf (8) Tj /F1 12 Tf (on to networking: connec) Tj /F3 12 Tf (8) Tj /F1 12 Tf (on, func) Tj /F3 12 Tf (8) Tj /F1 12 Tf (on and transla) Tj /F3 12 Tf (8) Tj /F1 12 Tf (on of addresses.) Tj
+T*
+/F1 12 Tf (A transport func) Tj /F3 12 Tf (8) Tj /F1 12 Tf (on provides logical communica) Tj /F3 12 Tf (8) Tj /F1 12 Tf (on between processes.) Tj
+T*
+ET
+endstream
+endobj
+10 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 11 0 R /Resources << /Font << /F1 3 0 R /F3 4 0 R >> >> >>
+endobj
+11 0 obj
+<< /Length 705 >>
+stream
+BT 14 TL 50 780 Td
+/F1 12 Tf (COMPUTER NETWORKS - LIGATURE TEST) Tj
+T*
+/F1 12 Tf (The applica) Tj /F3 12 Tf (8) Tj /F1 12 Tf (on layer provides services to network applica) Tj /F3 12 Tf (8) Tj /F1 12 Tf (ons.) Tj
+T*
+/F1 12 Tf (Encapsula) Tj /F3 12 Tf (8) Tj /F1 12 Tf (on adds protocol headers as data moves down the stack.) Tj
+T*
+/F1 12 Tf (Introduc) Tj /F3 12 Tf (8) Tj /F1 12 Tf (on to networking: connec) Tj /F3 12 Tf (8) Tj /F1 12 Tf (on, func) Tj /F3 12 Tf (8) Tj /F1 12 Tf (on and transla) Tj /F3 12 Tf (8) Tj /F1 12 Tf (on of addresses.) Tj
+T*
+/F1 12 Tf (A transport func) Tj /F3 12 Tf (8) Tj /F1 12 Tf (on provides logical communica) Tj /F3 12 Tf (8) Tj /F1 12 Tf (on between processes.) Tj
+T*
+ET
+endstream
+endobj
+xref
+0 12
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000128 00000 n 
+0000000225 00000 n 
+0000000460 00000 n 
+0000000619 00000 n 
+0000000755 00000 n 
+0000001511 00000 n 
+0000001647 00000 n 
+0000002403 00000 n 
+0000002541 00000 n 
+trailer
+<< /Size 12 /Root 1 0 R >>
+startxref
+3298
+%%EOF
