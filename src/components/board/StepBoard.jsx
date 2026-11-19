@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import Board from './Board'
 import TeacherStage from './TeacherStage'
 import BoardSources, { StepSources } from './BoardSources'
@@ -26,7 +27,7 @@ function stepsKey(steps) {
   return `${steps.length}-${h}`
 }
 
-function StepBoardInner({ steps, evidence, onSource, fetchAudio, autoPlay, keyboardNav, showSourceList, prefs, setPrefs }) {
+function StepBoardInner({ steps, evidence, onSource, fetchAudio, autoPlay, keyboardNav, showSourceList, prefs, setPrefs, toolbarTarget }) {
   const activity = useRef(null)
   const board = useBoardPlayer({
     steps,
@@ -40,11 +41,14 @@ function StepBoardInner({ steps, evidence, onSource, fetchAudio, autoPlay, keybo
   const { wrapperRef, boardRef, stepRefs } = board
   const rows = useMemo(() => stepSources(board.steps, evidence), [board.steps, evidence])
   const byStep = useMemo(() => new Map(rows.map((r) => [r.step, r.items])), [rows])
+  const toolbar = <BoardToolbar board={board} teacher={prefs.teacher} onTeacher={() => setPrefs({ teacher: !prefs.teacher })} />
   const pick = onSource ? (step) => (item) => onSource(item, step) : () => undefined
 
   return (
     <div ref={wrapperRef} className="space-y-3">
-      <BoardToolbar board={board} teacher={prefs.teacher} onTeacher={() => setPrefs({ teacher: !prefs.teacher })} />
+      {toolbarTarget === undefined
+        ? toolbar
+        : toolbarTarget ? createPortal(toolbar, toolbarTarget) : null}
       <div className={showSourceList && rows.length ? 'board-layout' : ''}>
         <div className="min-w-0">
           <Board
@@ -92,6 +96,7 @@ export default function StepBoard({
   keyboardNav = true,
   showSourceList = true,
   className = '',
+  toolbarTarget, // verilirse düğme çubuğu tahtanın içinde değil bu DOM düğümünde çizilir
 }) {
   const [prefs, setPrefsState] = useState(() => loadPrefs(reducedMotion()))
   const auto = fetchAudio === undefined
@@ -133,6 +138,7 @@ export default function StepBoard({
         showSourceList={showSourceList}
         prefs={prefs}
         setPrefs={setPrefs}
+        toolbarTarget={toolbarTarget}
       />
     </div>
   )

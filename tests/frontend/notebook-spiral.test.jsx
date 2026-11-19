@@ -2,7 +2,8 @@ import { readFileSync } from 'node:fs'
 import { expect, test } from 'vitest'
 
 const css = readFileSync('src/product.css', 'utf8')
-const block = css.slice(css.indexOf('/* ── Spiral defter teli'))
+const start = css.indexOf('/* ── Spiral defter teli')
+const block = css.slice(start, css.indexOf('\n/* ── ', start + 10)) // up to the next section of the stylesheet
 const after = block.slice(block.indexOf('.course-card::after {'))
 
 test('one wire ring per binding hole: the ring rhythm equals the hole rhythm of the card spine', () => {

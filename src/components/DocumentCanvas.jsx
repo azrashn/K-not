@@ -9,6 +9,7 @@ export default function DocumentCanvas({
   segments,
   onSource,
   onViewportChange,
+  marks,
 }) {
   const [page, setPage] = useState(
       () => source?.location.page || source?.location.slide || 1,
@@ -124,6 +125,7 @@ export default function DocumentCanvas({
             →
           </button>
         </div>
+        {marks}
         <div>
           <button
             onClick={() => setZoom((z) => Math.max(50, z - 25))}
@@ -216,12 +218,6 @@ export default function DocumentCanvas({
           </div>
         )}
       </div>
-      <p className="viewer-note">
-        Özgün{" "}
-        {material.kind === "PPTX" ? "slayt düzeninden" : "PDF sayfasından"}{" "}
-        oluşturulan görüntü. Görsel soru veya bölge seçimi bu görüntüyü yerel
-        modele bağlar; model yorumu doğrulanmış bilgi değildir.
-      </p>
     </section>
   );
 }

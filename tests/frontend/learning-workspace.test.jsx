@@ -75,7 +75,7 @@ test("one course workspace searches without limiting to selected file and opens 
   await screen.findByRole("heading", { name: "Physics" });
   await user.type(screen.getByLabelText("Ders kaynaklarına sorun"), "Water?");
   await user.click(
-    screen.getByRole("button", { name: "Gönder ↑", exact: true }),
+    screen.getByRole("button", { name: "Gönder", exact: true }),
   );
   await screen.findByText("Gerçek kaynak alıntıları · model üretimi değil");
   expect(api.knowledgeAnswer.mock.calls[0][1]).toMatchObject({
@@ -100,12 +100,12 @@ test("follow-up uses server conversation identity; new conversation clears it", 
   const input = screen.getByLabelText("Ders kaynaklarına sorun");
   await user.type(input, "Water?");
   await user.click(
-    screen.getByRole("button", { name: "Gönder ↑", exact: true }),
+    screen.getByRole("button", { name: "Gönder", exact: true }),
   );
   await screen.findByLabelText("Ders yanıtı 1");
   await user.type(input, "Next?");
   await user.click(
-    screen.getByRole("button", { name: "Gönder ↑", exact: true }),
+    screen.getByRole("button", { name: "Gönder", exact: true }),
   );
   await waitFor(() => expect(api.knowledgeAnswer).toHaveBeenCalledTimes(2));
   expect(api.knowledgeAnswer.mock.calls[1][1].conversation_id).toBe("receipt");
@@ -119,7 +119,7 @@ test("source gone shows honest error, no made-up slide", async () => {
   await screen.findByRole("heading", { name: "Physics" });
   await user.type(screen.getByLabelText("Ders kaynaklarına sorun"), "Water?");
   await user.click(
-    screen.getByRole("button", { name: "Gönder ↑", exact: true }),
+    screen.getByRole("button", { name: "Gönder", exact: true }),
   );
   await user.click(await screen.findByRole("button", { name: /\[1\] PPTX/ }));
   expect(await screen.findByRole("alert")).toHaveTextContent(
@@ -137,7 +137,7 @@ test("source-only video guidance exposes explicit explanation without faking aud
   await screen.findByRole("heading", { name: "Physics" });
   await user.type(screen.getByLabelText("Ders kaynaklarına sorun"), "Water?");
   await user.click(
-    screen.getByRole("button", { name: "Gönder ↑", exact: true }),
+    screen.getByRole("button", { name: "Gönder", exact: true }),
   );
   await user.click(await screen.findByRole("button", { name: "Şimdi açıkla" }));
   await waitFor(() => expect(api.knowledgeAnswer).toHaveBeenCalledTimes(2));
@@ -153,7 +153,7 @@ test("source-linked quiz navigation retains the actual question topic", async ()
   await screen.findByRole("heading", { name: "Physics" });
   await user.type(screen.getByLabelText("Ders kaynaklarına sorun"), "Water?");
   await user.click(
-    screen.getByRole("button", { name: "Gönder ↑", exact: true }),
+    screen.getByRole("button", { name: "Gönder", exact: true }),
   );
   await screen.findByLabelText("Ders yanıtı 1");
   await user.click(
@@ -189,7 +189,7 @@ async function askWater(user) {
   await screen.findByRole("heading", { name: "Physics" });
   await user.type(screen.getByLabelText("Ders kaynaklarına sorun"), "Water?");
   await user.click(
-    screen.getByRole("button", { name: "Gönder ↑", exact: true }),
+    screen.getByRole("button", { name: "Gönder", exact: true }),
   );
 }
 
@@ -221,16 +221,16 @@ test("after the user turns sound off, answers are no longer read aloud and the c
   api.knowledgeAnswer.mockResolvedValue({ ...answer, status: "GENERATED_UNVERIFIED", llm_used: true });
   const user = userEvent.setup();
   await askWater(user);
-  await user.click(await screen.findByRole("button", { name: "Sesi kapat" }));
-  expect(screen.getByRole("button", { name: "Sesi aç" })).toBeVisible();
+  await user.click(await screen.findByRole("button", { name: "Otomatik okumayı kapat" }));
+  expect(screen.getByRole("button", { name: "Otomatik okumayı aç" })).toBeVisible();
   expect(JSON.parse(localStorage.getItem("knot.voice.prefs")).auto).toBe(false);
   speech.speak.mockClear();
   api.knowledgeAnswer.mockResolvedValue({ ...answer, answer: "Another answer.", status: "GENERATED_UNVERIFIED", llm_used: true });
   await user.type(screen.getByLabelText("Ders kaynaklarına sorun"), "Again?");
-  await user.click(screen.getByRole("button", { name: "Gönder ↑", exact: true }));
+  await user.click(screen.getByRole("button", { name: "Gönder", exact: true }));
   await screen.findByLabelText("Ders yanıtı 2");
   expect(speech.speak).not.toHaveBeenCalled();
-  await user.click(screen.getAllByRole("button", { name: "Açıklamayı seslendir" }).at(-1));
+  await user.click(await screen.findByRole("button", { name: "Açıklamayı seslendir" }));
   expect(speech.speak).toHaveBeenCalled();
 });
 
@@ -267,7 +267,7 @@ test("stored conversation is restored without relying on in-memory answer receip
     screen.getByLabelText("Ders kaynaklarına sorun"),
     "Bir örnek göster",
   );
-  await user.click(screen.getByRole("button", { name: "Gönder ↑" }));
+  await user.click(screen.getByRole("button", { name: "Gönder" }));
   await waitFor(() => expect(api.knowledgeAnswer).toHaveBeenCalled());
   expect(api.knowledgeAnswer.mock.calls[0][1].chat_id).toBe("saved");
 });
@@ -281,7 +281,7 @@ test("retry preserves the failed request and source scope", async () => {
   await screen.findByRole("heading", { name: "Physics" });
   await user.type(screen.getByLabelText("Ders kaynaklarına sorun"), "Water?");
   await user.click(
-    screen.getByRole("button", { name: "Gönder ↑", exact: true }),
+    screen.getByRole("button", { name: "Gönder", exact: true }),
   );
   await user.click(
     await screen.findByRole("button", { name: "Son soruyu yeniden dene" }),
@@ -303,7 +303,7 @@ test("response buttons send a real mode and the saved parent message", async () 
   await screen.findByRole("heading", { name: "Physics" });
   await user.type(screen.getByLabelText("Ders kaynaklarına sorun"), "Water?");
   await user.click(
-    screen.getByRole("button", { name: "Gönder ↑", exact: true }),
+    screen.getByRole("button", { name: "Gönder", exact: true }),
   );
   await user.click(
     await screen.findByRole("button", { name: "Kısaca açıkla" }),
@@ -366,7 +366,7 @@ const askWaterExcerpts = async () => {
   render(<LearningWorkspace courseId="course" />);
   await screen.findByRole("heading", { name: "Physics" });
   await user.type(screen.getByLabelText("Ders kaynaklarına sorun"), "Water?");
-  await user.click(screen.getByRole("button", { name: "Gönder ↑", exact: true }));
+  await user.click(screen.getByRole("button", { name: "Gönder", exact: true }));
   await screen.findByText("Gerçek kaynak alıntıları · model üretimi değil");
   return user;
 };
@@ -384,9 +384,9 @@ test("an answer with steps opens the board in the workspace; its sources open th
   await user.click(board.querySelector(".board-sources .board-chip"));
   await waitFor(() => expect(api.knowledgeSource).toHaveBeenCalledWith("course", m.id, evidence.id));
 
-  await user.click(screen.getByRole("button", { name: "Tahtayı kapat" }));
+  await user.click(screen.getByRole("button", { name: "Yazılı metne dön" }));
   expect(screen.queryByRole("region", { name: "Tahtada anlatım" })).not.toBeInTheDocument();
-  await user.click(screen.getByRole("button", { name: "Tahtada anlat" }));
+  await user.click(screen.getByRole("button", { name: "Tahtada göster" }));
   expect(screen.getByRole("region", { name: "Tahtada anlatım" })).toBeInTheDocument();
 });
 
@@ -395,5 +395,8 @@ test("an answer without steps (or with an empty list) stays a text answer", asyn
   await askWaterExcerpts();
   expect(screen.getByText("[1] Water evaporates.")).toBeInTheDocument();
   expect(screen.queryByRole("region", { name: "Tahtada anlatım" })).not.toBeInTheDocument();
-  expect(screen.queryByRole("button", { name: "Tahtada anlat" })).not.toBeInTheDocument();
+  // The button stays in the header but is disabled: there is nothing to explain on the board.
+  const show = screen.getByRole("button", { name: "Tahtada göster" });
+  expect(show).toBeDisabled();
+  expect(show).toHaveAttribute("title", "Tahtada anlatılabilir bir cevap yok");
 });

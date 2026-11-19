@@ -38,6 +38,38 @@ const watchLabel = {
 };
 
 // Kaynaktan alınan metin: yeniden akıtılır (PDF satır sonları), uzunsa katlanır.
+function CopyButton({ text, onError }) {
+  const [done, setDone] = useState(false);
+  return (
+    <button
+      type="button"
+      className="tool-btn"
+      aria-label={done ? "Kopyalandı" : "Yanıtı kopyala"}
+      title={done ? "Kopyalandı" : "Kopyala"}
+      onClick={() =>
+        navigator.clipboard
+          .writeText(text)
+          .then(() => {
+            setDone(true);
+            setTimeout(() => setDone(false), 1600);
+          })
+          .catch(onError)
+      }
+    >
+      <svg width="15" height="15" viewBox="0 0 16 16" aria-hidden focusable="false">
+        {done ? (
+          <path d="M3 8.5l3.2 3.2L13 4.8" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+        ) : (
+          <>
+            <rect x="5.5" y="5.5" width="8" height="8" rx="1.3" fill="none" stroke="currentColor" strokeWidth="1.4" />
+            <path d="M10.5 3.5v-.2a1 1 0 0 0-1-1h-6a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h.2" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+          </>
+        )}
+      </svg>
+    </button>
+  );
+}
+
 function QuoteBlock({ text, label }) {
   const [open, setOpen] = useState(false);
   const clean = String(text ?? "").replace(/(\p{L})-\n(\p{L})/gu, "$1$2");
@@ -84,6 +116,12 @@ export default function LearningWorkspace({ courseId }) {
   const [retryRequest, setRetryRequest] = useState(null);
   // Tahtada anlatılan cevap (steps taşıyorsa); yoksa çalışma alanı eskisi gibi.
   const [boardTurn, setBoardTurn] = useState(null);
+  // Orta alanda tahta mı yazılı anlatım mı görünsün (öğrenci istediği an yazılı metne dönebilir).
+  const [textView, setTextView] = useState(false);
+  useEffect(() => {
+    if (boardTurn) setTextView(false);
+  }, [boardTurn]);
+  const boardVisible = !!boardTurn && !textView;
   // Yerel ses kuruluysa tahtadaki hoca anlatır; o yanıt sohbette ayrıca otomatik okunmaz (iki ses üst üste binmez).
   const [boardSpeaks, setBoardSpeaks] = useState(false);
   useEffect(() => {
@@ -96,6 +134,123 @@ export default function LearningWorkspace({ courseId }) {
     };
   }, []);
   const viewerTop = useRef(null);
+  useEffect(() => {
+    const close = (e) => {
+      document.querySelectorAll(".viewer-more[open], .voice-settings[open]").forEach((d) => {
+        if (!d.contains(e.target)) d.removeAttribute("open");
+      });
+    };
+    const esc = (e) => {
+      if (e.key === "Escape") document.querySelectorAll(".viewer-more[open], .voice-settings[open]").forEach((d) => d.removeAttribute("open"));
+    };
+    document.addEventListener("pointerdown", close);
+    document.addEventListener("keydown", esc);
+    return () => {
+      document.removeEventListener("pointerdown", close);
+      document.removeEventListener("keydown", esc);
+    };
+  }, []);
+  // Başlıkta, o an ekranda görünen cevabın sorusu ve araçları durur.
+  const [activeTurn, setActiveTurn] = useState(0);
+  const [toolbarEl, setToolbarEl] = useState(null);
+  const autoSpoken = useRef(new Set());
+  useEffect(() => {
+    setActiveTurn(Math.max(0, turns.length - 1));
+  }, [turns.length]);
+  function onChatScroll(e) {
+    const box = e.currentTarget;
+    const line = box.getBoundingClientRect().top + 48;
+    let idx = 0;
+    box.querySelectorAll(".chat-turn").forEach((a, i) => {
+      if (a.getBoundingClientRect().top <= line) idx = i;
+    });
+    setActiveTurn((cur) => (cur === idx ? cur : idx));
+  }
+  const centerRef = useRef(null), sideRef = useRef(null), askRef = useRef(null);
+  const [railOpen, setRailOpen] = useState(() => {
+    try { return localStorage.getItem("knot-ws-rail") !== "0"; } catch { return true; }
+  });
+  function toggleRail() {
+    setRailOpen((v) => {
+      try { localStorage.setItem("knot-ws-rail", v ? "0" : "1"); } catch { /* yok say */ }
+      return !v;
+    });
+  }
+  const readLS = (k) => { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } };
+  const writeLS = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* yok say */ } };
+  const [cols, setCols] = useState(() => { const v = readLS("knot-ws-cols"); return v && v.c > 0 && v.s > 0 ? v : null; });
+  const [askH, setAskH] = useState(() => { const v = readLS("knot-ws-ask"); return v > 0 ? v : null; });
+  function resizeCols(next) {
+    setCols(next);
+    writeLS("knot-ws-cols", next);
+  }
+  function dragCols(e) {
+    if (!centerRef.current || !sideRef.current) return;
+    e.preventDefault();
+    const c0 = centerRef.current.getBoundingClientRect().width, s0 = sideRef.current.getBoundingClientRect().width, x0 = e.clientX;
+    const total = c0 + s0, min = 300;
+    let latest = null;
+    const move = (ev) => {
+      const c = Math.min(total - min, Math.max(min, c0 + ev.clientX - x0));
+      latest = { c, s: total - c };
+      setCols(latest);
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      if (latest) writeLS("knot-ws-cols", latest);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  }
+  function keyCols(e) {
+    const d = e.key === "ArrowLeft" ? -32 : e.key === "ArrowRight" ? 32 : 0;
+    if (!d || !centerRef.current || !sideRef.current) return;
+    e.preventDefault();
+    const c0 = centerRef.current.getBoundingClientRect().width, s0 = sideRef.current.getBoundingClientRect().width;
+    const total = c0 + s0, c = Math.min(total - 300, Math.max(300, c0 + d));
+    resizeCols({ c, s: total - c });
+  }
+  function dragAsk(e) {
+    if (!askRef.current) return;
+    e.preventDefault();
+    const h0 = askRef.current.getBoundingClientRect().height, y0 = e.clientY;
+    let latest = null;
+    const move = (ev) => {
+      latest = Math.round(Math.min(520, Math.max(120, h0 - (ev.clientY - y0))));
+      setAskH(latest);
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      if (latest) writeLS("knot-ws-ask", latest);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  }
+  function keyAsk(e) {
+    const d = e.key === "ArrowUp" ? 32 : e.key === "ArrowDown" ? -32 : 0;
+    if (!d || !askRef.current) return;
+    e.preventDefault();
+    const h = Math.round(Math.min(520, Math.max(120, askRef.current.getBoundingClientRect().height + d)));
+    setAskH(h);
+    writeLS("knot-ws-ask", h);
+  }
+  function resetSizes() {
+    setCols(null);
+    setAskH(null);
+    try { localStorage.removeItem("knot-ws-cols"); localStorage.removeItem("knot-ws-ask"); } catch { /* yok say */ }
+  }
+
+  // En son tahtada anlatılabilen cevap ("Tahtada göster" düğmesi bunu açar).
+  const lastBoardable = [...turns].reverse().find((t) => hasSteps(t)) || null;
+  const shownTurn = boardVisible ? boardTurn : turns[Math.min(activeTurn, turns.length - 1)] || null;
+  function showOnBoard() {
+    const target = shownTurn && hasSteps(shownTurn) ? shownTurn : boardTurn || lastBoardable;
+    if (!target) return;
+    setBoardTurn(target);
+    setTextView(false);
+  }
   const [viewport, setViewport] = useState(null),
     [scopeMode, setScopeMode] = useState("course"),
     [selectedMaterials, setSelectedMaterials] = useState([]),
@@ -638,12 +793,26 @@ export default function LearningWorkspace({ courseId }) {
         </p>
       )}
       <div
-        className={`workspace-grid ${assistantOpen ? "" : "assistant-closed"}`}
+        className={`workspace-grid ${assistantOpen ? "" : "assistant-closed"} ${railOpen ? "" : "rail-collapsed"}`}
+        style={{
+          ...(cols && assistantOpen ? { "--col-center": `${cols.c}fr`, "--col-side": `${cols.s}fr` } : {}),
+          ...(railOpen ? {} : { "--rail-w": "46px" }),
+        }}
       >
-        <aside className="material-rail" aria-label="Ortak ders materyalleri">
+        <aside className="material-rail" aria-label="Ortak ders materyalleri" data-collapsed={railOpen ? undefined : "true"}>
+          {!railOpen ? (
+            <button type="button" className="rail-expand" onClick={toggleRail} aria-expanded="false" title="Kaynakları aç">
+              <span aria-hidden>›</span>
+              <span className="rail-expand-label">Kaynaklar · {materials.length}</span>
+            </button>
+          ) : (
+          <>
           <div className="section-heading">
             <h2>Kaynaklar</h2>
             <span>{materials.length}</span>
+            <button type="button" className="rail-collapse" onClick={toggleRail} aria-expanded="true" title="Kaynakları kapat" aria-label="Kaynakları kapat">
+              ‹
+            </button>
           </div>
           <details className="rail-add" open={materials.length === 0 || undefined}>
           <summary>+ Ekle</summary>
@@ -846,11 +1015,285 @@ export default function LearningWorkspace({ courseId }) {
                 </div>
               ))}
           </div>
+          </>
+          )}
         </aside>
+        {assistantOpen && (
+          <section
+            ref={centerRef}
+            className="learning-assistant"
+            aria-label="Ortak öğrenme asistanı"
+          >
+            <header>
+              <div className="assistant-top">
+                <span className="product-eyebrow">K-NOT öğretici asistan</span>
+                <div className="assistant-actions">
+                  {boardVisible ? (
+                    <button className="board-show" data-variant="text" onClick={() => setTextView(true)}>
+                      Yazılı metne dön
+                    </button>
+                  ) : (
+                    <button
+                      className="board-show"
+                      disabled={!(boardTurn || lastBoardable)}
+                      title={boardTurn || lastBoardable ? "Cevabı tahtada anlat" : "Tahtada anlatılabilir bir cevap yok"}
+                      onClick={showOnBoard}
+                    >
+                      Tahtada göster
+                    </button>
+                  )}
+                </div>
+              </div>
+              {boardVisible && <div key="board-tools" className="assistant-tools board-tools" ref={setToolbarEl} />}
+              {!boardVisible && shownTurn && (
+                <div key="voice-tools" className="assistant-tools">
+                  <Voice
+                    key={`voice-${turns.indexOf(shownTurn)}`}
+                    text={shownTurn.answer || ""}
+                    autoPlay={shownTurn === freshAnswer && !autoSpoken.current.has(shownTurn) && !(boardSpeaks && hasSteps(shownTurn))}
+                    onAutoPlay={() => autoSpoken.current.add(shownTurn)}
+                  />
+                  <CopyButton text={shownTurn.answer || ""} onError={() => setError("Yanıt kopyalanamadı.")} />
+                </div>
+              )}
+              {shownTurn && (
+                <div className="active-question" key={`q-${turns.indexOf(shownTurn)}`} title={shownTurn.question || "Önceki soru"}>
+                  <span>SEN</span>
+                  <p>{shownTurn.question || "Önceki soru"}</p>
+                </div>
+              )}
+            </header>
+            {boardVisible && (
+              <section className="workspace-board center-board" aria-label="Tahtada anlatım">
+                <div className="workspace-board-head">
+                  <div>
+                    <span className="product-eyebrow">Tahtada anlatım</span>
+                    <p>{boardTurn.question || "Önceki soru"}</p>
+                  </div>
+                </div>
+                <StepBoard
+                  steps={boardTurn.steps}
+                  evidence={boardTurn.evidence || []}
+                  onSource={openBoardSource}
+                  toolbarTarget={toolbarEl}
+                />
+              </section>
+            )}
+            <div
+              className="chat-messages scroll-quiet"
+              hidden={boardVisible}
+              onScroll={onChatScroll}
+              ref={chatScroll}
+              aria-live="polite"
+            >
+              {chatLoading && <p role="status">Konuşma açılıyor…</p>}
+              {!turns.length && !chatLoading && (
+                <div className="assistant-welcome">
+                  <span className="assistant-symbol" aria-hidden>
+                    ✳
+                  </span>
+                  <h3>Okurken aklına takılanı sor.</h3>
+                  <p>
+                    Seçili materyali, sayfayı veya video anını soruna
+                    bağlayabilirim. Yanıtın kaynağına tek tıkla dönebilirsin.
+                  </p>
+                  <div>
+                    {[
+                      "Bu bölümü adım adım açıkla",
+                      "Bir örnek göster",
+                      "Kaynakları karşılaştır",
+                    ].map((q) => (
+                      <button key={q} onClick={() => setQuestion(q)}>
+                        {q} ↗
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {turns.map((t, i) => {
+                const evidence = t.evidence || [],
+                  used = t.retrieval?.used_source_ids || [],
+                  primary = evidence.filter((e) => used.includes(e.id)),
+                  shown = (primary.length ? primary : evidence).slice(0, 2),
+                  rest = evidence.filter(
+                    (e) => !shown.some((s) => s.id === e.id),
+                  );
+                return (
+                  <article
+                    key={i}
+                    className="chat-turn"
+                    data-last={i === turns.length - 1 ? "true" : undefined}
+                    aria-label={`Ders yanıtı ${i + 1}`}
+                  >
+                    <div className="user-message">
+                      <span>Sen</span>
+                      <p>{t.question || "Önceki soru"}</p>
+                    </div>
+                    <div className="assistant-message" data-tone={stampFor(t)?.tone || "none"}>
+                      <div className="message-head">
+                      <span className="message-author">✳ K-NOT</span>
+                      {stampFor(t) && (
+                        <span className="catalog-stamp" data-tone={stampFor(t).tone}>{stampFor(t).text}</span>
+                      )}
+                      </div>
+                      {modeLabel(t.response_mode) && (
+                        <span className="answer-mode" data-mode={t.response_mode}>
+                          {modeLabel(t.response_mode)}
+                        </span>
+                      )}
+                      {isExcerpt(t) ? (
+                        <QuoteBlock
+                          text={t.answer}
+                          label={"KAYNAKTAN ALINTI" + ((primary[0] || evidence[0]) ? " · " + locationLabel((primary[0] || evidence[0]).location) : "")}
+                        />
+                      ) : (
+                        <RichText className="answer-text" text={t.answer} />
+                      )}
+                      <ClaimSupport claims={t.claims} />
+                      {t.visual_analysis?.status === "IMAGE_PROVIDED" && (
+                        <p className="product-note">
+                          Özgün kaynak görüntüsü yerel modele gönderildi ·
+                          Görsel yorum doğrulanmadı
+                          {t.visual_analysis.region ? " · Seçili bölge" : ""}
+                        </p>
+                      )}
+                      <p className="answer-status">{statusLabel(t)}</p>
+                      {t.generation_detail && (
+                        <p className="answer-status-detail">
+                          Ayrıntı: <code>{t.generation_detail}</code>
+                        </p>
+                      )}
+                      {(t.video_learning || []).map((l) => {
+                        const e = evidence.find((e) => e.id === l.source_id);
+                        return (
+                          <p key={l.source_id} className="viewer-note">
+                            {e ? locationLabel(e.location) + " · " : ""}
+                            {watchLabel[l.state]}
+                          </p>
+                        );
+                      })}
+                      {t.status === "GUIDANCE" && (
+                        <Btn disabled={busy} onClick={() => ask(null, t)}>
+                          Şimdi açıkla
+                        </Btn>
+                      )}
+                      {(t.conflicts || []).map((c, n) => (
+                        <p key={n} className="product-note">
+                          Olası kaynak uyuşmazlığı · kesinleştirilmedi.{" "}
+                          {c.message}
+                        </p>
+                      ))}
+                      {evidence.length > 0 && (
+                        <div
+                          className="answer-sources"
+                          aria-label="Ortak yanıt kaynakları"
+                        >
+                          <p className="product-eyebrow">
+                            {primary.length
+                              ? "Yanıtta kullanılan kaynaklar"
+                              : "Bulunan kaynaklar"}
+                          </p>
+                          {shown.map(sourceButton)}
+                          {rest.length > 0 && (
+                            <details>
+                              <summary>{rest.length} diğer kaynak</summary>
+                              {rest.map(sourceButton)}
+                            </details>
+                          )}
+                          {t.retrieval && (
+                            <details className="retrieval-detail">
+                              <summary>Arama kapsamı</summary>
+                              <p>
+                                {t.retrieval.searched.length} hazır materyalde
+                                arandı · {evidence.length} kaynak bulundu ·{" "}
+                                {used.length} kaynak modelin doğrulanabilen
+                                atıflarında kullanıldı.
+                              </p>
+                              {t.retrieval.searched.map((m) => (
+                                <p key={m.id}>
+                                  {m.kind} · {m.title}
+                                </p>
+                              ))}
+                            </details>
+                          )}
+                        </div>
+                      )}
+                      {evidence.length > 0 && (
+                        <div className="followup-actions">
+                          <button
+                            disabled={busy}
+                            onClick={() => ask(null, t, "detailed")}
+                          >
+                            Ayrıntılı açıkla
+                          </button>
+                          <button
+                            disabled={busy}
+                            onClick={() => ask(null, t, "short")}
+                          >
+                            Kısaca açıkla
+                          </button>
+                          <button
+                            disabled={busy}
+                            onClick={() => ask(null, t, "example")}
+                          >
+                            Örnek göster
+                          </button>
+                          <button
+                            disabled={busy}
+                            onClick={() => ask(null, t, "step_by_step")}
+                          >
+                            Adım adım
+                          </button>
+                          <button
+                            onClick={() =>
+                              navigate(`/dersler/${courseId}/quiz`, {
+                                topic: t.question,
+                                ...(selected ? { materialId: selected.id, materialTitle: selected.title } : {}),
+                              })
+                            }
+                          >
+                            Alıştırma yap ↗
+                          </button>
+                        </div>
+                      )}
+                      {t.note && (
+                        <details className="answer-note">
+                          <summary>Yanıt hakkında</summary>
+                          <p>{t.note}</p>
+                        </details>
+                      )}
+                    </div>
+                  </article>
+                );
+              })}
+              {busy && (
+                <p role="status" className="assistant-thinking">
+                  Kaynaklar inceleniyor…
+                </p>
+              )}
+            </div>
+          </section>
+        )}
+        {assistantOpen && (
+          <div
+            className="col-resizer"
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Anlatım ve kaynak genişliğini ayarla"
+            tabIndex={0}
+            title="Sürükle · çift tıkla sıfırla"
+            onPointerDown={dragCols}
+            onKeyDown={keyCols}
+            onDoubleClick={resetSizes}
+          />
+        )}
+        <div className="workspace-side" ref={sideRef}>
         <section
           className="material-viewer"
+          data-kind={selected?.kind}
           aria-label="Ortak materyal görüntüleyici"
         >
+          <div className="viewer-top">
           <header>
             <span className="product-eyebrow">
               {selected?.kind || "Çalışma alanı"}
@@ -871,42 +1314,93 @@ export default function LearningWorkspace({ courseId }) {
               ))}
             </div>
           )}
-          {tab === "sayfa" && selected && (() => {
-            const seen = new Set();
-            const marks = turns
-              .flatMap((t) => t.evidence || [])
-              .filter((e) => e.material_id === selected.id && (e.location?.kind === "page" || e.location?.kind === "slide"))
-              .filter((e) => { const k = locationLabel(e.location); if (seen.has(k)) return false; seen.add(k); return true; });
-            if (!marks.length) return null;
-            return (
-              <nav className="bookmark-rail" aria-label="Cevaplarda kullanılan sayfalar">
-                <span className="bookmark-label">ŞERİTLER</span>
-                {marks.map((e, i) => (
-                  <button key={e.id} type="button" className="bookmark" data-i={i % 4} onClick={() => openEvidence(e)}>
-                    {locationLabel(e.location)}
+          {selected && (
+            <details className="viewer-more">
+            <summary aria-label="Diğer işlemler" title="Diğer işlemler">⋮</summary>
+            <footer className="viewer-actions">
+              {selected.can_manage && (
+                <button
+                  className="product-link"
+                  onClick={() => setRenaming(selected)}
+                >
+                  Yeniden adlandır
+                </button>
+              )}
+              {selected.retryable && (
+                <button
+                  className="product-link"
+                  disabled={uploading}
+                  onClick={async () => {
+                    setUploading(true);
+                    try {
+                      if (selected.kind === "PDF")
+                        await api.retry(selected.source_id);
+                      else await api.retryVideo(courseId, selected.source_id);
+                      await refresh();
+                    } catch (e) {
+                      setError(videoErrorText(e));
+                    } finally {
+                      setUploading(false);
+                    }
+                  }}
+                >
+                  İşlemeyi yeniden dene
+                </button>
+              )}
+              {["PPTX", "TXT", "PDF"].includes(selected.kind) && (
+                <button
+                  className="product-link"
+                  onClick={async () => {
+                    try {
+                      const blob =
+                        selected.kind === "PDF"
+                          ? await api.file(selected.source_id)
+                          : await api.knowledgeFile(courseId, selected.id);
+                      const u = URL.createObjectURL(blob),
+                        a = document.createElement("a");
+                      a.href = u;
+                      a.download = selected.filename || selected.title;
+                      a.click();
+                      setTimeout(() => URL.revokeObjectURL(u), 60000);
+                    } catch (e) {
+                      setError(videoErrorText(e));
+                    }
+                  }}
+                >
+                  Özgün dosyayı indir
+                </button>
+              )}
+              {selected.can_manage !== false &&
+                (confirmDelete ? (
+                  <>
+                    <p>
+                      Materyal, kaynakları ve bunlara bağlı yanıt içerikleri
+                      kalıcı olarak kaldırılsın mı?
+                    </p>
+                    <button
+                      disabled={uploading}
+                      className="product-link"
+                      onClick={remove}
+                    >
+                      Kalıcı olarak kaldır
+                    </button>
+                    <button onClick={() => setConfirmDelete(false)}>
+                      Vazgeç
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    className="product-link"
+                    onClick={() => setConfirmDelete(true)}
+                  >
+                    Materyali kaldır
                   </button>
                 ))}
-              </nav>
-            );
-          })()}
-          {boardTurn && (
-            <section className="workspace-board" aria-label="Tahtada anlatım">
-              <div className="workspace-board-head">
-                <div>
-                  <span className="product-eyebrow">Tahtada anlatım</span>
-                  <p>{boardTurn.question || "Önceki soru"}</p>
-                </div>
-                <button className="product-link" onClick={() => setBoardTurn(null)}>
-                  Tahtayı kapat
-                </button>
-              </div>
-              <StepBoard
-                steps={boardTurn.steps}
-                evidence={boardTurn.evidence || []}
-                onSource={openBoardSource}
-              />
-            </section>
+            </footer>
+            </details>
           )}
+          </div>
+          <div className="viewer-body">
           <div ref={viewerTop} />
           {!selected && (
             <WorkspaceStart
@@ -927,6 +1421,24 @@ export default function LearningWorkspace({ courseId }) {
                 segments={segments}
                 onSource={chooseSegment}
                 onViewportChange={viewportChanged}
+                marks={tab === "sayfa" && selected && (() => {
+                            const seen = new Set();
+                            const marks = turns
+                              .flatMap((t) => t.evidence || [])
+                              .filter((e) => e.material_id === selected.id && (e.location?.kind === "page" || e.location?.kind === "slide"))
+                              .filter((e) => { const k = locationLabel(e.location); if (seen.has(k)) return false; seen.add(k); return true; });
+                            if (!marks.length) return null;
+                            return (
+                              <nav className="bookmark-rail" aria-label="Cevaplarda kullanılan sayfalar">
+                                <span className="bookmark-label">ŞERİTLER</span>
+                                {marks.map((e, i) => (
+                                  <button key={e.id} type="button" className="bookmark" data-i={i % 4} onClick={() => openEvidence(e)}>
+                                    {locationLabel(e.location)}
+                                  </button>
+                                ))}
+                              </nav>
+                            );
+                          })()}
               />
             )}
           {tab === "sayfa" && videoId && selected?.status === "READY" && (
@@ -1084,111 +1596,25 @@ export default function LearningWorkspace({ courseId }) {
               </div>
             </details>
           )}
-          {selected && (
-            <details className="viewer-more">
-            <summary aria-label="Diğer işlemler">⋯ İşlemler</summary>
-            <footer className="viewer-actions">
-              {selected.can_manage && (
-                <button
-                  className="product-link"
-                  onClick={() => setRenaming(selected)}
-                >
-                  Yeniden adlandır
-                </button>
-              )}
-              {selected.retryable && (
-                <button
-                  className="product-link"
-                  disabled={uploading}
-                  onClick={async () => {
-                    setUploading(true);
-                    try {
-                      if (selected.kind === "PDF")
-                        await api.retry(selected.source_id);
-                      else await api.retryVideo(courseId, selected.source_id);
-                      await refresh();
-                    } catch (e) {
-                      setError(videoErrorText(e));
-                    } finally {
-                      setUploading(false);
-                    }
-                  }}
-                >
-                  İşlemeyi yeniden dene
-                </button>
-              )}
-              {["PPTX", "TXT", "PDF"].includes(selected.kind) && (
-                <button
-                  className="product-link"
-                  onClick={async () => {
-                    try {
-                      const blob =
-                        selected.kind === "PDF"
-                          ? await api.file(selected.source_id)
-                          : await api.knowledgeFile(courseId, selected.id);
-                      const u = URL.createObjectURL(blob),
-                        a = document.createElement("a");
-                      a.href = u;
-                      a.download = selected.filename || selected.title;
-                      a.click();
-                      setTimeout(() => URL.revokeObjectURL(u), 60000);
-                    } catch (e) {
-                      setError(videoErrorText(e));
-                    }
-                  }}
-                >
-                  Özgün dosyayı indir
-                </button>
-              )}
-              {selected.can_manage !== false &&
-                (confirmDelete ? (
-                  <>
-                    <p>
-                      Materyal, kaynakları ve bunlara bağlı yanıt içerikleri
-                      kalıcı olarak kaldırılsın mı?
-                    </p>
-                    <button
-                      disabled={uploading}
-                      className="product-link"
-                      onClick={remove}
-                    >
-                      Kalıcı olarak kaldır
-                    </button>
-                    <button onClick={() => setConfirmDelete(false)}>
-                      Vazgeç
-                    </button>
-                  </>
-                ) : (
-                  <button
-                    className="product-link"
-                    onClick={() => setConfirmDelete(true)}
-                  >
-                    Materyali kaldır
-                  </button>
-                ))}
-            </footer>
-            </details>
-          )}
+          </div>
         </section>
-        {assistantOpen && (
-          <section
-            className="learning-assistant"
-            aria-label="Ortak öğrenme asistanı"
-          >
-            <header>
-              <div>
-                <span className="product-eyebrow">K-NOT öğretici asistan</span>
-                <h2>Birlikte anlayalım.</h2>
-              </div>
-              <button
-                className="product-link"
-                onClick={newChat}
-                disabled={busy || chatLoading}
-              >
-                + Yeni konuşma
-              </button>
-            </header>
-            <label className="chat-history-label">
+          {assistantOpen && (
+            <div
+              className="row-resizer"
+              role="separator"
+              aria-orientation="horizontal"
+              aria-label="Kaynak ve soru alanı yüksekliğini ayarla"
+              tabIndex={0}
+              title="Sürükle · çift tıkla sıfırla"
+              onPointerDown={dragAsk}
+              onKeyDown={keyAsk}
+              onDoubleClick={resetSizes}
+            />
+          )}
+          {assistantOpen && (
+            <section className="ask-panel" ref={askRef} style={askH ? { height: askH } : undefined} aria-label="Soru sor ve konuşma geçmişi">
+              <div className="ask-head">
+                <label className="chat-history-label">
               Konuşma geçmişi
               <select
                 aria-label="Konuşma geçmişi"
@@ -1205,219 +1631,11 @@ export default function LearningWorkspace({ courseId }) {
                   </option>
                 ))}
               </select>
-            </label>
-            <div
-              className="chat-messages scroll-quiet"
-              ref={chatScroll}
-              aria-live="polite"
-            >
-              {chatLoading && <p role="status">Konuşma açılıyor…</p>}
-              {!turns.length && !chatLoading && (
-                <div className="assistant-welcome">
-                  <span className="assistant-symbol" aria-hidden>
-                    ✳
-                  </span>
-                  <h3>Okurken aklına takılanı sor.</h3>
-                  <p>
-                    Seçili materyali, sayfayı veya video anını soruna
-                    bağlayabilirim. Yanıtın kaynağına tek tıkla dönebilirsin.
-                  </p>
-                  <div>
-                    {[
-                      "Bu bölümü adım adım açıkla",
-                      "Bir örnek göster",
-                      "Kaynakları karşılaştır",
-                    ].map((q) => (
-                      <button key={q} onClick={() => setQuestion(q)}>
-                        {q} ↗
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-              {turns.map((t, i) => {
-                const evidence = t.evidence || [],
-                  used = t.retrieval?.used_source_ids || [],
-                  primary = evidence.filter((e) => used.includes(e.id)),
-                  shown = (primary.length ? primary : evidence).slice(0, 2),
-                  rest = evidence.filter(
-                    (e) => !shown.some((s) => s.id === e.id),
-                  );
-                return (
-                  <article
-                    key={i}
-                    className="chat-turn"
-                    aria-label={`Ders yanıtı ${i + 1}`}
-                  >
-                    <div className="user-message">
-                      <span>Sen</span>
-                      <p>{t.question || "Önceki soru"}</p>
-                    </div>
-                    <div className="assistant-message" data-tone={stampFor(t)?.tone || "none"}>
-                      <div className="message-head">
-                      <span className="message-author">✳ K-NOT</span>
-                      {stampFor(t) && (
-                        <span className="catalog-stamp" data-tone={stampFor(t).tone}>{stampFor(t).text}</span>
-                      )}
-                      </div>
-                      {modeLabel(t.response_mode) && (
-                        <span className="answer-mode" data-mode={t.response_mode}>
-                          {modeLabel(t.response_mode)}
-                        </span>
-                      )}
-                      <div className="message-tools">
-                        <Voice key={`voice-${i}`} text={t.answer || ""} autoPlay={t === freshAnswer && !(boardSpeaks && hasSteps(t))} />
-                        {hasSteps(t) && (
-                          <button
-                            className="product-link"
-                            aria-pressed={boardTurn === t}
-                            onClick={() => setBoardTurn(t)}
-                          >
-                            Tahtada anlat
-                          </button>
-                        )}
-                        <button
-                          className="product-link"
-                          onClick={() =>
-                            navigator.clipboard
-                              .writeText(t.answer || "")
-                              .catch(() => setError("Yanıt kopyalanamadı."))
-                          }
-                        >
-                          Kopyala
-                        </button>
-                      </div>
-                      {isExcerpt(t) ? (
-                        <QuoteBlock
-                          text={t.answer}
-                          label={"KAYNAKTAN ALINTI" + ((primary[0] || evidence[0]) ? " · " + locationLabel((primary[0] || evidence[0]).location) : "")}
-                        />
-                      ) : (
-                        <RichText className="answer-text" text={t.answer} />
-                      )}
-                      <ClaimSupport claims={t.claims} />
-                      {t.visual_analysis?.status === "IMAGE_PROVIDED" && (
-                        <p className="product-note">
-                          Özgün kaynak görüntüsü yerel modele gönderildi ·
-                          Görsel yorum doğrulanmadı
-                          {t.visual_analysis.region ? " · Seçili bölge" : ""}
-                        </p>
-                      )}
-                      <p className="answer-status">{statusLabel(t)}</p>
-                      {t.generation_detail && (
-                        <p className="answer-status-detail">
-                          Ayrıntı: <code>{t.generation_detail}</code>
-                        </p>
-                      )}
-                      {(t.video_learning || []).map((l) => {
-                        const e = evidence.find((e) => e.id === l.source_id);
-                        return (
-                          <p key={l.source_id} className="viewer-note">
-                            {e ? locationLabel(e.location) + " · " : ""}
-                            {watchLabel[l.state]}
-                          </p>
-                        );
-                      })}
-                      {t.status === "GUIDANCE" && (
-                        <Btn disabled={busy} onClick={() => ask(null, t)}>
-                          Şimdi açıkla
-                        </Btn>
-                      )}
-                      {(t.conflicts || []).map((c, n) => (
-                        <p key={n} className="product-note">
-                          Olası kaynak uyuşmazlığı · kesinleştirilmedi.{" "}
-                          {c.message}
-                        </p>
-                      ))}
-                      {evidence.length > 0 && (
-                        <div
-                          className="answer-sources"
-                          aria-label="Ortak yanıt kaynakları"
-                        >
-                          <p className="product-eyebrow">
-                            {primary.length
-                              ? "Yanıtta kullanılan kaynaklar"
-                              : "Bulunan kaynaklar"}
-                          </p>
-                          {shown.map(sourceButton)}
-                          {rest.length > 0 && (
-                            <details>
-                              <summary>{rest.length} diğer kaynak</summary>
-                              {rest.map(sourceButton)}
-                            </details>
-                          )}
-                          {t.retrieval && (
-                            <details className="retrieval-detail">
-                              <summary>Arama kapsamı</summary>
-                              <p>
-                                {t.retrieval.searched.length} hazır materyalde
-                                arandı · {evidence.length} kaynak bulundu ·{" "}
-                                {used.length} kaynak modelin doğrulanabilen
-                                atıflarında kullanıldı.
-                              </p>
-                              {t.retrieval.searched.map((m) => (
-                                <p key={m.id}>
-                                  {m.kind} · {m.title}
-                                </p>
-                              ))}
-                            </details>
-                          )}
-                        </div>
-                      )}
-                      {evidence.length > 0 && (
-                        <div className="followup-actions">
-                          <button
-                            disabled={busy}
-                            onClick={() => ask(null, t, "detailed")}
-                          >
-                            Ayrıntılı açıkla
-                          </button>
-                          <button
-                            disabled={busy}
-                            onClick={() => ask(null, t, "short")}
-                          >
-                            Kısaca açıkla
-                          </button>
-                          <button
-                            disabled={busy}
-                            onClick={() => ask(null, t, "example")}
-                          >
-                            Örnek göster
-                          </button>
-                          <button
-                            disabled={busy}
-                            onClick={() => ask(null, t, "step_by_step")}
-                          >
-                            Adım adım
-                          </button>
-                          <button
-                            onClick={() =>
-                              navigate(`/dersler/${courseId}/quiz`, {
-                                topic: t.question,
-                                ...(selected ? { materialId: selected.id, materialTitle: selected.title } : {}),
-                              })
-                            }
-                          >
-                            Alıştırma yap ↗
-                          </button>
-                        </div>
-                      )}
-                      {t.note && (
-                        <details className="answer-note">
-                          <summary>Yanıt hakkında</summary>
-                          <p>{t.note}</p>
-                        </details>
-                      )}
-                    </div>
-                  </article>
-                );
-              })}
-              {busy && (
-                <p role="status" className="assistant-thinking">
-                  Kaynaklar inceleniyor…
-                </p>
-              )}
-            </div>
+                </label>
+                <button className="product-link" onClick={newChat} disabled={busy || chatLoading}>
+                  + Yeni konuşma
+                </button>
+              </div>
             <form onSubmit={ask} className="chat-composer">
               {retryRequest && (
                 <button
@@ -1432,28 +1650,47 @@ export default function LearningWorkspace({ courseId }) {
               <label htmlFor="unified-question" className="sr-only">
                 Ders kaynaklarına sorun
               </label>
+              <div className="composer-row">
+                <div className="composer-field">
               <textarea
-                id="unified-question"
-                value={question}
-                maxLength={2000}
-                rows={3}
-                onChange={(e) => setQuestion(e.target.value)}
-                aria-describedby="composer-hint"
-                onKeyDown={(e) => {
-                  if (!isSubmitKey(e)) return;
-                  e.preventDefault();
-                  if (canSend) void ask(e);
-                }}
-                placeholder={
-                  selected
-                    ? `${selected.kind === "VIDEO" ? "Bu anda" : "Bu bölümde"} anlamadığın ne var?`
-                    : "Dersin hakkında bir soru sor…"
-                }
-              />
-              <small id="composer-hint" className="composer-hint">
-                Enter gönderir · Shift+Enter yeni satır
-              </small>
-              <div>
+                  id="unified-question"
+                  value={question}
+                  maxLength={2000}
+                  rows={2}
+                  onChange={(e) => setQuestion(e.target.value)}
+                  aria-describedby="composer-hint"
+                  onKeyDown={(e) => {
+                    if (!isSubmitKey(e)) return;
+                    e.preventDefault();
+                    if (canSend) void ask(e);
+                  }}
+                  placeholder={
+                    selected
+                      ? `${selected.kind === "VIDEO" ? "Bu anda" : "Bu bölümde"} anlamadığın ne var?`
+                      : "Dersin hakkında bir soru sor…"
+                  }
+                />
+                  <button
+                  type="submit"
+                  className="send-arrow"
+                  disabled={!canSend}
+                  aria-label={busy ? "İnceleniyor…" : "Gönder"}
+                  title={busy ? "İnceleniyor…" : "Gönder (Enter)"}
+                >
+                  {busy ? (
+                    <span aria-hidden>…</span>
+                  ) : (
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden>
+                      <path d="M8 13V3M8 3L3.5 7.5M8 3l4.5 4.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  )}
+                </button>
+                </div>
+              </div>
+              <div className="composer-meta">
+                <small id="composer-hint" className="composer-hint">
+                  Enter gönderir · Shift+Enter yeni satır
+                </small>
                 <span>
                   {selected
                     ? "Bağlam: " +
@@ -1468,13 +1705,11 @@ export default function LearningWorkspace({ courseId }) {
                       (viewport?.region ? " · Bölge seçili" : "")
                     : "Dersin hazır kaynakları"}
                 </span>
-                <Btn type="submit" disabled={!canSend}>
-                  {busy ? "İnceleniyor…" : "Gönder ↑"}
-                </Btn>
               </div>
             </form>
-          </section>
-        )}
+            </section>
+          )}
+        </div>
       </div>
       {renaming && (
         <MaterialRename
