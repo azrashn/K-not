@@ -54,7 +54,16 @@ const ollama = llm.configured ? await (async () => {
 })() : null
 
 const deep = process.argv.includes('--deep')
+const videoUrl = getEnv(BACKEND_ENV, 'VIDEO_SERVICE_URL') || 'http://127.0.0.1:7862'
+const videoEngine = await (async () => {
+  try {
+    const u = new URL(videoUrl)
+    const host = u.hostname === 'localhost' ? '127.0.0.1' : u.hostname
+    return { url: videoUrl, reachable: await tcpReachable(host, Number(u.port) || (u.protocol === 'https:' ? 443 : 80), 1500) }
+  } catch { return { url: videoUrl, reachable: false } }
+})()
 const facts = {
+  videoEngine,
   localVoice: localVoiceState(path.join(ROOT, 'ai-service'), {
     voicesDir: resolveVoicesDir(path.join(ROOT, 'ai-service'), getEnv(AI_ENV, 'TTS_VOICES_DIR')),
     voice: getEnv(AI_ENV, 'TTS_VOICE_TR'),

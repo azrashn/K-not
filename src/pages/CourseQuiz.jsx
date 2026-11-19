@@ -160,14 +160,6 @@ export default function CourseQuiz({ courseId }) {
         tone="lilac"
         actions={
           <>
-            {course && (
-              <button
-                className="product-link"
-                onClick={() => navigate(`/dersler/${course}/sinavlar`)}
-              >
-                Sınav hazırla →
-              </button>
-            )}
             <button
               className="product-link"
               onClick={() => navigate("/analitik")}
@@ -367,15 +359,7 @@ export default function CourseQuiz({ courseId }) {
                   ))}
                 </select>
               </label>
-              {course && (
-                <button
-                  type="button"
-                  className="product-link"
-                  onClick={() => navigate(`/dersler/${course}/sinavlar`)}
-                >
-                  Geçmiş sınav ekle / yeni sınav hazırla →
-                </button>
-              )}
+              <p className="product-note">Geçmiş sınav eklemek ve yeni sınav hazırlamak için soldaki <strong>Sınav</strong> menüsünü kullan.</p>
             </details>
             <p className="product-note">
               Sorular seçtiğin ders kaynaklarından hazırlanır. Yanıtından sonra

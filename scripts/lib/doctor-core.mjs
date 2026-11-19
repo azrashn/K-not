@@ -166,6 +166,9 @@ export function diagnose(f) {
     else out.push(level('ok', `Yerel model hazır: ${f.llm.model}`))
   } else out.push(level('warn', 'Yerel model ayarlı değil (UNIFIED_LLM_BASE_URL / UNIFIED_LLM_MODEL)', 'ai-service/.env içine ekleyin; özet ve sınav üretimi için gerekli.'))
 
+  if (f.videoEngine && !f.videoEngine.reachable)
+    out.push(level('warn', `Video motoru (MomentSearch) kapalı: ${f.videoEngine.url} yanıt vermiyor; video yükleme ve bağlantıdan video ekleme çalışmaz`, 'MomentSearch ayrı bir projedir: kendi klasöründe Start-MomentSearch.ps1 ile başlatın (docs/video-integration.md). Belge, quiz ve sınavlar bundan etkilenmez.'))
+  if (f.videoEngine?.reachable) out.push(level('ok', `Video motoru (MomentSearch) açık: ${f.videoEngine.url}`))
   if (f.localVoice && !f.localVoice.installed)
     out.push(level('warn', 'Yerel doğal ses kurulu değil: seslendirme tarayıcının (robotik) sesini kullanır', 'npm run tts:install   (tek seferlik, ~130 MB: Piper, Türkçe ve İngilizce ses, gizli anahtarlar; sonra servisleri yeniden başlatın)'))
   if (f.localVoice?.installed) out.push(level('ok', 'Yerel doğal ses kurulu (çevrimdışı)'))

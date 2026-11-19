@@ -160,6 +160,7 @@ test('an answer with steps is explained on the board; a step source seeks the vi
   fireEvent.click(screen.getByRole('button', { name: 'Sor', exact: true }))
   const board = await screen.findByRole('region', { name: 'Tahtada anlatım' })
   expect(screen.getByText('Kaynaklı açıklama [1]')).toBeInTheDocument()
+  await waitFor(() => expect(board.querySelector('.board-sources .board-chip')).not.toBeNull())
   fireEvent.click(board.querySelector('.board-sources .board-chip'))
   expect(screen.getByLabelText('Ders videosu').currentTime).toBe(20)
 })

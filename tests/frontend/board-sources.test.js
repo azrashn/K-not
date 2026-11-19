@@ -70,3 +70,13 @@ test('preferences survive bad storage', () => {
   savePrefs({ fast: true, audio: false, teacher: false }, store)
   expect(loadPrefs(false, store)).toEqual({ fast: true, audio: false, teacher: false })
 })
+
+describe('speak', () => {
+  test('asks the server for the audio of a step and returns its signed url', async () => {
+    const { speak } = await import('../../src/api/tts')
+    const client = await import('../../src/api/client')
+    const spy = vi.spyOn(client, 'request').mockResolvedValue({ url: '/api/tts/audio/k.wav?exp=1&sig=s' })
+    await expect(speak('Merhaba', 'tr')).resolves.toBe('/api/tts/audio/k.wav?exp=1&sig=s')
+    expect(spy).toHaveBeenCalledWith('POST', '/tts', expect.objectContaining({ body: { text: 'Merhaba', lang: 'tr' } }))
+  })
+})

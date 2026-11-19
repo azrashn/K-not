@@ -72,11 +72,12 @@ async function main() {
       check([200, 201].includes(up.status), `material upload → ${up.status} ${JSON.stringify(up.body)}`)
     })
 
-    await step('the practice page offers the exam builder', async () => {
-      await page.goto(`${web}/#/dersler/${courseId}/quiz`)
-      await page.getByRole('button', { name: 'Sınav hazırla →' }).click()
-      await page.getByRole('heading', { name: 'Sınavlar' }).waitFor()
-      check(page.url().endsWith(`/dersler/${courseId}/sinavlar`), `unexpected url ${page.url()}`)
+    await step('exams have their own menu entry, separate from Quiz', async () => {
+      await page.goto(`${web}/#/quiz`)
+      check(!(await page.getByRole('button', { name: 'Sınav hazırla →' }).count()), 'the quiz page must not hold the exam builder any more')
+      await page.getByRole('button', { name: 'Sınav', exact: true }).first().click()
+      await page.getByRole('heading', { name: 'Sınavlar' }).first().waitFor()
+      await page.waitForURL((u) => u.hash === `#/dersler/${courseId}/sinavlar`, { timeout: 10000 })
     })
 
     await step('a past exam (DOCX) becomes a saved style', async () => {
@@ -187,6 +188,7 @@ async function main() {
     await step('material summary shows verified quotes from the source', async () => {
       await page.goto(`${web}/#/dersler/${courseId}/ogrenme`)
       await page.getByRole('button', { name: /graf-notlari/ }).first().click()
+      await page.getByRole('tab', { name: 'Özet' }).click() // the workspace keeps the summary behind its own tab
       await page.getByRole('region', { name: 'Kaynaklı özet' }).waitFor()
       await page.getByRole('button', { name: 'Özet hazırla' }).click()
       await page.getByText(/Özet maddesi 1/).waitFor({ timeout: 30_000 })
@@ -196,6 +198,7 @@ async function main() {
     })
 
     await step('search inside the open material finds the section, highlights the match and opens it', async () => {
+      await page.getByRole('tab', { name: /^Bölümler/ }).click() // search lives in the sections tab
       await page.getByLabel('Belge içinde ara', { exact: true }).fill('KUYRUK')
       await page.getByRole('button', { name: 'Ara', exact: true }).click()
       await page.getByText(/bölümde bulundu/).waitFor()
@@ -211,6 +214,7 @@ async function main() {
     await step('upload hints show the limits the server enforces', async () => {
       const limits = await apiJson('/limits')
       check(limits.status === 200 && limits.body.study_file_bytes === 20 * 1024 * 1024, `limits: ${JSON.stringify(limits.body)}`)
+      await page.getByText('+ Ekle', { exact: true }).click() // the upload area sits in a collapsible "+ Ekle"
       await page.getByText('PPTX ve TXT: 20 MB').waitFor()
     })
 
@@ -233,7 +237,7 @@ async function main() {
     const screens = [
       ['courses list', async () => { await page.goto(`${web}/#/dersler`); await page.getByText('Veri Yapıları', { exact: true }).first().waitFor() }],
       ['study screen, nothing open', async () => { await page.goto(`${web}/#/dersler/${courseId}/ogrenme`); await page.getByText('Buradan başla').waitFor() }],
-      ['study screen with a material', async () => { await page.getByRole('button', { name: 'Birlikte öğren' }).click(); await page.getByRole('region', { name: 'Kaynaklı özet' }).waitFor() }],
+      ['study screen with a material', async () => { await page.getByRole('button', { name: 'Birlikte öğren' }).click(); await page.getByRole('tab', { name: 'Özet' }).click(); await page.getByRole('region', { name: 'Kaynaklı özet' }).waitFor() }],
       ['practice page', async () => { await page.goto(`${web}/#/dersler/${courseId}/quiz`); await page.getByLabel('Konu', { exact: true }).waitFor() }],
       ['exam builder with an exam', async () => { await page.goto(`${web}/#/dersler/${courseId}/sinavlar`); await page.getByRole('button', { name: /yeni sınav/ }).first().click(); await page.locator('.exam-sheet').waitFor() }],
     ]

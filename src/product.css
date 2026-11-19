@@ -1107,7 +1107,7 @@
   display: block;
   margin-top: 6px;
   font-size: 10px;
-  color: var(--color-ink-3);
+  color: var(--color-ink-2);
 }
 .chat-composer > div {
   display: flex;
@@ -1118,7 +1118,7 @@
 }
 .chat-composer > div > span {
   font-size: 9px;
-  color: var(--color-ink-3);
+  color: var(--color-ink-2);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2098,9 +2098,9 @@
 .product-title[data-tone='pink'] { --page: var(--tone-pink); }
 .product-title[data-tone='sun'] { --page: var(--tone-sun); }
 .workspace-heading { --page: var(--tone-blue); }
-.title-note { color: var(--page); }
+.title-note { color: color-mix(in srgb, var(--page) 62%, var(--color-ink)); } /* ton yazı olarak okunur kalsın (AA) */
 .product-title h1, .workspace-heading h1 { background-image: linear-gradient(transparent 60%, color-mix(in srgb, var(--page) 42%, transparent) 60%); }
-.product-eyebrow { color: var(--page, var(--color-ink-3)); }
+.product-eyebrow { color: color-mix(in srgb, var(--page, var(--color-ink-3)) 62%, var(--color-ink)); }
 
 /* Özet rakamları: her biri kendi rengiyle */
 .product-metric:nth-child(1) > strong { color: var(--tone-coral); }
@@ -2132,9 +2132,10 @@
 .nav-tab[data-tone='courses'] { --tab: var(--tone-blue); }
 .nav-tab[data-tone='quiz'] { --tab: var(--tone-lilac); }
 .nav-tab[data-tone='analytics'] { --tab: var(--tone-green); }
+.nav-tab[data-tone='exams'] { --tab: var(--tone-pink); }
 .nav-tab:hover { margin-right: -16px; }
-.nav-tab[aria-current='page'] { margin-right: -20px; background: var(--tab) !important; color: var(--color-white) !important; }
-:root[data-theme='dark'] .nav-tab[aria-current='page'] { color: #1e1b18 !important; }
+.nav-tab[aria-current='page'] { margin-right: -20px; background: color-mix(in srgb, var(--tab) 72%, #000) !important; color: var(--color-white) !important; } /* koyulaştırılmış ton: 10,5 px yazı AA kontrastı (4,5:1) */
+:root[data-theme='dark'] .nav-tab[aria-current='page'] { background: var(--tab) !important; color: #1e1b18 !important; }
 nav[aria-label='Ana gezinme'] { z-index: 2; }
 @media (prefers-reduced-motion: reduce) { .nav-tab { transition: none; } }
 
@@ -2341,4 +2342,36 @@ nav[aria-label='Ana gezinme'] { z-index: 2; }
   .course-card, .material-choice > .material-item { transition: transform 150ms var(--ease-out), border-color 150ms ease, box-shadow 150ms ease; }
   .course-card:hover, .material-choice > .material-item:hover { transform: translateY(-2px); box-shadow: 0 3px 0 color-mix(in srgb, var(--color-ink) 10%, transparent); }
   .theme-fade, .theme-fade *, .theme-fade *::before, .theme-fade *::after { transition: background-color 250ms ease, color 250ms ease, border-color 250ms ease, fill 250ms ease, stroke 250ms ease !important; }
+}
+
+/* "Sınav" menüsü: ders seçimi */
+.exam-course-list ul {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.exam-course {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  width: 100%;
+  padding: 14px 16px;
+  text-align: left;
+  background: var(--color-sheet);
+  border: 1px solid var(--color-hair);
+  border-radius: 8px;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+.exam-course:hover,
+.exam-course:focus-visible {
+  border-color: var(--color-accent);
+  background: var(--color-paper);
+}
+.exam-course strong {
+  font-size: 15px;
+  letter-spacing: -0.03em;
 }

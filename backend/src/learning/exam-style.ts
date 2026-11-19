@@ -21,6 +21,11 @@ const STOP = new Set([
   "hesaplayınız", "hesaplayın", "açıklayınız", "açıklayın", "şıklardan", "şıklar", "doğru", "yanlış",
   "olan", "olanı", "için", "ile", "gibi", "daha", "içinde", "bunların", "değildir", "karşılık",
   "following", "which", "calculate", "explain", "answer", "question", "true", "false",
+  // Exam boilerplate: header lines and scoring, never a subject.
+  "puan", "puanı", "puanlık", "soru", "sorular", "sorusu", "soruları", "cevap", "cevaplayınız", "cevabı",
+  "adı", "soyadı", "soyad", "tarih", "numara", "numarası", "öğrenci", "sınav", "sınavı", "süre", "dakika",
+  "points", "point", "marks", "name", "date", "student", "exam", "midterm", "final", "total", "score",
+  "page", "please", "write", "each", "both", "part", "show", "your", "work", "minutes",
 ]);
 
 function parseQuestions(text: string): { stem: string; options: number; body: string }[] {

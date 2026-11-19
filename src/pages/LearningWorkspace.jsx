@@ -1,4 +1,5 @@
 import Voice from "../components/Voice";
+import { loadLocalVoice } from "../lib/local-voice";
 import { isSubmitKey } from "../lib/composer-keys";
 import { modeLabel, statusLabel, stampFor, isExcerpt } from "../lib/answer-labels";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -83,6 +84,17 @@ export default function LearningWorkspace({ courseId }) {
   const [retryRequest, setRetryRequest] = useState(null);
   // Tahtada anlatılan cevap (steps taşıyorsa); yoksa çalışma alanı eskisi gibi.
   const [boardTurn, setBoardTurn] = useState(null);
+  // Yerel ses kuruluysa tahtadaki hoca anlatır; o yanıt sohbette ayrıca otomatik okunmaz (iki ses üst üste binmez).
+  const [boardSpeaks, setBoardSpeaks] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    loadLocalVoice().then((s) => {
+      if (alive) setBoardSpeaks(s.available);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
   const viewerTop = useRef(null);
   const [viewport, setViewport] = useState(null),
     [scopeMode, setScopeMode] = useState("course"),
@@ -1254,7 +1266,7 @@ export default function LearningWorkspace({ courseId }) {
                         </span>
                       )}
                       <div className="message-tools">
-                        <Voice key={`voice-${i}`} text={t.answer || ""} autoPlay={t === freshAnswer} />
+                        <Voice key={`voice-${i}`} text={t.answer || ""} autoPlay={t === freshAnswer && !(boardSpeaks && hasSteps(t))} />
                         {hasSteps(t) && (
                           <button
                             className="product-link"

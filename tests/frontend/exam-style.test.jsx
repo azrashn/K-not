@@ -47,11 +47,10 @@ test('without a chosen style the request carries none', async () => {
   expect(api.createQuiz.mock.calls[0][1]).not.toHaveProperty('exam_style_id')
 })
 
-test('exam styles are added on the exams page, which the form links to', async () => {
+test('exams live in their own menu; the practice form only points there', async () => {
   const user = userEvent.setup()
-  nav.mockClear()
   render(<CourseQuiz courseId="c" />)
   await user.click(await screen.findByText('Gelişmiş ayarlar'))
-  await user.click(screen.getByRole('button', { name: /Geçmiş sınav ekle/ }))
-  expect(nav).toHaveBeenCalledWith('/dersler/c/sinavlar')
+  expect(screen.queryByRole('button', { name: /Geçmiş sınav ekle|Sınav hazırla/ })).not.toBeInTheDocument()
+  expect(screen.getByText(/soldaki/)).toHaveTextContent('Sınav menüsünü kullan')
 })

@@ -1,11 +1,11 @@
 // Adım sesi: POST /api/tts { text, lang: 'tr' | 'en' } → { url }. Aynı metin sunucunun önbelleğinden döner.
-// Uç henüz yok: TTS_ENABLED false iken ses istenmez, tahta sessiz modda okuma süresiyle akar.
+// TTS_ENABLED yalnızca varsayılandır: StepBoard sunucudaki sesin kurulu olduğunu /api/tts/status ile öğrenir
+// ve sesi o zaman açar (kurulu değilse tahta sessiz modda okuma süresiyle akar).
 import { request } from './client'
 
 export const TTS_ENABLED = false
 
 export async function speak(text, lang = 'tr', signal) {
-  if (!TTS_ENABLED) return null
   const result = await request('POST', '/tts', { body: { text, lang }, signal })
   return result?.url || null
 }

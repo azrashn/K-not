@@ -8,7 +8,7 @@ test('#/tahta-deneme opens without login in development and plays the sample', a
   render(<App />)
   expect(await screen.findByRole('heading', { name: BOARD_SAMPLE.question })).toBeInTheDocument()
   expect(screen.queryByLabelText(/şifre|parola/i)).not.toBeInTheDocument()
-  expect(screen.getByText('Sessiz mod')).toBeInTheDocument()
+  expect(await screen.findByText('Sessiz mod')).toBeInTheDocument() // no local voice in tests: silent mode
 
   const list = screen.getByRole('region', { name: 'Adımların kaynakları' })
   fireEvent.click(list.querySelector('.board-chip'))

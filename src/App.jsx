@@ -15,6 +15,7 @@ const CourseDetail = lazy(() => import('./pages/CourseDetail'))
 const Workspace = lazy(() => import('./pages/Workspace'))
 const Quiz = lazy(() => import('./pages/CourseQuiz'))
 const CourseExams = lazy(() => import('./pages/CourseExams'))
+const ExamsHome = lazy(() => import('./pages/ExamsHome'))
 const Analytics = lazy(() => import('./pages/LearningAnalytics'))
 const Videos = lazy(() => import('./pages/Videos'))
 const LearningWorkspace = lazy(() => import('./pages/LearningWorkspace'))
@@ -33,7 +34,7 @@ function Page({ route }) {
     case 'learning': return <LearningWorkspace key={courseId} courseId={courseId} />
     case 'videos': return <Videos courseId={courseId} />
     case 'quiz': return <Quiz courseId={courseId} />
-    case 'exams': return <CourseExams key={courseId} courseId={courseId} />
+    case 'exams': return courseId ? <CourseExams key={courseId} courseId={courseId} /> : <ExamsHome />
     case 'analytics': return <Analytics />
     default: return <Home />
   }
@@ -46,7 +47,7 @@ function Shell() {
   const onNav = (id) => { setMenuOpen(false); navigate(pathFor(id)) }
   const pageKey = `${route.view}:${route.courseId || ''}`
   useEffect(() => {
-    const names = { home: 'Ana Sayfa', list: 'Dersler', course: 'Ders', workspace: 'Çalışma alanı', quiz: 'Quiz', analytics: 'Öğrenme Analizi' }
+    const names = { home: 'Ana Sayfa', list: 'Dersler', course: 'Ders', workspace: 'Çalışma alanı', quiz: 'Quiz', exams: 'Sınav', analytics: 'Öğrenme Analizi' }
     document.title = `${route.view === 'videos' ? 'Ders videoları' : names[route.view] || 'K-not'} — K-not`
   }, [route.view])
 

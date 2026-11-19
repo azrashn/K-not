@@ -65,6 +65,8 @@ test("workspace scenario: open a material, request a summary, and jump to its ci
   api.materialSummary.mockResolvedValue(summary);
   render(<LearningWorkspace courseId="course" />);
   await user.click(await screen.findByRole("button", { name: /Veri yapıları/ }));
+  // The workspace keeps the summary behind its own "Özet" tab.
+  await user.click(await screen.findByRole("tab", { name: "Özet" }));
   const panel = await screen.findByRole("region", { name: "Kaynaklı özet" });
   await user.click(within(panel).getByRole("button", { name: "Özet hazırla" }));
   await within(panel).findByText("Kuyruk FIFO çalışır.");
