@@ -1105,6 +1105,45 @@ test("find searches the text of one material, keeps locations, and is scoped to 
   await h.http().get(find("evaporation")).set(await h.as("mehmet")).expect(404);
   await h.http().get(find("evaporation")).expect(401);
 });
+describe("links: page <-> video moments", () => {
+  const link = {
+    material_id: "video_x", title: "Ders", kind: "VIDEO",
+    location: { kind: "video", start_ms: 1000, end_ms: 9000 }, shared_terms: ["TCP"], preview: "x", estimated: true,
+  };
+  const readyPdf = async () => {
+    const pdf = await h.uploadOk("ayse", h.world.courses.vy, { name: "net.pdf" });
+    await h.makeReady(pdf.id, ["TCP kurulumu"]);
+    return "pdf_" + pdf.id;
+  };
+  const url = (id: string, qs: string) => `${route()}/materials/${id}/links${qs}`;
+  beforeEach(() => {
+    h.ai.on("POST", "/api/v1/knowledge/links", () => ({ status: 200, body: { links: [link, link, link, link] } }));
+  });
+  test("returns at most three estimated links and caches the repeat call", async () => {
+    const id = await readyPdf();
+    const first = await h.http().get(url(id, "?page=1")).set(await h.as("ayse")).expect(200);
+    expect(first.body.links).toHaveLength(3);
+    expect(first.body.links[0].estimated).toBe(true);
+    const sent = h.ai.calls("POST", "/api/v1/knowledge/links");
+    expect(sent[0].body).toMatchObject({ material_id: id, page: 1, course_id: h.world.courses.vy });
+    await h.http().get(url(id, "?page=1")).set(await h.as("ayse")).expect(200);
+    expect(h.ai.calls("POST", "/api/v1/knowledge/links")).toHaveLength(1);
+    await h.http().get(url(id, "?page=2")).set(await h.as("ayse")).expect(200);
+    expect(h.ai.calls("POST", "/api/v1/knowledge/links")).toHaveLength(2);
+  });
+  test("another user's material is 404 and unauthenticated is 401", async () => {
+    const id = await readyPdf();
+    await h.http().get(url(id, "?page=1")).set(await h.as("mehmet")).expect(404);
+    await h.http().get(url(id, "?page=1")).expect(401);
+  });
+  test("invalid page / time_ms, both, none, or the wrong material kind are 422", async () => {
+    const id = await readyPdf();
+    for (const qs of ["", "?page=0", "?page=abc", "?page=1.5", "?page=501", "?time_ms=-1", "?page=1&time_ms=5", "?time_ms=5", "?x=1"])
+      await h.http().get(url(id, qs)).set(await h.as("ayse")).expect(422);
+    await h.http().get(url("file_water-notes", "?page=1")).set(await h.as("ayse")).expect(422);
+    expect(h.ai.calls("POST", "/api/v1/knowledge/links")).toHaveLength(0);
+  });
+});
 test("the upload limits the server enforces are published to signed-in users", async () => {
   const res = await h.http().get("/limits").set(await h.as("ayse")).expect(200);
   expect(res.body).toEqual({

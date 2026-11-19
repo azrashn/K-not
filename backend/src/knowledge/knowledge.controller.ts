@@ -107,6 +107,10 @@ class Practice {
 class FindQuery {
   @IsString() @MinLength(2) @MaxLength(100) @Matches(/\S/) q!: string;
 }
+class LinksQuery {
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(500) page?: number;
+  @IsOptional() @Type(() => Number) @IsInt() @Min(0) @Max(604800000) time_ms?: number;
+}
 class SummaryRequest {
   @IsIn(["summary", "concepts"]) focus!: "summary" | "concepts";
 }
@@ -188,6 +192,14 @@ export class KnowledgeController {
     @Query() q: FindQuery,
   ) {
     return this.knowledge.find(u, c, id, q.q);
+  }
+  @Get("materials/:materialId/links") links(
+    @CurrentUser() u: AuthUser,
+    @Param("courseId") c: string,
+    @Param("materialId") id: string,
+    @Query() q: LinksQuery,
+  ) {
+    return this.knowledge.links(u, c, id, q);
   }
   @Post("materials/:materialId/summary")
   @HttpCode(200)

@@ -14,6 +14,7 @@ import { LearningHistoryService } from "../learning/history.service";
 import { resolveScope, validateViewport, inViewport } from "./context";
 import { pickSpread, verifiedSummaryItems, SummaryFocus } from "./summary";
 import { FIND_MIN, findInSegments } from "./find";
+import { TtlLru, bucketTime } from "./links-cache";
 import { correctionsDigest } from "../videos/transcript-corrections";
 import { STUDY_FILE_MAX_BYTES, mbText } from "../common/limits";
 import { boardSteps } from "../board/steps";
@@ -56,6 +57,7 @@ export class KnowledgeService {
   private readonly receipts = new Map<string, Receipt>();
   private readonly limiter = new RateLimiter(15);
   private readonly synchronizing = new Map<string, Promise<void>>();
+  private readonly linkCache = new TtlLru<{ material_id: string; links: any[] }>(200, 10 * 60_000);
   private readonly practices = new Map<
     string,
     {
@@ -519,6 +521,52 @@ export class KnowledgeService {
       hits,
       segments_searched: preview.segments.length,
     };
+  }
+  /** Pages/slides <-> video moments that look like the same explanation. An estimate from text
+   *  similarity, returned as-is; an empty list is a valid, honest answer. */
+  async links(
+    user: AuthUser,
+    course: string,
+    materialId: string,
+    q: { page?: number; time_ms?: number },
+  ) {
+    if ((q.page === undefined) === (q.time_ms === undefined))
+      throw new ApiError("VALIDATION_ERROR", "page veya time_ms'den yalnızca biri verilmelidir.");
+    const materials = await this.materials(user, course);
+    const m = materials.find((m) => m.id === materialId && m.status === "READY");
+    if (!m) throw notFound("Material");
+    if (q.page !== undefined ? m.kind !== "PDF" && m.kind !== "PPTX" : m.kind !== "VIDEO")
+      throw new ApiError(
+        "VALIDATION_ERROR",
+        q.page !== undefined ? "page yalnızca PDF veya sunum için kullanılır." : "time_ms yalnızca video için kullanılır.",
+      );
+    const ready = materials.filter((x) => x.status === "READY");
+    const at = q.page !== undefined ? q.page : bucketTime(q.time_ms as number);
+    // The key covers who asks (private materials differ per user) and every ready version.
+    const key = [
+      user.id,
+      course,
+      m.id,
+      m.version,
+      q.page !== undefined ? "p" : "t",
+      at,
+      hash(ready.map((x) => x.id + x.version).sort().join()),
+    ].join("|");
+    const cached = this.linkCache.get(key);
+    if (cached) return cached;
+    await this.sync(user, course, ready);
+    const found = await this.call("POST", "/links", {
+      ...this.manifest(course, ready),
+      material_id: m.id,
+      version: m.version,
+      ...(q.page !== undefined ? { page: q.page } : { time_ms: at }),
+    });
+    const result = {
+      material_id: m.id,
+      links: (Array.isArray(found?.links) ? found.links : []).slice(0, 3),
+    };
+    this.linkCache.set(key, result);
+    return result;
   }
   async summarize(
     user: AuthUser,
