@@ -34,6 +34,8 @@ export default function CourseQuiz({ courseId }) {
   const [materials, setMaterials] = useState([]),
     [history, setHistory] = useState([]),
     [historyFilter, setHistoryFilter] = useState("all"),
+    // Questions of generated exams: not practice, shown only under the "Sınavdan" filter.
+    [examHistory, setExamHistory] = useState([]),
     [quiz, setQuiz] = useState(null),
     [answer, setAnswer] = useState(""),
     [result, setResult] = useState(null),
@@ -49,7 +51,8 @@ export default function CourseQuiz({ courseId }) {
     [elapsed, setElapsed] = useState(0);
   const abortRef = useRef(null);
   const summary = summarizeHistory(history);
-  const visibleHistory = filterHistory(history, historyFilter);
+  const visibleHistory = historyFilter === "exam" ? examHistory : filterHistory(history, historyFilter);
+  const hasHistory = history.length > 0 || examHistory.length > 0;
   const consumed = useRef(false), requestEpoch = useRef(0);
   // Topic ideas: what was practised before and what the course materials are called.
   const suggestions = useMemo(() => {
@@ -144,6 +147,13 @@ export default function CourseQuiz({ courseId }) {
       .catch((e) => {
         if (e.name !== "AbortError") setError(videoErrorText(e));
       });
+    // A missing exam list only hides the "Sınavdan" rows; practice still works.
+    api
+      .quizzes(course, abort.signal, "EXAM")
+      .then((h) => {
+        if (!abort.signal.aborted) setExamHistory(Array.isArray(h) ? h : []);
+      })
+      .catch(() => {});
     return () => abort.abort();
   }, [course]);
   useEffect(() => {
@@ -238,6 +248,7 @@ export default function CourseQuiz({ courseId }) {
                   setAnswer("");
                   setMaterials([]);
                   setHistory([]);
+                  setExamHistory([]);
                   setSelectedMaterials([]);
                   setQuiz(null);
                   setQuizSet(null);
@@ -442,7 +453,7 @@ export default function CourseQuiz({ courseId }) {
               {summary.total} soru · {summary.answered} yanıtlandı · {summary.unanswered} yanıt bekliyor
             </p>
           )}
-          {history.length > 0 && (
+          {hasHistory && (
             <div role="group" aria-label="Alıştırma filtresi" className="flex gap-2 flex-wrap mb-3">
               {HISTORY_FILTERS.map((f) => (
                 <button
@@ -457,8 +468,10 @@ export default function CourseQuiz({ courseId }) {
               ))}
             </div>
           )}
-          {history.length > 0 && visibleHistory.length === 0 && (
-            <p className="product-note">Bu filtrede alıştırma yok.</p>
+          {hasHistory && visibleHistory.length === 0 && (
+            <p className="product-note">
+              {historyFilter === "exam" ? "Bu derste hazırlanmış sınav sorusu yok." : "Bu filtrede alıştırma yok."}
+            </p>
           )}
           {visibleHistory.map((q) => (
             <button

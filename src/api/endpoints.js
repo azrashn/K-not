@@ -19,7 +19,8 @@ export const api = {
   activity: (course,body) => request('POST',`/courses/${enc(course)}/activity`,{body}),
   conversations: (course,signal) => request('GET',`/courses/${enc(course)}/knowledge/conversations`,{signal}),
   conversation: (course,id,signal) => request('GET',`/courses/${enc(course)}/knowledge/conversations/${enc(id)}`,{signal}),
-  quizzes: (course,signal) => request('GET',`/courses/${enc(course)}/quizzes`,{signal}),
+  // purpose 'EXAM': the questions of generated exams (practice is the default list).
+  quizzes: (course,signal,purpose) => request('GET',`/courses/${enc(course)}/quizzes${purpose ? `?purpose=${enc(purpose)}` : ''}`,{signal}),
   createQuiz: (course,body,signal) => request('POST',`/courses/${enc(course)}/quizzes`,{body,signal}),
   quizSet: (course,id,signal) => request('GET',`/courses/${enc(course)}/quiz-sets/${enc(id)}`,{signal}),
   examStyles: (course,signal) => request('GET',`/courses/${enc(course)}/exam-styles`,{signal}),

@@ -249,7 +249,7 @@ export class ExamsService implements OnModuleInit {
           cursor++;
           attempts++;
           try {
-            const quiz = await this.learning.start(u, c, { topic, kind, scope, exam_style_id: styleId });
+            const quiz = await this.learning.start(u, c, { topic, kind, scope, exam_style_id: styleId, purpose: "EXAM" });
             items.push({ quiz_id: quiz.id, kind, topic });
             produced = true;
             await save("GENERATING");

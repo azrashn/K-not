@@ -310,6 +310,8 @@ export class LearningService {
         materialId: source.material_id,
         segmentId: source.id,
         version: source.version,
+        // Set only by the legacy exam run (an internal call): the public body has no purpose field.
+        purpose: b.purpose === "EXAM" ? "EXAM" : "PRACTICE",
         data: {
           ...q,
           source,
@@ -450,10 +452,11 @@ export class LearningService {
     if (!removed.count) throw notFound("Exam style");
     return { deleted: true };
   }
-  async quizzes(u: AuthUser, c: string) {
+  /** Quiz history: practice by default; the questions of generated exams only when asked for (EXAM). */
+  async quizzes(u: AuthUser, c: string, purpose: "PRACTICE" | "EXAM" = "PRACTICE") {
     await this.access.requireMember(u, c);
     const rows = await this.prisma.learningQuiz.findMany({
-      where: { userId: u.id, courseId: c, redacted: false },
+      where: { userId: u.id, courseId: c, redacted: false, purpose },
       select: {
         id: true,
         kind: true,

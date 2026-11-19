@@ -67,8 +67,11 @@ test('several questions: the set is followed, its first question opens at once, 
   await user.click(await screen.findByRole('button', { name: 'Sonraki soru →' }))
   expect(await screen.findByText('Sınıf nedir?')).toBeInTheDocument()
   expect(screen.getByText('Soru 2 / 3')).toBeInTheDocument()
-  // first load, after the request (as for one question), when the set is done, after the answer
-  await waitFor(() => expect(api.quizzes).toHaveBeenCalledTimes(4))
+  // The practice list (no purpose): first load, after the request (as for one question), when the set is done,
+  // after the answer. The exam list ("Sınavdan") is read once on load.
+  const practiceCalls = () => api.quizzes.mock.calls.filter((c) => !c[2]).length
+  await waitFor(() => expect(practiceCalls()).toBe(4))
+  expect(api.quizzes.mock.calls.filter((c) => c[2] === 'EXAM')).toHaveLength(1)
 })
 
 test('the transcript warning is shown for one question and for a set', async () => {

@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, Post, Res } from "@nestjs/common";
+import { Body, Controller, Delete, Get, HttpCode, Param, Post, Query, Res } from "@nestjs/common";
 import type { Response } from "express";
 import {
   IsIn,
@@ -36,6 +36,10 @@ class Start {
   @IsOptional() @IsBoolean() watched_only?: boolean;
   @IsOptional() @IsUUID() exam_style_id?: string;
 }
+/** GET /quizzes?purpose=: PRACTICE (default) lists practice, EXAM the questions of generated exams. */
+class QuizListQuery {
+  @IsOptional() @IsIn(["PRACTICE", "EXAM"]) purpose?: "PRACTICE" | "EXAM";
+}
 class ExamStyleBody {
   @IsString() @MinLength(1) @MaxLength(120) @Matches(/\S/) name!: string;
   @IsString() @MinLength(20) @MaxLength(20000) @Matches(/\S/) text!: string;
@@ -65,8 +69,9 @@ export class LearningController {
   @Get("courses/:courseId/quizzes") quizzes(
     @CurrentUser() u: AuthUser,
     @Param("courseId") c: string,
+    @Query() q: QuizListQuery,
   ) {
-    return this.learning.quizzes(u, c);
+    return this.learning.quizzes(u, c, q.purpose ?? "PRACTICE");
   }
   @Post("courses/:courseId/quizzes") async start(
     @CurrentUser() u: AuthUser,

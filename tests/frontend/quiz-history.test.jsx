@@ -49,3 +49,27 @@ test('practice page shows the summary and filters the history list', async () =>
   expect(list().map((b) => b.textContent)).toEqual([expect.stringContaining('Dijkstra')])
   expect(within(group).getByRole('button', { name: 'Yanıt bekleyen' })).toHaveAttribute('aria-pressed', 'true')
 })
+
+test('exam questions are kept out of practice and listed only under "Sınavdan"', async () => {
+  const user = userEvent.setup()
+  const exam = [{ id: 'e1', kind: 'OPEN', topic: 'Sınav: kalıtım', status: 'UNANSWERED', latest_outcome: null, attempt_count: 0 }]
+  api.quizzes.mockImplementation(async (_course, _signal, purpose) => (purpose === 'EXAM' ? exam : items))
+  render(<CourseQuiz courseId="c" />)
+  // The practice summary and list count practice only.
+  await screen.findByText('3 soru · 2 yanıtlandı · 1 yanıt bekliyor')
+  const list = () => screen.getAllByRole('button').filter((b) => b.classList.contains('resume-row'))
+  expect(list().map((b) => b.textContent).join(' ')).not.toContain('Sınav: kalıtım')
+  expect(api.quizzes.mock.calls.some((c) => c[2] === 'EXAM')).toBe(true)
+  const group = screen.getByRole('group', { name: 'Alıştırma filtresi' })
+  await user.click(within(group).getByRole('button', { name: 'Sınavdan' }))
+  expect(list().map((b) => b.textContent)).toEqual([expect.stringContaining('Sınav: kalıtım')])
+})
+
+test('without exam questions the filter says so', async () => {
+  const user = userEvent.setup()
+  api.quizzes.mockImplementation(async (_course, _signal, purpose) => (purpose === 'EXAM' ? [] : items))
+  render(<CourseQuiz courseId="c" />)
+  const group = await screen.findByRole('group', { name: 'Alıştırma filtresi' })
+  await user.click(within(group).getByRole('button', { name: 'Sınavdan' }))
+  expect(screen.getByText('Bu derste hazırlanmış sınav sorusu yok.')).toBeInTheDocument()
+})

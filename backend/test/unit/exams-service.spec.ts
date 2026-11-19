@@ -151,7 +151,8 @@ describe('the generation run', () => {
     expect(data.status).toBe('READY');
     expect(data.items).toEqual([{ quiz_id: 'q1', kind: 'MULTIPLE_CHOICE', topic: 'BFS' }]);
     expect(data.failures).toHaveLength(1);
-    expect(learning.start.mock.calls[1][2]).toMatchObject({ topic: 'BFS', kind: 'MULTIPLE_CHOICE', exam_style_id: 'e1' });
+    // The question belongs to the exam: kept out of the practice history.
+    expect(learning.start.mock.calls[1][2]).toMatchObject({ topic: 'BFS', kind: 'MULTIPLE_CHOICE', exam_style_id: 'e1', purpose: 'EXAM' });
   });
   test('when only some questions can be sourced the exam is partial and says why', async () => {
     const { svc, prisma, learning } = make();

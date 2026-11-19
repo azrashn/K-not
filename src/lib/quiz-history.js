@@ -4,6 +4,8 @@ export const HISTORY_FILTERS = [
   { id: 'all', label: 'Tümü' },
   { id: 'unanswered', label: 'Yanıt bekleyen' },
   { id: 'answered', label: 'Yanıtlanan' },
+  // Questions of generated exams: kept out of the practice list, listed only under this filter.
+  { id: 'exam', label: 'Sınavdan' },
 ]
 
 const outcomeLabels = {
