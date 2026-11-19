@@ -34,6 +34,42 @@ beforeEach(async () => {
 });
 
 const base = () => `/courses/${h.world.courses.vy}/quizzes`;
+
+test("a v2 exam is written from several past exams and remembers all of them", async () => {
+  const course = `/courses/${h.world.courses.vy}`;
+  const as = await h.as("ayse");
+  const final = await h.http().post(`${course}/exam-styles`).set(as).send({
+    name: "Final", text: ["1. Which process changes water to vapour?", "A) Freezing", "B) Evaporation", "C) Melting",
+      "2. Explain evaporation. Açıklayınız."].join("\n"),
+  }).expect(201);
+  const midterm = await h.http().post(`${course}/exam-styles`).set(as).send({
+    name: "Vize", text: ["1. Is evaporation a cooling process? Doğru veya yanlış yazınız.",
+      "2. Calculate the heat for 2 kg of water. Hesaplayınız.", "3. Explain boiling. Açıklayınız.", "4. Explain melting. Açıklayınız."].join("\n"),
+  }).expect(201);
+  // The model is down: the run stops after its first request, which is enough to see what was asked.
+  h.ai.on("POST", "/api/v1/knowledge/quiz", () => ({ status: 503, body: {} }));
+
+  const created = await h.http().post(`${course}/exams`).set(as)
+    .send({ exam_style_ids: [final.body.id, midterm.body.id], topics: ["Evaporation"] }).expect(202);
+  expect(created.body).toMatchObject({
+    title: "2 geçmiş sınavdan yeni sınav",
+    requested: 3, // average of 2 and 4 questions
+    style_id: final.body.id,
+    style_ids: [final.body.id, midterm.body.id],
+  });
+  let exam: any;
+  for (let i = 0; i < 60; i++) {
+    exam = (await h.http().get(`${course}/exams/${created.body.id}`).set(as).expect(200)).body;
+    if (exam.status !== "GENERATING") break;
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  expect(exam.status).toBe("FAILED");
+  expect(exam.style_ids).toEqual([final.body.id, midterm.body.id]);
+  const hint = h.ai.calls("POST", "/api/v1/knowledge/quiz")[0].body.style_hint as string;
+  expect(hint).toContain("2 geçmiş sınav, toplam 6 soru;");
+  expect(hint).toContain("Which process changes water to vapour?");
+  expect(hint).toContain("Is evaporation a cooling process?");
+});
 const v2Question = (slot: number, kind: string) => ({
   slot, kind, question: "Which process changes liquid water to vapour?",
   options: kind === "MULTIPLE_CHOICE" ? ["Freezing", "Evaporation", "Melting", "Boiling"] : [],

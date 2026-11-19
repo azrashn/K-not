@@ -8,8 +8,10 @@ import { AiServiceClient } from "../ai/ai-client";
 import { KnowledgeService } from "../knowledge/knowledge.service";
 import { APP_CONFIG, AppConfig, QuizEngine } from "../config/config";
 import { LearningService } from "./learning.service";
-import { commonReason, ExamItem, examTopics, groundTopics, planExamItems, planExamKinds } from "./exam-plan";
-import { examStyleHint, ExamProfile } from "./exam-style";
+import {
+  commonReason, EXAM_MAX_QUESTIONS, ExamItem, examTopics, groundTopics, planExamItems, planExamKinds,
+} from "./exam-plan";
+import { EXAM_STYLES_MAX, examStyleHint, ExamProfile, mergeExamProfiles } from "./exam-style";
 import { GenerateResult, QuizGenerator } from "./quiz-generator";
 import { describeFailure, failure, INFRASTRUCTURE_CODES, TIME_CODES } from "./quiz-failures";
 import { loadSourceTexts } from "./source-texts";
@@ -34,6 +36,31 @@ const FILE_KINDS: Record<string, "PDF" | "DOCX" | "TXT"> = {
 };
 // Model or service trouble stops the whole run; a missing source only skips that topic.
 const INFRASTRUCTURE = new Set(["AI_SERVICE_UNAVAILABLE", "PROVIDER_TIMEOUT"]);
+
+/** The selected past exams: exactly one of `exam_style_id` (older clients) and `exam_style_ids`. */
+export function examStyleIds(b: { exam_style_id?: string; exam_style_ids?: string[] }): string[] {
+  const single = typeof b.exam_style_id === "string" && b.exam_style_id !== "";
+  const many = Array.isArray(b.exam_style_ids);
+  if (single === many)
+    throw new ApiError(
+      "VALIDATION_ERROR",
+      single
+        ? "exam_style_id ve exam_style_ids birlikte gönderilemez; yalnız birini kullanın."
+        : "En az bir geçmiş sınav seçin.",
+    );
+  const ids = single ? [b.exam_style_id!] : b.exam_style_ids!;
+  if (!ids.length || ids.length > EXAM_STYLES_MAX)
+    throw new ApiError("VALIDATION_ERROR", `1 ile ${EXAM_STYLES_MAX} arasında geçmiş sınav seçin.`);
+  if (new Set(ids).size !== ids.length)
+    throw new ApiError("VALIDATION_ERROR", "Aynı geçmiş sınav birden fazla kez seçilemez.");
+  return ids;
+}
+
+/** No count from the client: the average question count of the selected exams, within 1..20. */
+export function defaultExamCount(profiles: ExamProfile[]): number {
+  const total = profiles.reduce((sum, p) => sum + (p.question_count ?? 0), 0);
+  return Math.max(1, Math.min(EXAM_MAX_QUESTIONS, Math.round(total / Math.max(1, profiles.length))));
+}
 
 /** Past exam files, and new exams written from a saved exam style. Every question is an ordinary
  *  source-bound quiz question: when no source supports a topic the exam says so instead of inventing one. */
@@ -105,20 +132,38 @@ export class ExamsService implements OnModuleInit {
   async create(
     u: AuthUser,
     c: string,
-    b: { exam_style_id: string; count: number; topics?: string[]; title?: string; scope?: any },
+    b: {
+      exam_style_id?: string;
+      exam_style_ids?: string[];
+      count?: number;
+      topics?: string[];
+      title?: string;
+      scope?: any;
+    },
   ) {
     await this.access.requireMember(u, c);
-    const style = await this.prisma.examStyle.findFirst({
-      where: { id: b.exam_style_id, courseId: c, ownerId: u.id },
-    });
-    if (!style) throw notFound("Exam style");
-    const profile = style.profile as unknown as ExamProfile;
+    const ids = examStyleIds(b);
     const v2 = this.quizEngine === "v2";
+    if (!v2 && ids.length > 1)
+      throw new ApiError(
+        "VALIDATION_ERROR",
+        "Birden fazla geçmiş sınav yalnız yeni soru motoruyla birlikte kullanılabilir. Tek bir sınav seçin.",
+      );
+    const rows = await this.prisma.examStyle.findMany({
+      where: { id: { in: ids }, courseId: c, ownerId: u.id },
+    });
+    // Any missing or foreign style is "not found", as for a single style: nothing about others' styles leaks.
+    if (rows.length !== ids.length) throw notFound("Exam style");
+    const byId = new Map(rows.map((r) => [r.id, r]));
+    const styles = ids.map((id) => byId.get(id)!);
+    const style = styles[0];
+    const profile = mergeExamProfiles(styles.map((s) => s.profile as unknown as ExamProfile));
+    const count = b.count ?? defaultExamCount(styles.map((s) => s.profile as unknown as ExamProfile));
     let topics = examTopics(b.topics, profile);
-    // v2: terms from the past exam are only useful when the course sources talk about them.
-    // Topics the student wrote are never filtered.
+    // v2: terms from the past exams are only useful when the course sources talk about them; terms shared
+    // by more of the selected exams come first. Topics the student wrote are never filtered.
     if (v2 && this.knowledge && !b.topics?.some((t) => String(t).trim()))
-      topics = groundTopics(topics, await loadSourceTexts(this.knowledge, u, c, b.scope), b.count).topics;
+      topics = groundTopics(topics, await loadSourceTexts(this.knowledge, u, c, b.scope), count, profile.term_exams).topics;
     if (!topics.length)
       throw new ApiError(
         "VALIDATION_ERROR",
@@ -129,15 +174,17 @@ export class ExamsService implements OnModuleInit {
     });
     if (running)
       throw new ApiError("JOB_ALREADY_RUNNING", "Bu ders için bir sınav zaten hazırlanıyor. Bitmesini bekleyin.");
-    const plan = v2 ? planExamItems(profile, b.count) : null;
-    const kinds = plan ? plan.map((i) => i.kind) : planExamKinds(profile, b.count);
+    const plan = v2 ? planExamItems(profile, count) : null;
+    const kinds = plan ? plan.map((i) => i.kind) : planExamKinds(profile, count);
+    const fallbackTitle = styles.length > 1 ? `${styles.length} geçmiş sınavdan yeni sınav` : `${style.name} — yeni sınav`;
     const row = await this.prisma.generatedExam.create({
       data: {
         id: randomUUID(),
         courseId: c,
         userId: u.id,
         styleId: style.id,
-        title: (b.title?.trim() || `${style.name} — yeni sınav`).slice(0, 160),
+        styleIds: ids,
+        title: (b.title?.trim() || fallbackTitle).slice(0, 160),
         status: "GENERATING",
         requested: kinds.length,
         topics,
@@ -315,6 +362,8 @@ export class ExamsService implements OnModuleInit {
       failures: row.failures,
       note: row.note,
       style_id: row.styleId,
+      // Exams made before several styles could be combined only have styleId.
+      style_ids: Array.isArray(row.styleIds) ? row.styleIds : row.styleId ? [row.styleId] : [],
       created_at: row.createdAt,
       finished_at: row.finishedAt,
     };

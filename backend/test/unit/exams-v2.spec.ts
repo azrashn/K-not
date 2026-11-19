@@ -1,7 +1,7 @@
-import { ExamsService, EXAM_BATCH_BUDGET_SECONDS } from '../../src/learning/exams.service';
+import { defaultExamCount, ExamsService, EXAM_BATCH_BUDGET_SECONDS } from '../../src/learning/exams.service';
 import { ApiError } from '../../src/common/errors';
 import { buildExamProfile } from '../../src/learning/exam-style';
-import { commonReason, groundTopics, planExamItems, planExamKinds } from '../../src/learning/exam-plan';
+import { commonReason, EXAM_MAX_QUESTIONS, groundTopics, planExamItems, planExamKinds } from '../../src/learning/exam-plan';
 import { isDuplicateStem } from '../../src/learning/quiz-repeat';
 import { QuizGenerator } from '../../src/learning/quiz-generator';
 import { failure } from '../../src/learning/quiz-failures';
@@ -14,9 +14,14 @@ const u = { id: 'u', role: 'USER' } as any;
 type Batch = { topic: string; items: { kind: string; variant: string | null }[]; avoidStems: string[]; budgetSeconds: number; styleHint: string | null };
 
 /** A generator double: `answer(batch, call)` decides per request; by default every question is produced. */
-function make(answer?: (b: Batch, call: number) => any, over: { knowledge?: any; config?: any } = {}) {
+const STYLES = [{ id: 'e1', name: 'Final', profile, ownerId: 'u' }];
+/** examStyle.findMany double: the saved styles of user `u` among the ids asked for (in storage order). */
+const styleStore = (styles: { id: string; name: string; profile: any; ownerId?: string }[]) =>
+  jest.fn(async ({ where }: any) => styles.filter((s) => where.id.in.includes(s.id) && (s.ownerId ?? 'u') === where.ownerId));
+
+function make(answer?: (b: Batch, call: number) => any, over: { knowledge?: any; config?: any; styles?: any[] } = {}) {
   const prisma = {
-    examStyle: { findFirst: jest.fn().mockResolvedValue({ id: 'e1', name: 'Final', profile }) },
+    examStyle: { findMany: styleStore(over.styles ?? STYLES) },
     generatedExam: {
       count: jest.fn().mockResolvedValue(0),
       create: jest.fn(async ({ data }) => ({ ...data, createdAt: new Date(), finishedAt: null })),
@@ -202,6 +207,96 @@ describe('creating a v2 exam', () => {
 
   test('a service built without the generator is legacy', () => {
     expect(new ExamsService({} as any, {} as any, {} as any, {} as any).quizEngine).toBe('legacy');
+  });
+});
+
+describe('creating an exam from several past exams', () => {
+  const knowledge = {
+    materials: jest.fn().mockResolvedValue([{ id: 'm1', status: 'READY', title: 'Graf notları' }]),
+    preview: jest.fn().mockResolvedValue({ segments: [{ text: 'Kuyruk ve BFS\nBFS kuyruk kullanır. Dijkstra negatif kenarla çalışmaz.' }] }),
+  };
+  const MIDTERM = ['1. Huffman kodlamasında hangi yapı kullanılır?', 'A) Yığın', 'B) Öncelik kuyruğu', 'C) Liste', 'D) Ağaç',
+    '2. Huffman ağacının yüksekliğini hesaplayınız.'].join('\n');
+  const midterm = buildExamProfile(MIDTERM);
+  const both = [
+    { id: 'e2', name: 'Vize', profile: midterm }, // stored first: the order chosen by the student must still win
+    { id: 'e1', name: 'Final', profile },
+    { id: 'theirs', name: 'Başkası', profile, ownerId: 'other' },
+  ];
+  const hang = () => new Promise(() => undefined);
+
+  test('the hint, plan and stored styles come from every selected exam, in the order chosen', async () => {
+    const { svc, prisma, batches } = make(hang, { knowledge, styles: both });
+    const exam = await svc.create(u, 'c', { exam_style_ids: ['e1', 'e2'], count: 6, topics: ['BFS'] });
+    await new Promise((r) => setImmediate(r));
+    const data = prisma.generatedExam.create.mock.calls[0][0].data;
+    expect(data).toMatchObject({ styleId: 'e1', styleIds: ['e1', 'e2'], title: '2 geçmiş sınavdan yeni sınav', requested: 6 });
+    expect(exam).toMatchObject({ style_id: 'e1', style_ids: ['e1', 'e2'] });
+    expect(batches[0].styleHint).toContain('2 geçmiş sınav, toplam 6 soru;');
+    expect(batches[0].styleHint).toContain(profile.sample_stems[0]);
+    expect(batches[0].styleHint).toContain(midterm.sample_stems[0]);
+  });
+
+  test('a single style through exam_style_ids is the same as exam_style_id', async () => {
+    const a = make(hang, { knowledge });
+    const b = make(hang, { knowledge });
+    await a.svc.create(u, 'c', { exam_style_id: 'e1', count: 4 });
+    await b.svc.create(u, 'c', { exam_style_ids: ['e1'], count: 4 });
+    await new Promise((r) => setImmediate(r));
+    const strip = (d: any) => ({ ...d, id: undefined });
+    expect(strip(b.prisma.generatedExam.create.mock.calls[0][0].data)).toEqual(strip(a.prisma.generatedExam.create.mock.calls[0][0].data));
+    expect(b.batches[0].styleHint).toBe(a.batches[0].styleHint);
+    expect(a.prisma.generatedExam.create.mock.calls[0][0].data.title).toBe('Final — yeni sınav');
+  });
+
+  test('a style of someone else among the selection is not found and nothing is created', async () => {
+    const { svc, prisma } = make(hang, { knowledge, styles: both });
+    await expect(svc.create(u, 'c', { exam_style_ids: ['e1', 'theirs'], count: 3 })).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    expect(prisma.generatedExam.create).not.toHaveBeenCalled();
+  });
+
+  test('without a count the exam has the average size of the selected exams', async () => {
+    const { svc, prisma } = make(hang, { knowledge, styles: both });
+    await svc.create(u, 'c', { exam_style_ids: ['e1', 'e2'], topics: ['BFS'] }); // 4 and 2 questions
+    expect(prisma.generatedExam.create.mock.calls[0][0].data.requested).toBe(3);
+  });
+
+  test.each([
+    [{ exam_style_id: 'e1', exam_style_ids: ['e2'] }, 'birlikte gönderilemez'],
+    [{}, 'En az bir geçmiş sınav'],
+    [{ exam_style_ids: [] }, '1 ile 5 arasında'],
+    [{ exam_style_ids: ['a', 'b', 'c', 'd', 'e', 'f'] }, '1 ile 5 arasında'],
+    [{ exam_style_ids: ['e1', 'e1'] }, 'birden fazla kez'],
+  ])('%j is a validation error', async (body, message) => {
+    const { svc, prisma } = make(hang, { knowledge, styles: both });
+    await expect(svc.create(u, 'c', { count: 2, ...body })).rejects.toMatchObject({ code: 'VALIDATION_ERROR', message: expect.stringContaining(message) });
+    expect(prisma.examStyle.findMany).not.toHaveBeenCalled();
+  });
+
+  test('the legacy engine refuses several exams with a clear message and keeps a single one', async () => {
+    const legacy = make(undefined, { knowledge, styles: both, config: { quizEngine: 'legacy' } });
+    (legacy.svc as any).learning = { start: jest.fn(hang) };
+    await expect(legacy.svc.create(u, 'c', { exam_style_ids: ['e1', 'e2'], count: 2, topics: ['BFS'] }))
+      .rejects.toMatchObject({ code: 'VALIDATION_ERROR', message: expect.stringContaining('yalnız yeni soru motoruyla') });
+    await legacy.svc.create(u, 'c', { exam_style_ids: ['e2'], count: 2, topics: ['BFS'] });
+    await new Promise((r) => setImmediate(r));
+    expect((legacy.svc as any).learning.start.mock.calls[0][2]).toMatchObject({ exam_style_id: 'e2' });
+    expect(legacy.generator.generate).not.toHaveBeenCalled();
+  });
+
+  test('older exams without styleIds report their one style', async () => {
+    const { svc } = make();
+    expect((svc as any).summary({ id: 'x', items: [], styleId: 'e1', styleIds: null })).toMatchObject({ style_ids: ['e1'] });
+    expect((svc as any).summary({ id: 'x', items: [], styleId: null, styleIds: null })).toMatchObject({ style_ids: [] });
+  });
+});
+
+describe('default exam size', () => {
+  test('is the rounded average, kept within 1..20', () => {
+    const p = (n: number) => ({ ...profile, question_count: n });
+    expect(defaultExamCount([p(4), p(5)])).toBe(5);
+    expect(defaultExamCount([p(30), p(40)])).toBe(EXAM_MAX_QUESTIONS);
+    expect(defaultExamCount([p(0)])).toBe(1);
   });
 });
 

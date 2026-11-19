@@ -8,7 +8,7 @@ const u = { id: 'u', role: 'USER' } as any;
 
 function make(over: { prisma?: any; ai?: any; learning?: any } = {}) {
   const prisma = {
-    examStyle: { findFirst: jest.fn().mockResolvedValue({ id: 'e1', name: 'Final', profile }) },
+    examStyle: { findMany: jest.fn().mockResolvedValue([{ id: 'e1', name: 'Final', profile }]) },
     generatedExam: {
       count: jest.fn().mockResolvedValue(0),
       create: jest.fn(async ({ data }) => ({ ...data, createdAt: new Date(), finishedAt: null })),
@@ -69,7 +69,7 @@ describe('upload of a past exam file', () => {
 
 describe('creating an exam', () => {
   test('an unknown style or one that belongs to someone else is not found', async () => {
-    const { svc } = make({ prisma: { examStyle: { findFirst: jest.fn().mockResolvedValue(null) } } });
+    const { svc } = make({ prisma: { examStyle: { findMany: jest.fn().mockResolvedValue([]) } } });
     await expect(svc.create(u, 'c', { exam_style_id: 'x', count: 3 })).rejects.toMatchObject({ code: 'NOT_FOUND' });
   });
   test('only one exam per course runs at a time', async () => {
@@ -79,7 +79,7 @@ describe('creating an exam', () => {
   });
   test('a style without topic terms needs topics from the student', async () => {
     const empty = { ...profile, topic_terms: [] };
-    const { svc } = make({ prisma: { examStyle: { findFirst: jest.fn().mockResolvedValue({ id: 'e1', name: 'x', profile: empty }) } } });
+    const { svc } = make({ prisma: { examStyle: { findMany: jest.fn().mockResolvedValue([{ id: 'e1', name: 'x', profile: empty }]) } } });
     await expect(svc.create(u, 'c', { exam_style_id: 'e1', count: 3 })).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
   });
   test('it is accepted at once with the planned size, before any question exists', async () => {

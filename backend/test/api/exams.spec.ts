@@ -1,5 +1,6 @@
 /** Real SQL and HTTP/auth; the retrieval/model boundary is the fake AI service. */
 import { createHash } from "node:crypto";
+import { Prisma } from "../../src/generated/prisma/client";
 import { Harness } from "../support/harness";
 
 const h = new Harness();
@@ -171,6 +172,54 @@ test("validation: count and topics are bounded, and only one exam runs at a time
   await h.prisma.generatedExam.create({ data: { id: "00000000-0000-4000-8000-000000000001", courseId: h.world.courses.vy, userId: h.world.users.ayse, title: "busy", status: "GENERATING", requested: 1, topics: [], items: [], failures: [] } });
   const res = await h.http().post(`${course()}/exams`).set(await h.as("ayse")).send({ exam_style_id: style, count: 1, topics: ["Evaporation"] }).expect(409);
   expect(res.body.error.code).toBe("JOB_ALREADY_RUNNING");
+});
+
+test("the single exam_style_id body keeps working and reports style_ids", async () => {
+  const style = await saveStyle();
+  const created = await h.http().post(`${course()}/exams`).set(await h.as("ayse"))
+    .send({ exam_style_id: style, count: 1, topics: ["Evaporation"] }).expect(202);
+  expect(created.body).toMatchObject({ style_id: style, style_ids: [style], title: "Final 2025 — yeni sınav" });
+  const exam = await waitDone(created.body.id);
+  expect(exam.style_ids).toEqual([style]);
+  // An exam made before styleIds existed (NULL column) still reports its one style.
+  await h.prisma.generatedExam.update({ where: { id: created.body.id }, data: { styleIds: Prisma.DbNull } });
+  const old = await h.http().get(`${course()}/exams/${created.body.id}`).set(await h.as("ayse")).expect(200);
+  expect(old.body.style_ids).toEqual([style]);
+});
+
+test("one style in exam_style_ids works with the legacy engine; several are refused with a clear message", async () => {
+  const a = await saveStyle();
+  const b = await saveStyle();
+  const one = await h.http().post(`${course()}/exams`).set(await h.as("ayse"))
+    .send({ exam_style_ids: [a], count: 1, topics: ["Evaporation"] }).expect(202);
+  expect(one.body.style_ids).toEqual([a]);
+  await waitDone(one.body.id);
+  const many = await h.http().post(`${course()}/exams`).set(await h.as("ayse"))
+    .send({ exam_style_ids: [a, b], count: 1, topics: ["Evaporation"] }).expect(422);
+  expect(many.body.error.message).toContain("yalnız yeni soru motoruyla");
+});
+
+test("validation: exactly one of exam_style_id and exam_style_ids, 1 to 5 distinct styles", async () => {
+  const style = await saveStyle();
+  const as = await h.as("ayse");
+  const post = (body: any) => h.http().post(`${course()}/exams`).set(as).send(body);
+  const ids = (n: number) => Array.from({ length: n }, (_, i) => `00000000-0000-4000-8000-00000000010${i}`);
+  await post({ exam_style_id: style, exam_style_ids: [style], count: 1 }).expect(422);
+  await post({ count: 1 }).expect(422);
+  await post({ exam_style_ids: [], count: 1 }).expect(422);
+  await post({ exam_style_ids: ids(6), count: 1 }).expect(422);
+  await post({ exam_style_ids: [style, style], count: 1 }).expect(422);
+  await post({ exam_style_ids: ["not-a-uuid"], count: 1 }).expect(422);
+  // Another user's style is not found, through either field.
+  await h.http().post(`${course()}/exams`).set(await h.as("mehmet")).send({ exam_style_ids: [style], count: 1, topics: ["x"] }).expect(404);
+});
+
+test("without a count the exam takes the size of the selected style", async () => {
+  const style = await saveStyle(); // 4 questions
+  const created = await h.http().post(`${course()}/exams`).set(await h.as("ayse"))
+    .send({ exam_style_ids: [style], topics: ["Evaporation"] }).expect(202);
+  expect(created.body.requested).toBe(4);
+  await waitDone(created.body.id);
 });
 
 test("deleting a personal course removes its saved styles and generated exams", async () => {
