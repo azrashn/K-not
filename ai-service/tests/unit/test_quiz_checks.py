@@ -324,8 +324,8 @@ def test_duplicate_stem_rejects_a_repeated_question():
 
 
 def test_failure_codes_are_unique_strings():
-    assert len(set(qc.FAILURE_CODES)) == len(qc.FAILURE_CODES) == 16
-    assert {qc.TRUNCATED, qc.NOT_SELF_CONTAINED} <= set(qc.FAILURE_CODES)
+    assert len(set(qc.FAILURE_CODES)) == len(qc.FAILURE_CODES) == 17
+    assert {qc.TRUNCATED, qc.NOT_SELF_CONTAINED, qc.DUPLICATE_QUOTE} <= set(qc.FAILURE_CODES)
 
 
 @pytest.mark.parametrize("text,expected", [
@@ -401,3 +401,124 @@ def test_a_cloze_stem_is_the_source_sentence_and_is_not_checked():
     evidence = [{"text": "Bu nedenle BFS, bekleyen düğümleri tutmak için kuyruk kullanır."}]
     draft = {"quote": evidence[0]["text"], "answer": "kuyruk", "explanation": "Kaynak, BFS'nin kuyruk kullandığını söyler."}
     assert check_question("CLOZE", draft, evidence)["kind"] == "CLOZE"
+
+
+# ── Turkish roots in repeat avoidance (Azra's report: "açalım/açmak", "sürecinde/sürecinin") ─────
+@pytest.mark.parametrize("a, b", [
+    ("açalım", "açmak"), ("sürecinde", "sürecinin"), ("bellek", "belleği"), ("kuyruk", "kuyruğu"),
+    ("ağaç", "ağacı"), ("derledi", "derlemek"), ("Bellek", "BELLEĞİ"), ("aracı", "araç"),
+])
+def test_inflections_of_one_word_share_a_root(a, b):
+    assert qc.same_root(a, b) and qc.same_root(b, a)
+
+
+@pytest.mark.parametrize("a, b", [
+    ("dizi", "dizin"), ("veri", "verim"), ("açık", "açmak"), ("kedi", "kemik"), ("bellek", "bytecode"),
+])
+def test_different_words_do_not_share_a_root(a, b):
+    assert not qc.same_root(a, b)
+
+
+def test_a_short_root_counts_only_when_both_words_are_verbs():
+    assert qc.same_root("açalım", "açmak")       # both verb endings: aç-
+    assert not qc.same_root("açalım", "açı")     # açı is a noun: no 2-letter root comparison
+
+
+def test_repeats_that_differ_only_in_suffixes_are_detected():
+    assert qc.is_duplicate_stem("Java dosyasını nasıl açalım?", ["Java dosyasını açmak için ne yapılır?"])
+    assert qc.is_duplicate_stem("Derleme sürecinde hangi araç kullanılır?",
+                                ["Derleme sürecinin hangi aracı kullanılır?"])
+    assert not qc.is_duplicate_stem("Derleme sürecinde hangi araç kullanılır?",
+                                    ["Çöp toplayıcı belleği ne zaman boşaltır?"])
+
+
+# ── one source sentence carries one question ─────────────────────────────────────────────────
+def test_a_sentence_used_by_an_earlier_question_is_rejected():
+    assert code_of("MULTIPLE_CHOICE", mc(), used_quotes=[QUOTE]) == qc.DUPLICATE_QUOTE
+    assert code_of("MULTIPLE_CHOICE", mc(), used_quotes=["  bfs, sırada bekleyen düğümleri tutmak için kuyruk "
+                                                         "kullanır"]) == qc.DUPLICATE_QUOTE
+    assert check_question("MULTIPLE_CHOICE", mc(), EVIDENCE, used_quotes=[PHYSICS])["quote"] == QUOTE
+
+
+def test_duplicate_quote_is_a_failure_code():
+    assert qc.DUPLICATE_QUOTE in qc.FAILURE_CODES
+
+
+# ── multiple choice: one question, options alike (Azra's report: the Java question) ─────────────
+JAVA = "Java, 1995 yılında Sun Microsystems tarafından geliştirildi."
+JAVA_EVIDENCE = [{"text": JAVA}]
+
+
+def java(**over):
+    return {"question": "Java hangi kuruluşta geliştirildi?",
+            "options": ["Sun Microsystems", "Microsoft", "Oracle", "IBM"], "answer": "Sun Microsystems",
+            "quote": JAVA, "explanation": "Kaynak, Java'yı Sun Microsystems'in geliştirdiğini söyler.", **over}
+
+
+def java_error(**over):
+    with pytest.raises(QuizCheckError) as exc:
+        check_question("MULTIPLE_CHOICE", java(**over), JAVA_EVIDENCE)
+    return exc.value
+
+
+def test_the_java_question_from_the_report_fails_on_all_three_rules():
+    report = java(question="Java hangi dönemde ve hangi kuruluşta geliştirildi?",
+                  options=["1995 yılında Sun Microsystems bünyesinde", "Microsoft", "Oracle", "IBM"],
+                  answer="1995 yılında Sun Microsystems bünyesinde")
+    with pytest.raises(QuizCheckError) as exc:
+        check_question("MULTIPLE_CHOICE", report, JAVA_EVIDENCE)
+    assert exc.value.code == qc.BAD_FORMAT
+    correct, wrong = report["answer"], ["Microsoft", "Oracle", "IBM"]
+    with pytest.raises(QuizCheckError, match="two things"):
+        qc.check_option_balance(report["question"], correct, wrong)
+    with pytest.raises(QuizCheckError, match="longest"):
+        qc.check_option_balance("Java hangi kuruluşta geliştirildi?", correct, wrong)
+    with pytest.raises(QuizCheckError, match="number"):
+        qc.check_option_balance("Java hangi kuruluşta geliştirildi?", "Sun 1995", wrong)
+
+
+@pytest.mark.parametrize("question", [
+    "Java hangi dönemde ve hangi kuruluşta geliştirildi?",
+    "Java ne zaman ve kim tarafından geliştirildi?",
+    "Which company developed Java and when was it released?",
+])
+def test_a_question_asking_two_things_is_rejected(question):
+    error = java_error(question=question)
+    assert error.code == qc.BAD_FORMAT and "two things" in error.detail
+
+
+@pytest.mark.parametrize("question", [
+    "Java ve C# arasındaki ortak özellik hangisidir?",   # one question word, "ve" joins two nouns
+    "Java hangi kuruluşta geliştirildi?",
+    "Hangi kuruluş Java'yı geliştirdi ve dağıttı?",      # "ve" joins two verbs, one question
+    "Hangi element ve kimyasal bileşik sudur?",          # kimyasal is not "kim"
+])
+def test_a_single_question_with_ve_is_accepted(question):
+    qc.check_option_balance(question, "Sun Microsystems", ["Microsoft", "Oracle", "IBM"])
+
+
+def test_the_correct_option_may_not_be_clearly_the_longest():
+    # Not 4x the shortest option (the older balance rule), but 1.5x and 16 characters over the longest wrong one.
+    error = java_error(options=["Sun Microsystems mühendis ekibi", "Microsoft Corp.", "Oracle Labs", "IBM Research"],
+                       answer="Sun Microsystems mühendis ekibi")
+    assert error.code == qc.BAD_FORMAT and "longest" in error.detail
+
+
+def test_a_longer_correct_option_within_the_limits_is_accepted():
+    # Over 1.5x but only a few characters longer (short options); long but within 1.5x.
+    qc.check_option_balance("Hangi yapı?", "Kuyruk", ["Yığn", "Ağaç", "Liste"])
+    qc.check_option_balance("Hangi kuruluş?", "Sun Microsystems Inc.", ["Microsoft Corp.", "Oracle Corp.", "IBM Corp."])
+
+
+def test_only_the_correct_option_with_a_number_is_rejected():
+    error = java_error(question="Java ilk sürümü hangi yılda çıktı?",
+                       options=["1995", "Sun döneminde", "Oracle döneminde", "IBM döneminde"], answer="1995")
+    assert error.code == qc.BAD_FORMAT and "number" in error.detail
+
+
+def test_options_of_the_same_type_pass():
+    q = check_question("MULTIPLE_CHOICE", java(question="Java hangi yılda geliştirildi?",
+                                               options=["1995", "1985", "2001", "1979"], answer="1995"),
+                       JAVA_EVIDENCE)
+    assert sorted(q["options"]) == ["1979", "1985", "1995", "2001"]
+    assert check_question("MULTIPLE_CHOICE", java(), JAVA_EVIDENCE)["quote"] == JAVA

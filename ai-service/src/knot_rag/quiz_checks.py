@@ -34,11 +34,13 @@ DUPLICATE_STEM = "DUPLICATE_STEM"
 BUDGET_EXHAUSTED = "BUDGET_EXHAUSTED"
 TRUNCATED = "TRUNCATED"  # the output hit the token limit (finish_reason "length")
 NOT_SELF_CONTAINED = "NOT_SELF_CONTAINED"  # the stem leans on a sentence the student does not see
+DUPLICATE_QUOTE = "DUPLICATE_QUOTE"  # the source sentence already carries another question of the set
 
 FAILURE_CODES = (
     TIMEOUT, MODEL_UNREACHABLE, INVALID_JSON, SCHEMA_MISMATCH, QUOTE_NOT_FOUND,
     ANSWER_NOT_IN_OPTIONS, DUPLICATE_OPTIONS, ANSWER_LEAKED, ANSWER_NOT_IN_SOURCE, BAD_FORMAT,
     CALC_MISMATCH, CALC_DATA_MISSING, DUPLICATE_STEM, BUDGET_EXHAUSTED, TRUNCATED, NOT_SELF_CONTAINED,
+    DUPLICATE_QUOTE,
 )
 EXPLANATION_MAX = 200
 
@@ -158,6 +160,30 @@ def _no_options(draft: dict) -> None:
 
 
 # ── per kind ────────────────────────────────────────────────────────────────────────────────
+# ── multiple choice: the correct option must not stand out, the question asks one thing ──────────
+LONGEST_RATIO = 1.5       # the correct option may not be this many times the longest wrong one …
+LONGEST_MIN_GAP = 15      # … while also this many characters longer (short options like years are fine)
+_QUESTION_WORD = (r"(?:hangi\w*|ne|neyi|neye|neden|nerede|nereye|nereden|ne\s+zaman|kim|kimin|kimi|kime|"
+                  r"kimden|kimler\w*|kaç|kaçta|kaçıncı|nasıl|"
+                  r"which|what|when|who|whom|whose|where|why|how)")
+# Two questions joined into one: "hangi dönemde ve hangi kuruluşta", "ne zaman ve kim tarafından".
+_DOUBLE_QUESTION = re.compile(rf"(?<!\w){_QUESTION_WORD}(?!\w).*?(?<!\w)(?:ve|and)\s+{_QUESTION_WORD}(?!\w)")
+
+
+def check_option_balance(question: str, correct: str, wrong: list[str]) -> None:
+    """BAD_FORMAT when the question asks two things, when the correct option is clearly the longest, or
+    when only the correct option holds a number (a year, an amount): a student could guess it unread."""
+    if _DOUBLE_QUESTION.search(_lower_tr(question)):
+        raise QuizCheckError(BAD_FORMAT, "the question asks two things at once; ask exactly one")
+    longest_wrong = max(len(o) for o in wrong)
+    if len(correct) > LONGEST_RATIO * longest_wrong and len(correct) - longest_wrong >= LONGEST_MIN_GAP:
+        raise QuizCheckError(BAD_FORMAT, "the correct option is clearly the longest; make the options alike")
+    has_digit = re.compile(r"\d")
+    if has_digit.search(correct) and sum(1 for o in wrong if not has_digit.search(o)) >= 2:
+        raise QuizCheckError(BAD_FORMAT, "only the correct option holds a number or year; "
+                                         "wrong options must be the same type of answer")
+
+
 def check_multiple_choice(draft: dict, evidence: list[dict], seed: str | None = None) -> dict:
     question = _text(draft, "question", 10, 600)
     options = draft.get("options")
@@ -176,6 +202,7 @@ def check_multiple_choice(draft: dict, evidence: list[dict], seed: str | None = 
     if len(hits) != 1:
         raise QuizCheckError(ANSWER_NOT_IN_OPTIONS, answer[:120])
     correct = options[hits[0]]
+    check_option_balance(question, correct, [o for i, o in enumerate(options) if i != hits[0]])
     if len(keys[hits[0]]) >= 4 and _contains_word(canonical(question), keys[hits[0]]):
         raise QuizCheckError(ANSWER_LEAKED, correct[:120])
     source_index, quote = _quote(draft, evidence)
@@ -404,17 +431,66 @@ def check_calculation(draft: dict, evidence: list[dict], language: str = "tr") -
     }
 
 
-# ── repeat avoidance (ported from the backend's isDuplicateStem) ─────────────────────────────
-_STEM_STOP = frozenset("ve ile bir bu için olan olarak gibi the and of is are a an to in ne nedir hangi".split())
+# ── Turkish roots (the backend's exam-style.ts rule, plus verbs) ───────────────────────────────
+# Words are compared after fold() (ı → i), so the suffixes are folded too. Two words share a root when
+# their sets of possible stems meet: bellek / belleği, sürecinde / sürecinin.
+_NOUN_SUFFIXES = sorted({fold(s) for s in (
+    "lerinin larının lerini larını lerine larına lerden lardan lerin ların lerde larda leri ları sinin sının "
+    "sunun sünün inin ının unun ünün sini sını sunu sünü sine sına suna süne ler lar nin nın nun nün den dan "
+    "ten tan yla yle nde nda de da te ta in ın un ün si sı su sü yi yı yu yü ye ya la le i ı u ü e a"
+).split()}, key=len, reverse=True)
+# Verb endings: infinitive, "let's", present, past, future, ability, necessity, polite imperative.
+_VERB_SUFFIXES = sorted({fold(s) for s in (
+    "abilir ebilir abilmek ebilmek acak ecek malı meli mak mek alım elim ıyor iyor uyor üyor mış miş muş "
+    "müş ınız iniz unuz ünüz dı di du dü tı ti tu tü"
+).split()}, key=len, reverse=True)
+ROOT_MIN = 4       # a noun stem shorter than this is not compared (dizi / dizin stay apart)
+VERB_ROOT_MIN = 2  # aç-alım / aç-mak: allowed only when BOTH words end in a verb ending
+_SOFTENED = {"ğ": "k", "c": "ç", "b": "p", "d": "t"}
 
 
-def _stem_words(text: str) -> set[str]:
+def _stems(word: str, suffixes: list[str], minimum: int) -> set[str]:
+    out = set()
+    for suffix in suffixes:
+        if word.endswith(suffix) and len(word) - len(suffix) >= minimum:
+            stem = word[: -len(suffix)]
+            out.add(stem)
+            if stem[-1] in _SOFTENED:
+                out.add(stem[:-1] + _SOFTENED[stem[-1]])
+    return out
+
+
+def _is_verb(word: str) -> bool:
+    return any(word.endswith(s) and len(word) - len(s) >= VERB_ROOT_MIN for s in _VERB_SUFFIXES)
+
+
+def same_root(a: str, b: str) -> bool:
+    """True when two words are inflections of one word (case and ı/i ignored)."""
+    a, b = fold(a), fold(b)
+    if a == b:
+        return True
+    forms_a = {a} | _stems(a, _NOUN_SUFFIXES, ROOT_MIN)
+    forms_b = {b} | _stems(b, _NOUN_SUFFIXES, ROOT_MIN)
+    if forms_a & forms_b:
+        return True
+    if _is_verb(a) and _is_verb(b):
+        return bool(_stems(a, _VERB_SUFFIXES, VERB_ROOT_MIN) & _stems(b, _VERB_SUFFIXES, VERB_ROOT_MIN))
+    return False
+
+
+# ── repeat avoidance (the backend's repeat guard uses the same rule) ─────────────────────────────
+_STEM_STOP = frozenset(fold(w) for w in
+                       "ve ile bir bu için olan olarak gibi the and of is are a an to in ne nedir hangi".split())
+
+
+def _stem_words(text: str) -> list[str]:
     cleaned = re.sub(r"[^\w\s]", " ", fold(text))
-    return {w for w in cleaned.split() if len(w) > 2 and w not in _STEM_STOP}
+    return list(dict.fromkeys(w for w in cleaned.split() if len(w) > 2 and w not in _STEM_STOP))
 
 
 def is_duplicate_stem(stem: str, existing: list[str]) -> bool:
-    """Most content words shared with an earlier stem (order and punctuation ignored)."""
+    """Most content words shared with an earlier stem, a word counting as shared when the other stem
+    has a word of the same root (order, punctuation and Turkish suffixes ignored)."""
     mine = _stem_words(stem)
     if not mine:
         return False
@@ -422,10 +498,17 @@ def is_duplicate_stem(stem: str, existing: list[str]) -> bool:
         theirs = _stem_words(other)
         if not theirs:
             continue
-        shared = len(mine & theirs)
-        if shared / min(len(mine), len(theirs)) >= 0.7 or shared / len(mine | theirs) >= 0.5:
+        shared = sum(1 for w in mine if any(same_root(w, t) for t in theirs))
+        union = len(mine) + len(theirs) - shared
+        if shared / min(len(mine), len(theirs)) >= 0.7 or shared / union >= 0.5:
             return True
     return False
+
+
+def is_used_quote(quote: str, used: list[str] | None) -> bool:
+    """The sentence is one an earlier question of the same exam or quiz already rests on."""
+    key = canonical(quote)
+    return bool(key) and any(canonical(u) == key for u in used or [])
 
 
 # ── self-contained stems ────────────────────────────────────────────────────────────────────
@@ -449,7 +532,7 @@ def check_self_contained(text: str) -> None:
 # ── dispatcher ──────────────────────────────────────────────────────────────────────────────
 def check_question(kind: str, draft, evidence: list[dict], *, variant: str | None = None,
                    language: str = "tr", seed: str | None = None,
-                   existing_stems: list[str] | None = None) -> dict:
+                   existing_stems: list[str] | None = None, used_quotes: list[str] | None = None) -> dict:
     if not isinstance(draft, dict):
         raise QuizCheckError(SCHEMA_MISMATCH, "question must be a JSON object")
     if kind not in KINDS:
@@ -474,4 +557,6 @@ def check_question(kind: str, draft, evidence: list[dict], *, variant: str | Non
         check_self_contained(result["question"])
     if existing_stems and is_duplicate_stem(result["question"], existing_stems):
         raise QuizCheckError(DUPLICATE_STEM, result["question"][:120])
+    if is_used_quote(result["quote"], used_quotes):
+        raise QuizCheckError(DUPLICATE_QUOTE, "the chosen sentence is already used by another question")
     return result

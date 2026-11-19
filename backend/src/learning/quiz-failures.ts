@@ -19,6 +19,7 @@ export const FAILURE_MESSAGES: Record<string, string> = {
   CALC_MISMATCH: "Hesaplama sorusunun cevabı, verilen işlemin sonucuyla uyuşmadı.",
   CALC_DATA_MISSING: "Hesaplama için gereken sayılar soruda verilmemişti.",
   DUPLICATE_STEM: "Soru, daha önce sorulmuş bir soruyla neredeyse aynıydı.",
+  DUPLICATE_QUOTE: "Soru, başka bir sorunun dayandığı kaynak cümlesine dayanıyordu.",
   BUDGET_EXHAUSTED: "Yerel model için ayrılan süre bu soruya yetmedi.",
   TRUNCATED: "Modelin yanıtı izin verilen uzunluğa ulaştığı için yarıda kesildi.",
   NOT_SELF_CONTAINED: "Soru, görülmeyen bir önceki cümleye bağlı başlıyordu (ör. \"Bu\", \"Ardından\"); tek başına anlaşılmıyordu.",

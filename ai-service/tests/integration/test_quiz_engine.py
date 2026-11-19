@@ -328,15 +328,16 @@ CALC = {"kind": "SHORT_ANSWER", "variant": "CALCULATION"}
 
 
 def test_a_calculation_without_numbers_in_the_sources_is_asked_as_a_short_answer(caplog):
-    short = {"quote_id": 2, "question": "Genişlik öncelikli aramada sıradaki öğeler nerede bekletilir?", "answer": "kuyruk",
-             "explanation": "Kaynak, BFS'nin bekleyen düğümleri kuyrukta tuttuğunu söyler."}
+    # Its own sentence (3): the multiple-choice question already rests on sentence 2.
+    short = {"quote_id": 3, "question": "Derinlik öncelikli arama özyineleme dışında neyi kullanır?", "answer": "yığın",
+             "explanation": "Kaynak, DFS'nin yığın veya özyineleme kullandığını söyler."}
     provider = Scripted([mc()], [short])
     with caplog.at_level(logging.INFO, logger="knot_rag.quiz_engine"):
         out = run(request("MULTIPLE_CHOICE", CALC), provider)
     assert out["failures"] == []
     q = out["questions"][1]
     assert (q["slot"], q["kind"], q.get("variant"), q["downgraded_from"]) == (1, "SHORT_ANSWER", None, "CALCULATION")
-    assert q["expected"] == "kuyruk"
+    assert q["expected"] == "yığın"
     fields = provider.requests[1].response_schema["properties"]["questions"]["items"]["properties"]
     assert "expression" not in fields  # the short-answer schema, not the calculation one
     assert "downgraded_from" not in out["questions"][0]
@@ -742,3 +743,55 @@ def test_engine_setting_values(monkeypatch):
     for raw, expected in [("", "v2"), ("V2", "v2"), ("legacy", "legacy"), ("other", "v2")]:
         monkeypatch.setenv("QUIZ_ENGINE", raw)
         assert qe.engine_setting() == expected
+
+
+# ── a source sentence carries one question across an exam or quiz ────────────────────────────
+FIRST = ("BFS (genişlik öncelikli arama), düğümleri başlangıç düğümüne uzaklıklarına göre katman katman "
+         "ziyaret eder.")
+
+
+def test_sentences_already_used_are_not_numbered():
+    sentences = qe.number_sentences([{"source": 1, "text": BFS}], [QUOTE])
+    assert [s["text"] for s in sentences] == [FIRST, DFS_QUOTE]
+    assert [s["id"] for s in sentences] == [1, 2]
+
+
+def test_avoided_sentences_never_reach_the_model_and_a_copied_one_is_repaired():
+    provider = Scripted([mc()], [MC2])  # the first draft copies the used sentence instead of a number
+    out = run(request("MULTIPLE_CHOICE", avoid_quotes=[QUOTE]), provider)
+    sources = json.loads(provider.requests[0].user)["sources"]
+    assert QUOTE not in json.dumps(sources, ensure_ascii=False) and DFS_QUOTE in sources[0]["text"]
+    assert out["questions"][0]["quote"] == DFS_QUOTE and out["questions"][0]["quality"]["attempts"] == 2
+    problem = json.loads(provider.requests[1].user)["problem"]
+    assert problem.startswith(qc.DUPLICATE_QUOTE) and "different sentence" in problem
+
+
+def test_two_questions_of_one_request_may_not_rest_on_one_sentence():
+    second = mc("Genişlik öncelikli aramada sıradaki düğümler nerede saklanır?")
+    provider = Scripted([mc(), second], [MC2])
+    out = run(request("MULTIPLE_CHOICE", "MULTIPLE_CHOICE"), provider)
+    assert [q["quote"] for q in out["questions"]] == [QUOTE, DFS_QUOTE]
+
+
+def test_when_every_sentence_is_used_no_model_is_called():
+    provider = Scripted()
+    out = run(request("MULTIPLE_CHOICE", "OPEN", avoid_quotes=[FIRST, QUOTE, DFS_QUOTE]), provider)
+    assert provider.requests == [] and out["questions"] == []
+    assert [f["code"] for f in out["failures"]] == [qc.DUPLICATE_QUOTE, qc.DUPLICATE_QUOTE]
+
+
+def test_multiple_choice_prompt_asks_one_thing_with_options_alike():
+    provider = Scripted([mc()])
+    run(request("MULTIPLE_CHOICE"), provider)
+    system = provider.requests[0].system
+    assert "exactly ONE thing" in system and "same type" in system and "must not be the longest" in system
+
+
+def test_a_two_part_multiple_choice_question_gets_the_concrete_hint():
+    double = mc("BFS hangi yapıyı ve hangi sırayı kullanır?")
+    provider = Scripted([double], [mc()])
+    out = run(request("MULTIPLE_CHOICE"), provider)
+    assert out["questions"][0]["quality"]["attempts"] == 2
+    problem = json.loads(provider.requests[1].user)["problem"]
+    assert problem.startswith(qc.BAD_FORMAT) and "Ask one thing only" in problem
+    assert len(problem) <= 400

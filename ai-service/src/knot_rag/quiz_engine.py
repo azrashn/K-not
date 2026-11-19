@@ -42,6 +42,7 @@ log = logging.getLogger(__name__)
 PIPELINE_VERSION = "single-call-v1"
 MAX_BATCH = 3
 MAX_SOURCES = 2
+AVOID_QUOTES_MAX = 60  # sentences already used by an exam of up to 20 questions, with room
 SOURCE_CHARS = 1200
 CHARS_PER_TOKEN = 3.0
 CALL_OVERHEAD_SECONDS = 5.0
@@ -82,6 +83,8 @@ class QuizRequest(StrictModel):
     language: Literal["tr", "en"] = "tr"
     style_hint: str | None = Field(default=None, max_length=1200)
     avoid_stems: list[str] = Field(default_factory=list, max_length=10)
+    # Source sentences earlier questions of the same exam or quiz rest on: never numbered, never chosen.
+    avoid_quotes: list[str] = Field(default_factory=list, max_length=AVOID_QUOTES_MAX)
     budget_seconds: float = Field(default=130, ge=20, le=600)
 
 
@@ -156,9 +159,12 @@ FIELDS = {
 }
 
 RULES = {
-    "MULTIPLE_CHOICE": "Write a multiple-choice question with exactly four short, parallel, distinct options of "
-                       "the same category. answer is copied exactly from options. Exactly one option is correct. "
-                       "The question must not contain the answer.",
+    "MULTIPLE_CHOICE": "Write a multiple-choice question that asks exactly ONE thing; never join two questions "
+                       "with ve/and. Give exactly four short, distinct options of the same type: the three wrong "
+                       "options are plausible answers to the same question (a year for a year, a company for a "
+                       "company) and about as long as the correct one. The correct option must not be the longest "
+                       "or the only one with a number. answer is copied exactly from options. Exactly one option "
+                       "is correct. The question must not contain the answer.",
     "TRUE_FALSE": "Write one clear statement and set is_true. A false statement changes one fact of the chosen "
                   "sentence (a number, a name or a concept); it must not copy the sentence.",
     "CLOZE": "Choose one meaningful term (1-4 words) that occurs exactly once in the chosen sentence; answer is "
@@ -187,10 +193,16 @@ REPAIR_HINTS = {
     qc.CALC_MISMATCH: "Compute expression again; answer must equal its result.",
     qc.CALC_DATA_MISSING: "Every number in expression must be given in the question.",
     qc.DUPLICATE_STEM: "Ask about a different fact than the questions to avoid.",
+    qc.DUPLICATE_QUOTE: "Choose a different sentence than the other questions; each sentence carries one "
+                        "question.",
     qc.NOT_SELF_CONTAINED: "Name the subject itself; do not start with Bu, Şu, O, Ardından, Daha sonra or Böylece.",
 }
 # A sharper hint where one code covers several rules of one kind.
 KIND_REPAIR_HINTS = {
+    ("MULTIPLE_CHOICE", qc.BAD_FORMAT): "Ask one thing only. Give four options of the same type and similar "
+                                        "length; the wrong options must be plausible answers to the same "
+                                        "question. The correct option must not be the longest or the only one "
+                                        "with a number or year.",
     ("TRUE_FALSE", qc.BAD_FORMAT): "A false statement must change one fact of the chosen sentence (a number, "
                                    "a name or a concept); never copy the sentence or a part of it.",
     (qc.CALCULATION, qc.BAD_FORMAT): "expression is plain arithmetic with the numbers given in the question "
@@ -280,14 +292,23 @@ def _spans(text: str) -> list[tuple[int, int]]:
     return spans
 
 
-def number_sentences(sources: list[dict]) -> list[dict]:
+def _used(sentence: str, avoid_keys: list[str]) -> bool:
+    key = qc.canonical(sentence)
+    return any(a == key or (len(a) >= SENTENCE_MIN and a in key) for a in avoid_keys)
+
+
+def number_sentences(sources: list[dict], avoid: list[str] | None = None) -> list[dict]:
     """The sentences of the trimmed sources, numbered from 1 across all of them: {id, source, text}.
-    Every text is an exact substring of its source, so the existing quote check still applies."""
+    Every text is an exact substring of its source, so the existing quote check still applies.
+    Sentences in `avoid` (already used by the same exam or quiz) are left out: the model cannot pick them."""
+    avoid_keys = [k for k in (qc.canonical(a) for a in avoid or []) if k]
     out: list[dict] = []
     for source in sources:
         text = source["text"]
         for begin, end in _spans(text):
             for chunk in _chunks(text[begin:end].strip()):
+                if avoid_keys and _used(chunk, avoid_keys):
+                    continue
                 out.append({"id": len(out) + 1, "source": source["source"], "text": chunk})
     return out
 
@@ -401,6 +422,10 @@ class Run:
     def stems(self) -> list[str]:
         return list(self.req.avoid_stems) + [q["question"] for q in self.questions.values()]
 
+    def used_quotes(self) -> list[str]:
+        """Sentences of earlier questions: of the same exam or quiz, and of this request."""
+        return list(self.req.avoid_quotes) + [q["quote"] for q in self.questions.values()]
+
     def call(self, key: str, count: int, repair: dict | None = None, token_factor: float = 1) -> list:
         """Drafts from one call, or a QuizCheckError naming why there are none."""
         if self.unreachable:
@@ -438,7 +463,8 @@ class Run:
     def check(self, slot: int, item: QuizItem, draft, attempt: int, started: float) -> None:
         result = qc.check_question(item.kind, resolve_quote(draft, self.sentences), self.req.evidence,
                                    variant=item.variant,
-                                   language=self.req.language, existing_stems=self.stems())
+                                   language=self.req.language, existing_stems=self.stems(),
+                                   used_quotes=self.used_quotes())
         for correction in result.pop(qc.CORRECTIONS_KEY, []):
             log.info("quiz_item slot=%s kind=%s corrected: %s", slot, _key(item), correction)
         self.questions[slot] = finish(slot, result, attempt)
@@ -545,9 +571,19 @@ def generate(req: QuizRequest, provider, *, speed: Speed | None = None,
     started = clock()
     sources = trim_sources(req.evidence)
     run = Run(req=req, provider=provider, speed=speed or Speed.from_env(), clock=clock,
-              deadline=started + req.budget_seconds, sources=sources, sentences=number_sentences(sources))
+              deadline=started + req.budget_seconds, sources=sources,
+              sentences=number_sentences(sources, req.avoid_quotes))
     if not sources:
         raise HTTPException(422, {"code": "QUIZ_NO_SOURCE", "message": "No source text for quiz"})
+    if not run.sentences:
+        # Every sentence already carries a question of this exam or quiz: nothing new to ask, no call.
+        log.info("quiz_request items=%s accepted=0 reason=all_sentences_used", len(req.items))
+        failures = [{"slot": slot, "kind": item.kind, "variant": item.variant, "code": qc.DUPLICATE_QUOTE,
+                     "detail": "every source sentence is already used", "attempts": 0, "seconds": 0.0}
+                    for slot, item in enumerate(req.items)]
+        return {"engine": "v2", "pipeline_version": PIPELINE_VERSION, "questions": [], "failures": failures,
+                "timing": {"seconds": 0.0, "budget_seconds": req.budget_seconds, "calls": 0,
+                           "input_tokens": 0, "output_tokens": 0}}
     items, run.downgraded = plan_items(req.items, sources)
     for group in _groups(items, max_batch or batch_size()):
         key = _key(items[group[0]])
