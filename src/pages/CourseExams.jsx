@@ -98,12 +98,10 @@ export default function CourseExams({ courseId, pollMs = 2500 }) {
     [topicsText, setTopicsText] = useState("");
   const alive = useRef(true);
   const selected = styles.filter((s) => styleIds.includes(s.id));
-
-  useEffect(() => {
-    if (countTouched) return;
-    const suggested = averageExamCount(styles.filter((s) => styleIds.includes(s.id)).map((s) => s.profile));
-    if (suggested) setCount(suggested);
-  }, [styleIds, styles, countTouched]);
+  // Derived while rendering, not copied by an effect: an effect left one render where the new selection
+  // was already shown with the previous size (e.g. 5 before 4), which a fast submit or a test could catch.
+  const suggestedCount = averageExamCount(selected.map((s) => s.profile));
+  const shownCount = countTouched || !suggestedCount ? count : suggestedCount;
 
   function toggleStyle(id) {
     setStyleIds((ids) =>
@@ -215,7 +213,7 @@ export default function CourseExams({ courseId, pollMs = 2500 }) {
     const topics = topicsFromText(topicsText);
     const problem = examFormProblem({
       styleIds,
-      count,
+      count: shownCount,
       hasStyleTopics: selected.some((s) => s.profile?.topic_terms?.length),
       topics,
     });
@@ -224,7 +222,7 @@ export default function CourseExams({ courseId, pollMs = 2500 }) {
     try {
       const created = await api.createExam(courseId, {
         exam_style_ids: styleIds,
-        count: Number(count),
+        count: Number(shownCount),
         ...(topics.length ? { topics } : {}),
       });
       setExams((list) => [created, ...list]);
@@ -381,7 +379,7 @@ export default function CourseExams({ courseId, pollMs = 2500 }) {
                 type="number"
                 min={1}
                 max={20}
-                value={count}
+                value={shownCount}
                 disabled={busy}
                 onChange={(e) => {
                   setCountTouched(true);
