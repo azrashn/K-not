@@ -8,6 +8,7 @@ import { findQuizSources, QuizScopeRequest } from "./quiz-sources";
 import { publicQuiz } from "./quiz-public";
 import { failure, QuizFailure, V2_PIPELINE } from "./quiz-failures";
 import { isDuplicateStem } from "./quiz-repeat";
+import type { RepeatGuard } from "./generation/repeat-guard";
 
 export type QuizItemRequest = { kind: string; variant?: "CALCULATION" | null };
 
@@ -17,6 +18,13 @@ export type GenerateRequest = QuizScopeRequest & {
   avoidStems?: string[];
   /** Model time the ai-service may spend on this request. */
   budgetSeconds: number;
+  /** Excerpts chosen beforehand (generation/source-pool): sent as they are, no search. */
+  sources?: any[];
+  /** Source sentences earlier questions of the same quiz or exam rest on: the ai-service will not number them. */
+  avoidQuotes?: string[];
+  /** The whole quiz's or exam's repeat guard: a stored question is recorded in it, and a stem or sentence it
+   *  already holds is refused (DUPLICATE_STEM / DUPLICATE_QUOTE) before anything is stored. */
+  guard?: RepeatGuard;
 };
 
 export type GenerateResult = {
@@ -69,7 +77,7 @@ export class QuizGenerator {
   ) {}
 
   async generate(u: AuthUser, c: string, b: GenerateRequest): Promise<GenerateResult> {
-    const sources = await findQuizSources(this.knowledge, u, c, b);
+    const sources = b.sources?.length ? b.sources : await findQuizSources(this.knowledge, u, c, b);
     const all = (code: string, attempts = 0): GenerateResult => ({
       quizzes: [],
       stems: [],
@@ -84,6 +92,7 @@ export class QuizGenerator {
         budget_seconds: b.budgetSeconds,
         ...(b.styleHint ? { style_hint: b.styleHint } : {}),
         ...(b.avoidStems?.length ? { avoid_stems: b.avoidStems.slice(-10) } : {}),
+        ...(b.avoidQuotes?.length ? { avoid_quotes: b.avoidQuotes.slice(-60) } : {}),
       },
       timeoutMs: b.budgetSeconds * 1000 + HTTP_SLACK_MS,
     });
@@ -124,8 +133,11 @@ export class QuizGenerator {
         continue;
       }
       // Checked before storing, so a repeated question never reaches the student's history.
-      if (isDuplicateStem(q.question, [...(b.avoidStems ?? []), ...stems])) {
-        failures.push(failure(slot, item.kind, "DUPLICATE_STEM", q?.quality?.attempts ?? 0, item.variant));
+      const repeat = b.guard
+        ? b.guard.isRepeat(q.question) ? "DUPLICATE_STEM" : b.guard.isUsedQuote(q.quote) ? "DUPLICATE_QUOTE" : null
+        : isDuplicateStem(q.question, [...(b.avoidStems ?? []), ...stems]) ? "DUPLICATE_STEM" : null;
+      if (repeat) {
+        failures.push(failure(slot, item.kind, repeat, q?.quality?.attempts ?? 0, item.variant));
         continue;
       }
       const source = sources[q.source_index - 1];
@@ -151,6 +163,7 @@ export class QuizGenerator {
       });
       quizzes.push({ ...publicQuiz(row), slot });
       stems.push(q.question);
+      b.guard?.accept(q.question, q.quote);
     }
     b.items.forEach((it, slot) => {
       if (!answered.has(slot)) failures.push(failure(slot, it.kind, "MISSING", 0, it.variant));
