@@ -1,6 +1,7 @@
+import { userScopedKey } from '../api/session'
 // The material a student last opened in a course, kept in this browser only as a convenience.
 // It may be missing (private window, blocked storage); nothing depends on it.
-const key = (courseId) => `knot.last-material.${courseId}`
+const key = (courseId) => userScopedKey(`knot.last-material.${courseId}`)
 
 export function rememberMaterial(courseId, materialId) {
   try { window.localStorage.setItem(key(courseId), String(materialId)) } catch { /* optional */ }

@@ -37,6 +37,19 @@ export function load() {
 export const get = () => current
 export const token = () => current?.token ?? null
 
+/** Tarayıcıda saklanan kişisel değerlerin anahtarı: aynı tarayıcıdaki başka kullanıcı görmesin. */
+export const userScopedKey = (base) => `${base}:${current?.user?.id ?? 'anon'}`
+
+/** Çıkışta ya da oturum bitince bu kullanıcıya ait kişisel anahtarları siler. */
+export function clearUserScoped(userId) {
+  try {
+    const suffix = `:${userId ?? 'anon'}`
+    for (const k of Object.keys(window.localStorage)) {
+      if ((k.startsWith('knot-exam') || k.startsWith('knot.last-material.')) && k.endsWith(suffix)) window.localStorage.removeItem(k)
+    }
+  } catch { /* depolama kapalı */ }
+}
+
 /** `login` yanıtından: { access_token, expires_in, user } */
 export function start({ access_token, expires_in, user }) {
   current = { token: access_token, user, expiresAt: Date.now() + expires_in * 1000 }
@@ -47,6 +60,7 @@ export function start({ access_token, expires_in, user }) {
 
 export function end(reason = 'logout') {
   clearTimeout(timer)
+  if (reason === 'logout') clearUserScoped(current?.user?.id)
   current = null
   storage()?.removeItem(KEY)
   emit(reason)

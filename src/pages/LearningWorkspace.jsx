@@ -523,6 +523,10 @@ export default function LearningWorkspace({ courseId }) {
       setUploading(false);
     }
   }
+  // Birden çok dosya seçilirse sırayla yüklenir; her biri ayrı iş olarak kuyruğa girer.
+  async function uploadMany(files) {
+    for (const file of files) await upload(file);
+  }
   async function ask(
     event,
     explainTurn,
@@ -777,7 +781,7 @@ export default function LearningWorkspace({ courseId }) {
             ← Derslerin
           </button>
           <h1>{course?.name || "Ders çalışma alanı"}</h1>
-          <span className="title-note" aria-hidden>masan hazır</span>
+          {hasReadyMaterial && <span className="title-note" aria-hidden>masan hazır</span>}
           <p>Materyalini incele. Aynı bağlamda sor, öğren ve uygula.</p>
         </div>
         <div className="product-actions">
@@ -891,12 +895,13 @@ export default function LearningWorkspace({ courseId }) {
                 ref={input}
                 type="file"
                 className="sr-only"
+                multiple={uploadMode !== "video"}
                 aria-label="Ortak ders materyali seç"
                 accept={
                   uploadMode === "video" ? ".mp4,.webm" : ".pdf,.pptx,.txt"
                 }
                 onChange={(e) => {
-                  upload(e.target.files[0]);
+                  void uploadMany(Array.from(e.target.files || []));
                   e.target.value = "";
                 }}
               />

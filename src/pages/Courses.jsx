@@ -199,7 +199,7 @@ export default function Courses() {
                   <span className="flex items-center justify-between gap-6 md:justify-end">
                     <span className="text-[13px] text-ink-2">
                       {c.term}
-                      {c.my_role ? ` · ${ROLE[c.my_role]}` : ''}
+                      {c.my_role ? ` · ${c.term === 'Kişisel' && c.my_role === 'INSTRUCTOR' ? 'Ders sahibi' : ROLE[c.my_role]}` : ''}
                     </span>
                     <CaretRight
                       size={16}

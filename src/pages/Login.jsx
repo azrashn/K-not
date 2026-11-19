@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { motion, useReducedMotion } from 'framer-motion'
 import { useAuth } from '../app/auth'
 import { errorText } from '../api/messages'
@@ -14,6 +14,7 @@ export default function Login() {
   const [password, setPassword] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
+  const passwordRef = useRef(null)
 
   const submit = async (e) => {
     e.preventDefault()
@@ -25,6 +26,9 @@ export default function Login() {
     } catch (err) {
       setError(err?.code === 'UNAUTHENTICATED' ? 'E-posta ya da parola hatalı.' : errorText(err))
       setBusy(false)
+      // Yanlış paroldan sonra alan temizlenir ve imleç oraya döner.
+      setPassword('')
+      setTimeout(() => passwordRef.current?.focus(), 0)
     }
   }
 
@@ -62,7 +66,7 @@ export default function Login() {
           <label className="block">
             <span className="mb-1.5 block text-[13px] font-medium text-ink-2">Parola</span>
             <input
-              type="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)}
+              ref={passwordRef} type="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)}
               className="h-11 w-full rounded-xl bg-white px-4 text-[15px] text-ink outline-none shadow-[0_0_0_1px_var(--color-line-strong)] focus:shadow-[0_0_0_2px_var(--color-accent)]"
             />
           </label>

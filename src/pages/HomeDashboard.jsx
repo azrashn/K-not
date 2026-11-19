@@ -12,11 +12,12 @@ import {
   CourseEditor,
 } from '../components/ProductUI'
 import { LoadState } from './Courses'
+import { userScopedKey } from '../api/session'
 
 // Sınav pulu: tarih ve ad öğrencinin girdiği değerdir; tahmin yok. Bu tarayıcıda saklanır.
-const EXAM_KEY = 'knot-exam'
+const examKey = () => userScopedKey('knot-exam')
 function readExam() {
-  try { return JSON.parse(localStorage.getItem(EXAM_KEY) || 'null') } catch { return null }
+  try { return JSON.parse(localStorage.getItem(examKey()) || 'null') } catch { return null }
 }
 function ExamStamp() {
   const [exam, setExam] = useState(readExam)
@@ -27,12 +28,12 @@ function ExamStamp() {
     e.preventDefault()
     if (!title.trim() || !date) return
     const next = { title: title.trim().slice(0, 40), date }
-    try { localStorage.setItem(EXAM_KEY, JSON.stringify(next)) } catch { /* depolama kapalı */ }
+    try { localStorage.setItem(examKey(), JSON.stringify(next)) } catch { /* depolama kapalı */ }
     setExam(next)
     setEdit(false)
   }
   function clear() {
-    try { localStorage.removeItem(EXAM_KEY) } catch { /* depolama kapalı */ }
+    try { localStorage.removeItem(examKey()) } catch { /* depolama kapalı */ }
     setExam(null)
     setTitle(''); setDate('')
   }
