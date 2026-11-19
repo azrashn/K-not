@@ -1450,18 +1450,37 @@
   cursor: not-allowed;
   opacity: 0.55;
 }
-.exam-style-option input {
+/* `.product-form input` gives every input width:100% and text-field padding; a checkbox keeps its own size. */
+.exam-style-pick .exam-style-option input[type="checkbox"] {
+  flex: none;
+  width: auto;
+  height: auto;
   margin: 0;
+  padding: 0;
   accent-color: var(--color-accent);
 }
-.exam-style-name {
+.exam-style-text {
+  display: flex;
   flex: 1;
+  flex-direction: column;
+  gap: 2px;
   min-width: 0;
+}
+.exam-style-name {
   font-size: 13px;
-  overflow-wrap: anywhere;
+  line-height: 1.35;
+  overflow-wrap: break-word; /* breaks at word boundaries; splits a word only if it alone does not fit */
+}
+.exam-style-summary {
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--color-ink-3);
+  overflow-wrap: break-word;
 }
 .exam-style-count {
   flex: none;
+  margin-left: auto;
+  white-space: nowrap;
   padding: 1px 6px;
   border: 1px solid var(--color-hair);
   border-radius: 4px;

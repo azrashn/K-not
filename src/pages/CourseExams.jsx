@@ -354,7 +354,13 @@ export default function CourseExams({ courseId, pollMs = 2500 }) {
                         disabled={!checked && styleIds.length >= EXAM_STYLES_MAX}
                         onChange={() => toggleStyle(s.id)}
                       />
-                      <span className="exam-style-name">{s.name}</span>
+                      <span className="exam-style-text">
+                        <span className="exam-style-name">{s.name}</span>
+                        {/* The count is on the badge; the summary only gives the kind mix. */}
+                        {describeExamStyle(s.profile, { withCount: false }) && (
+                          <small className="exam-style-summary">{describeExamStyle(s.profile, { withCount: false })}</small>
+                        )}
+                      </span>
                       <span className="exam-style-count">{s.profile?.question_count ?? 0} soru</span>
                     </label>
                   );

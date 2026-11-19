@@ -175,6 +175,21 @@ describe('choosing several past exams', () => {
     expect(api.createExam).toHaveBeenCalledWith('c', { exam_style_ids: [style.id, vize.id], count: 6 })
   })
 
+  test('each option shows the name, the style summary below it and the question count', async () => {
+    api.examStyles.mockResolvedValue([style, vize])
+    render(<CourseExams courseId="c" />)
+    const group = await screen.findByRole('group', { name: 'Geçmiş sınavlar' })
+    const option = within(group).getByRole('checkbox', { name: /Final 2025/ }).closest('label')
+    expect(option.querySelector('.exam-style-name')).toHaveTextContent('Final 2025')
+    // The count is shown once, on the badge; the summary starts with the kind mix.
+    expect(option.querySelector('.exam-style-summary').textContent).toBe('çoktan seçmeli 1 · doğru/yanlış 1 · hesaplama 1 · açık uçlu 1')
+    expect(option.querySelector('.exam-style-count')).toHaveTextContent('4 soru')
+    // Elsewhere (the saved-styles list) the summary keeps its count.
+    expect(screen.getAllByText('4 soru · çoktan seçmeli 1 · doğru/yanlış 1 · hesaplama 1 · açık uçlu 1', { selector: '.resume-row small' })).toHaveLength(1)
+    // checkbox, text column, badge: in this order, on one row
+    expect([...option.children].map((el) => el.className || el.type)).toEqual(['checkbox', 'exam-style-text', 'exam-style-count'])
+  })
+
   test('a size the student typed is kept when the selection changes', async () => {
     const user = userEvent.setup()
     api.examStyles.mockResolvedValue([style, vize])
