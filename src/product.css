@@ -2086,10 +2086,10 @@
 
 /* ── Daha fazla renk: sayfa tonları ──────────────────────── */
 :root {
-  --tone-coral: #e2725b; --tone-blue: #4a8fc7; --tone-lilac: #8a62c4; --tone-green: #3f7a5c; --tone-pink: #d9607f; --tone-sun: #d99a12;
+  --tone-coral: #e2725b; --tone-blue: #4a8fc7; --tone-lilac: #8a62c4; --tone-green: #3f7a5c; --tone-pink: #d9607f; --tone-sun: #d99a12; --tone-red: #cf4b45;
 }
 :root[data-theme='dark'] {
-  --tone-coral: #ee8f7a; --tone-blue: #6fa9dc; --tone-lilac: #a994de; --tone-green: #6fa886; --tone-pink: #e88aa5; --tone-sun: #e6b94a;
+  --tone-coral: #ee8f7a; --tone-blue: #6fa9dc; --tone-lilac: #a994de; --tone-green: #6fa886; --tone-pink: #e88aa5; --tone-sun: #e6b94a; --tone-red: #e8847c;
 }
 .product-title, .workspace-heading { --page: var(--color-accent); }
 .product-title[data-tone='coral'] { --page: var(--tone-coral); }
@@ -2097,6 +2097,7 @@
 .product-title[data-tone='lilac'] { --page: var(--tone-lilac); }
 .product-title[data-tone='pink'] { --page: var(--tone-pink); }
 .product-title[data-tone='sun'] { --page: var(--tone-sun); }
+.product-title[data-tone='red'] { --page: var(--tone-red); }
 .workspace-heading { --page: var(--tone-blue); }
 .title-note { color: color-mix(in srgb, var(--page) 62%, var(--color-ink)); } /* ton yazı olarak okunur kalsın (AA) */
 .product-title h1, .workspace-heading h1 { background-image: linear-gradient(transparent 60%, color-mix(in srgb, var(--page) 42%, transparent) 60%); }
@@ -2132,7 +2133,7 @@
 .nav-tab[data-tone='courses'] { --tab: var(--tone-blue); }
 .nav-tab[data-tone='quiz'] { --tab: var(--tone-lilac); }
 .nav-tab[data-tone='analytics'] { --tab: var(--tone-green); }
-.nav-tab[data-tone='exams'] { --tab: var(--tone-pink); }
+.nav-tab[data-tone='exams'] { --tab: var(--tone-red); }
 .nav-tab:hover { margin-right: -16px; }
 .nav-tab[aria-current='page'] { margin-right: -20px; background: color-mix(in srgb, var(--tab) 72%, #000) !important; color: var(--color-white) !important; } /* koyulaştırılmış ton: 10,5 px yazı AA kontrastı (4,5:1) */
 :root[data-theme='dark'] .nav-tab[aria-current='page'] { background: var(--tab) !important; color: #1e1b18 !important; }

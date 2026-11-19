@@ -19,7 +19,7 @@ export default function ExamsHome() {
   return (
     <PageFrame>
       <MobileBar title="Sınav" />
-      <PageTitle eyebrow="Geçmiş sınavdan yeni sınav" title="Sınavlar">
+      <PageTitle eyebrow="Geçmiş sınavdan yeni sınav" title="Sınavlar" tone="red">
         Geçmiş bir sınavı yükle; sorularının biçimi öğrenilir ve ders kaynaklarından benzer yeni bir sınav hazırlanır.
       </PageTitle>
       {courses.error && (
@@ -39,7 +39,7 @@ export default function ExamsHome() {
             {list.map((c) => (
               <li key={c.id}>
                 <button type="button" className="exam-course" onClick={() => navigate(`/dersler/${c.id}/sinavlar`)}>
-                  <span className="source-badge">{c.code}</span>
+                  {!/^P-[0-9a-f]{8}-/.test(c.code || "") && <span className="source-badge">{c.code}</span>}
                   <strong>{c.name}</strong>
                   <span className="product-note">{c.term}</span>
                 </button>
