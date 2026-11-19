@@ -24,8 +24,8 @@ class Start {
   /** MIXED ("Karışık"): the kinds in turn (v2 only). */
   @IsIn(["MULTIPLE_CHOICE", "TRUE_FALSE", "CLOZE", "SHORT_ANSWER", "OPEN", "MIXED"])
   kind!: string;
-  /** 1 (default): the question is returned at once. 2-10: a quiz set, answered 202 (v2 only). */
-  @IsOptional() @IsInt() @Min(1) @Max(10) count?: number;
+  /** 1 (default): the question is returned at once. 2-15: a quiz set, answered 202 (v2 only). */
+  @IsOptional() @IsInt() @Min(1) @Max(15) count?: number;
   @IsOptional()
   @Matches(/^(pdf|file|video)_[A-Za-z0-9_-]{1,80}$/)
   material_id?: string;

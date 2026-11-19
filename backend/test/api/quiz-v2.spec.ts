@@ -132,7 +132,7 @@ test("a quiz of 3 questions is a set: 202 at once, then GET /quiz-sets/:id; exam
   await h.http().get(`${course}/exams/${started.body.id}`).set(as).expect(404);
   expect((await h.http().get(`${course}/exams`).set(as).expect(200)).body).toEqual([]);
   await h.http().get(`${course}/quiz-sets/${started.body.id}`).set(await h.as("mehmet")).expect(404);
-  await h.http().post(base()).set(as).send({ topic: "Evaporation", kind: "OPEN", count: 11 }).expect(422);
+  await h.http().post(base()).set(as).send({ topic: "Evaporation", kind: "OPEN", count: 16 }).expect(422);
 });
 
 test("a v2 question is created, answered and graded through the unchanged public API", async () => {

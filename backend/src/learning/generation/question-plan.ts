@@ -21,7 +21,7 @@ export type QuestionPlan = {
 };
 
 export const QUIZ_COUNT_MIN = 1;
-export const QUIZ_COUNT_MAX = 10;
+export const QUIZ_COUNT_MAX = 15;
 export const QUIZ_KINDS = ["MULTIPLE_CHOICE", "TRUE_FALSE", "CLOZE", "SHORT_ANSWER", "OPEN"] as const;
 export type QuizKindChoice = (typeof QUIZ_KINDS)[number] | "MIXED";
 /** "Karışık": the kinds in turn, starting with the quickest to answer. */

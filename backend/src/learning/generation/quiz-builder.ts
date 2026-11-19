@@ -1,7 +1,7 @@
-/** Quiz on one topic, 1 to 10 questions of one kind or "Karışık" (QUIZ_ENGINE=v2).
+/** Quiz on one topic, 1 to 15 questions of one kind or "Karışık" (QUIZ_ENGINE=v2).
  *
  *  source pool → the topic's parts → plan → questions. One question is written while the student waits and
- *  returned at once (as before). 2-10 questions are a quiz set: saved as GENERATING (GeneratedExam, purpose
+ *  returned at once (as before). 2-15 questions are a quiz set: saved as GENERATING (GeneratedExam, purpose
  *  PRACTICE) and written in the background like an exam; the screen follows GET /quiz-sets/:id. */
 import { Logger } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
@@ -23,6 +23,8 @@ import { quizTopic } from "./topic-planner";
 export const NOTHING_TO_ASK = "Bu konuda soru hazırlamaya uygun kaynak metni bulunamadı.";
 export const NOT_WATCHED =
   "Bu konuda tamamen izlenmiş video bölümü bulunamadı. Son oynatma konumu tek başına izleme kanıtı değildir.";
+/** Quiz setinde bir sorunun en fazla deneme sayısı (sınav ve tek soru kendi değerini korur). */
+export const SET_MAX_TRIES = 3;
 export const SET_RUNNING = "Bu ders için bir alıştırma seti zaten hazırlanıyor. Bitmesini bekleyin.";
 
 export type QuizRequest = {
@@ -94,7 +96,7 @@ export class QuizBuilder {
     return { ...publicQuiz(row), ...(pool.warning ? { source_warning: pool.warning } : {}) };
   }
 
-  /** 2-10 questions: saved as GENERATING and written in the background. One set per course at a time. */
+  /** 2-15 questions: saved as GENERATING and written in the background. One set per course at a time. */
   async startSet(u: AuthUser, c: string, b: QuizRequest, budgetSeconds: number) {
     const running = await this.prisma.generatedExam.count({
       where: { courseId: c, userId: u.id, status: "GENERATING", purpose: "PRACTICE" },
@@ -122,6 +124,9 @@ export class QuizBuilder {
       run: {
         generator: this.generator, user: u, course: c, scope: b.scope, styleHint: b.styleHint ?? null,
         budgetSeconds, guard: new RepeatGuard(), purpose: "PRACTICE",
+        // Kısa yanıt / boşluk doldurmada kaynakta temellenmeyen sorular reddedilir; eksik kalan soru için
+        // yedek parçalarla ikinci kez daha denenir (tek soruda bekleme süresi yüzünden 1 deneme kalır).
+        maxTries: SET_MAX_TRIES,
       },
     });
     return row;

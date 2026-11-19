@@ -169,7 +169,7 @@ export class LearningService {
     };
   }
   /**
-   * POST /quizzes. v2: one question is returned at once (the public quiz); 2-10 questions start a quiz set
+   * POST /quizzes. v2: one question is returned at once (the public quiz); 2-15 questions start a quiz set
    * written in the background, returned as `{ set }` (the controller answers 202). Legacy: one question of one
    * kind, as before.
    */
