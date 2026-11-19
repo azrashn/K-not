@@ -63,20 +63,47 @@ async function main() {
       check((await cards().count()) >= 4, 'expected at least four cards')
     })
 
-    await step('every card carries the same grey wire, aligned to its binding holes', async () => {
+    await step('every card carries the same grey wire, one ring per binding hole', async () => {
+      await page.mouse.move(2, 2) // the pointer is still where the login button was, possibly over a card
+      await page.waitForTimeout(500)
       const wires = await cards().evaluateAll((els) => els.map((el) => {
-        const w = getComputedStyle(el, '::after')
-        const b = getComputedStyle(el, '::before')
-        return { content: w.content, width: w.width, size: w.backgroundSize, mask: w.maskImage || w.webkitMaskImage, holes: b.backgroundSize, bg: w.backgroundImage, pe: w.pointerEvents }
+        const w = el.querySelector('.card-wire')
+        const r = w.querySelector('i')
+        const cs = getComputedStyle(r)
+        return { width: getComputedStyle(w).width, ring: cs.height, mask: cs.maskImage || cs.webkitMaskImage, holes: getComputedStyle(el, '::before').backgroundSize, bg: cs.backgroundImage, pe: getComputedStyle(w).pointerEvents, hidden: w.getAttribute('aria-hidden'), transform: cs.transform, inRange: Math.floor(el.getBoundingClientRect().height / 34) <= w.children.length }
       }))
       for (const w of wires) {
-        check(w.content !== 'none' && w.width === '40px', `wire missing or wrong width: ${JSON.stringify(w)}`)
-        check(/svg/.test(w.mask), 'wire has no ring mask')
-        check(w.size.split(' ')[1] === w.holes.split(' ')[1], `ring rhythm ${w.size} must equal hole rhythm ${w.holes}`)
-        check(w.pe === 'none', 'the wire must not catch clicks')
+        check(w.width === '40px' && w.ring === '34px', `wire missing or wrong size: ${JSON.stringify(w)}`)
+        check(/svg/.test(w.mask), 'ring has no mask')
+        check(w.ring === w.holes.split(' ')[1], `ring rhythm ${w.ring} must equal hole rhythm ${w.holes}`)
+        check(w.pe === 'none' && w.hidden === 'true', 'the wire must not catch clicks and must be hidden from screen readers')
+        check(w.transform === 'none', `rings rest still: ${w.transform}`)
+        check(w.inRange, 'not enough rings to cover the card')
       }
       check(new Set(wires.map((w) => w.bg)).size === 1, 'all cards must have the same grey wire, not their own colours')
       greyish(wires[0].bg, 'the wire')
+    })
+
+    await step('hovering a card turns its rings one after another, and only that card', async () => {
+      const first = cards().first()
+      const ring = (c, n) => c.locator('.card-wire i').nth(n)
+      await first.hover()
+      await page.waitForTimeout(700)
+      const turned = await ring(first, 0).evaluate((el) => getComputedStyle(el).transform)
+      check(turned !== 'none', 'ring did not turn on hover')
+      const other = await ring(cards().nth(1), 0).evaluate((el) => getComputedStyle(el).transform)
+      check(other === 'none', 'a neighbouring card turned as well')
+      await page.mouse.move(5, 5)
+      await page.waitForTimeout(700)
+      check((await ring(first, 0).evaluate((el) => getComputedStyle(el).transform)) === 'none', 'ring did not return to rest')
+      const t = await ring(first, 3).evaluate((el) => getComputedStyle(el).transitionDuration)
+      check(parseFloat(t) <= 0.3, `transition too long: ${t}`)
+      await page.emulateMedia({ reducedMotion: 'reduce' })
+      await first.hover()
+      await page.waitForTimeout(400)
+      check((await ring(first, 0).evaluate((el) => getComputedStyle(el).transform)) === 'none', 'reduced motion must keep the rings still')
+      await page.emulateMedia({ reducedMotion: 'no-preference' })
+      await page.mouse.move(5, 5)
     })
 
     await step('the wire sticks out of the card without touching the neighbouring card', async () => {
@@ -89,7 +116,7 @@ async function main() {
 
     await step('the card itself is unchanged: same box with the wire hidden, click still opens the course', async () => {
       const withWire = await cards().first().boundingBox()
-      await page.addStyleTag({ content: '.course-card::after { display: none !important }' })
+      await page.addStyleTag({ content: '.card-wire { display: none !important }' })
       const without = await cards().first().boundingBox()
       check(withWire.width === without.width && withWire.height === without.height && withWire.x === without.x && withWire.y === without.y, `wire changed the card box: ${JSON.stringify(withWire)} vs ${JSON.stringify(without)}`)
       await page.reload()
@@ -122,7 +149,7 @@ async function main() {
     await step('the night desk keeps the wire grey and visible', async () => {
       await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'dark'))
       await page.waitForTimeout(400)
-      const bg = await cards().first().evaluate((el) => getComputedStyle(el, '::after').backgroundImage)
+      const bg = await cards().first().evaluate((el) => getComputedStyle(el.querySelector('.card-wire i')).backgroundImage)
       const rgb = greyish(bg, 'the dark wire')
       check(rgb.some(([r]) => r > 110), 'dark wire is too dark to see')
       await shot('04-dark')

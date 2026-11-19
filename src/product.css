@@ -2406,8 +2406,9 @@ nav[aria-label='Ana gezinme'] { z-index: 2; }
 
 /* ── Spiral defter teli ─────────────────────────────────────────────────────────────────
    Ders kartlarının sol şeridindeki her deliğe (her 34 px) bir tel halkası geçer; halkalar kartın
-   solundan hafifçe taşar. Tel gridir (hepsinde aynı), metal gibi hafif parlaktır. Süstür: kartın
-   boyutunu, içeriğini ve tıklamasını etkilemez; hareketi yoktur. */
+   solundan hafifçe taşar. Tel gridir (hepsinde aynı). Süstür: kartın boyutunu, içeriğini ve
+   tıklamasını etkilemez. Kart üzerine gelince (ya da odaklanınca) halkalar yukarıdan aşağıya
+   sırayla hafifçe döner; yalnızca transform, 180 ms, sürekli hareket yok. */
 :root {
   --wire: color-mix(in srgb, var(--color-ink-3) 82%, var(--color-sheet));
   --wire-hi: color-mix(in srgb, var(--color-sheet) 62%, var(--color-ink-3));
@@ -2420,21 +2421,29 @@ nav[aria-label='Ana gezinme'] { z-index: 2; }
 }
 .course-card { overflow: visible; } /* tel kartın solundan taşar */
 .course-card::before { border-radius: 3px 0 0 3px; } /* şerit, taşma kırpması kalkınca eski köşelerini korur */
-.course-card::after {
-  content: '';
+.card-wire {
   position: absolute;
   top: 0;
   bottom: 0;
   left: -13px; /* halkanın deliğe giren ucu şeritteki deliğin ortasına (x = 13 px) gelir */
   width: 40px;
+  overflow: hidden;
   pointer-events: none;
   z-index: 2;
+}
+.card-wire i {
+  display: block;
+  height: 34px; /* delik aralığı (.course-card::before) ile aynı */
+  transform-origin: 13px 17px; /* delik */
   background: linear-gradient(165deg, var(--wire-hi) 0%, var(--wire) 42%, var(--wire-lo) 100%);
-  background-size: 100% 34px; /* delik aralığı (.course-card::before) ile aynı */
-  background-repeat: repeat-y;
-  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 34'%3E%3Cpath d='M26 14C21 13.2 11 14.4 6.4 19.6C3.2 23.2 5.4 28.6 10.2 28.2C11.8 28 12.8 27.6 13.6 27.2' fill='none' stroke='black' stroke-width='3.2' stroke-linecap='round'/%3E%3C/svg%3E") 0 0 / 100% 34px repeat-y;
-  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 34'%3E%3Cpath d='M26 14C21 13.2 11 14.4 6.4 19.6C3.2 23.2 5.4 28.6 10.2 28.2C11.8 28 12.8 27.6 13.6 27.2' fill='none' stroke='black' stroke-width='3.2' stroke-linecap='round'/%3E%3C/svg%3E") 0 0 / 100% 34px repeat-y;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 34'%3E%3Cpath d='M26 14C21 13.2 11 14.4 6.4 19.6C3.2 23.2 5.4 28.6 10.2 28.2C11.8 28 12.8 27.6 13.6 27.2' fill='none' stroke='black' stroke-width='3.2' stroke-linecap='round'/%3E%3C/svg%3E") 0 0 / 100% 34px no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 34'%3E%3Cpath d='M26 14C21 13.2 11 14.4 6.4 19.6C3.2 23.2 5.4 28.6 10.2 28.2C11.8 28 12.8 27.6 13.6 27.2' fill='none' stroke='black' stroke-width='3.2' stroke-linecap='round'/%3E%3C/svg%3E") 0 0 / 100% 34px no-repeat;
   filter: drop-shadow(0.5px 1px 0.6px color-mix(in srgb, var(--color-ink) 32%, transparent));
+}
+@media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
+  .card-wire i { transition: transform 180ms ease-out calc(var(--i) * 14ms); }
+  .course-card:hover .card-wire i,
+  .course-card:focus-within .card-wire i { transform: translateX(-2px) rotate(-7deg); }
 }
 
 /* ── Ders ekranı: ortada anlatım (yazılı / tahta), sağda kaynak + soru sor ── */

@@ -64,6 +64,8 @@ export function LoadState({ loading, error, onRetry, empty, emptyText }) {
   return null
 }
 
+const WIRE_RINGS = Array.from({ length: 40 }, (_, i) => i);
+
 export default function Courses() {
   const { navigate } = useApp()
   const [archived, setArchived] = useState(false),
@@ -147,6 +149,7 @@ export default function Courses() {
             const r = courseReadiness(c.documents)
             return (
               <li key={c.id} className="course-card">
+                <span className="card-wire" aria-hidden="true">{WIRE_RINGS.map((i) => <i key={i} style={{ "--i": Math.min(i, 12) }} />)}</span>
                 <button
                   type="button"
                   disabled={c.lifecycle === 'DELETING'}
