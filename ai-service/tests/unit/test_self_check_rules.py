@@ -45,3 +45,20 @@ def test_comparison_swapped_or_opposite():
 
 def test_rule_conflict_only_on_single_sentences_for_direction():
     assert rule_conflict("a", "b", 0) is None
+
+
+def test_short_claims_with_one_other_word_need_that_word_in_the_sentence():
+    # "TCP is connectionless" against the line that says TCP is connection-oriented
+    assert antonym_conflict("TCP is connectionless", "Connection-oriented transport: TCP") is not None
+    # the subject is not in the sentence: nothing
+    assert antonym_conflict("UDP is connectionless", "Connection-oriented transport: TCP") is None
+    # the same word: nothing
+    assert antonym_conflict("UDP is connectionless", "Connectionless transport: UDP") is None
+
+
+def test_damaged_slide_text_still_shows_the_opposite_word():
+    assert antonym_conflict("TCP is connectionless", "§Connec8on-oriented transport: TCP") is not None
+
+
+def test_hyphenated_opposite_word_does_not_count_its_own_parts_as_the_rest_of_the_claim():
+    assert antonym_conflict("UDP is connection-oriented", "§Connectionless transport: UDP") is not None

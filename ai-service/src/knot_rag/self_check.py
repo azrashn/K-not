@@ -318,6 +318,8 @@ def classify(claim: str, evidence: list[dict], short_ok: bool = False, same_lang
     scored = []  # (rank, coverage, evidence index, window, support)
     conflicts = []
     single_good = False
+    multi_good = False
+    line_conflict = False
     claim_negated = has_negation(claim)
     acronyms = {a.translate(_FOLD).lower() for a in re.findall(r"(?<![A-Za-z])[A-Z][A-Z0-9]{1,9}(?![A-Za-z])", claim)}
     for n, e in enumerate(evidence):
@@ -347,6 +349,15 @@ def classify(claim: str, evidence: list[dict], short_ok: bool = False, same_lang
                 # check_claim forgives ONE missing word as rephrasing; an acronym (AES, TLS) is no rephrasing,
                 # it is the very thing the claim asserts.
                 support = {**support, "label": "UNSUPPORTED", "reason": "MISSING_ACRONYM"}
+            if support["label"] in _GOOD and claim_negated:
+                # A DENIAL needs a sentence that denies the same thing: not a page that merely contains a
+                # "not" somewhere. So: never from a whole page, and within 1-3 sentences the claim's own
+                # (non-negation) words must be there.
+                words = [t for t in _claim_words(claim) if t not in NEGATION_WORDS]
+                window_stems = stem_set(window)
+                local = size in (1, 2, 3) and words and sum(stem_in(stem(t), window_stems) for t in words) / len(words) >= 0.7
+                if not local or not has_negation(window):
+                    support = {**support, "label": "UNSUPPORTED", "reason": "NEGATION_MISMATCH"}
             if support["label"] in _GOOD and claim_negated and not has_negation(window):
                 # The student denies something the source states without any negation.
                 support = {**support, "label": "UNSUPPORTED", "reason": "NEGATION_MISMATCH"}
@@ -361,15 +372,20 @@ def classify(claim: str, evidence: list[dict], short_ok: bool = False, same_lang
             # Polarity is compared one sentence at a time: a negation in a neighbouring sentence of a
             # wider window says nothing about this claim. A good single sentence also settles it.
             c = _conflict(claim, window, size, all_numbers, all_pairs)
-            if c and c["kind"] in RULE_KINDS and support["label"] in _GOOD:
+            if c and support["label"] in _GOOD:
                 # Same words, opposite meaning (swapped roles, opposite word): this sentence does not
                 # support the claim, it contradicts it.
                 support = {**support, "label": "UNSUPPORTED", "reason": "CONTRADICTED"}
             scored.append((rank[support["label"]], support["coverage"] or 0.0, -n, raw_window, support, e))
             if c:
                 conflicts.append((c, raw_window, e))
-            if size == 1 and support["label"] in _GOOD:
-                single_good = True
+            if c and size == 1:
+                line_conflict = True
+            if support["label"] in _GOOD:
+                if size == 1:
+                    single_good = True
+                elif size in (2, 3):
+                    multi_good = True
     if not scored:
         return {"label": "NOT_IN_SOURCE", "sources": [], "missing_terms": [], "unmatched_numbers": [], "conflict": None}
     scored.sort(key=lambda s: (s[0], s[1], s[2]), reverse=True)
@@ -388,7 +404,10 @@ def classify(claim: str, evidence: list[dict], short_ok: bool = False, same_lang
                 break
         return out
 
-    if conflicts and not single_good and not (label_rank >= rank["ANCHORED"] and conflicts[0][0]["kind"] == "NUMBER"):
+    # A few consecutive sentences that match word by word do not outweigh ONE sentence that contradicts:
+    # they count as support only when no single sentence conflicts with the claim.
+    supported_locally = single_good or (multi_good and not line_conflict)
+    if conflicts and not supported_locally and not (label_rank >= rank["ANCHORED"] and conflicts[0][0]["kind"] == "NUMBER"):
         c, window, e = conflicts[0]
         return {"label": "CONFLICTS", "sources": [_source(e, window, claim)], "missing_terms": [],
                 "unmatched_numbers": [], "conflict": c}
@@ -687,17 +706,20 @@ def self_check(index: UnifiedIndex, body: SelfCheck, translate=model_translate, 
         # The WHOLE claim is judged first. Only when it is not found as written (and not contradicted) is it
         # split, so a good claim is never made worse by splitting it.
         result = {**base, **check_statement(claim)}
-        if result["label"] != "IN_SOURCE" and result["label"] != "CONFLICTS":
+        if result["label"] != "CONFLICTS":
             parts, loose = split_compound(claim), False
-            if len(parts) == 1:
+            if len(parts) == 1:  # short halves too: they are only used when they contradict, or when the whole was not found
                 parts, loose = split_compound(claim, loose=True), True
             if len(parts) > 1:
                 subs = [check_statement(p, short_ok=loose, context=context_terms(parts, i)) for i, p in enumerate(parts)]
-                # a loose split ("UDP is connectionless and TCP uses AES") is trusted only when the sources
-                # confirm at least one part; otherwise the claim stays one statement
-                if not loose or any(x["label"] == "IN_SOURCE" for x in subs):
-                    result = {**base, **_combine(claim, subs)}
-                    result["translation"] = _join_translations(subs)
+                combined = {**base, **_combine(claim, subs)}
+                combined["translation"] = _join_translations(subs)
+                if combined["label"] == "CONFLICTS":
+                    result = combined  # a contradicted half is never hidden by a whole that matched word by word
+                elif result["label"] != "IN_SOURCE" and (not loose or any(x["label"] == "IN_SOURCE" for x in subs)):
+                    # not found as written: the parts say more. A loose split is trusted only when the
+                    # sources confirm at least one part.
+                    result = combined
         fresh.append((key, result))
         results.append(result)
     _meaning_check([r for _, r in fresh], judge_fn)

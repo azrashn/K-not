@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import re
 
+from knot_rag.self_check_norm import repair_ocr
 from knot_rag.text import fold, has_negation, stem, stem_in, stem_set
 
 _ASCII = str.maketrans("çğıöşüâîûÇĞİÖŞÜ", "cgiosuaiuCGIOSU")
@@ -24,7 +25,10 @@ RULE_KINDS = ("ANTONYM", "DIRECTION", "COMPARISON")
 
 
 def _w(text: str) -> list[str]:
-    return re.findall(r"[a-z0-9]+", text.translate(_ASCII).lower())
+    """Words of the text (ASCII-folded, lower case). Hyphenated terms ("connection-oriented") also appear as
+    one word, so that the opposite pairs below can name them."""
+    folded = text.translate(_ASCII).lower()
+    return re.findall(r"[a-z0-9]+", folded) + re.findall(r"[a-z0-9]+(?:-[a-z0-9]+)+", folded)
 
 
 # Opposite pairs, English and Turkish, as word stems (prefix match on the folded word).
@@ -60,6 +64,10 @@ ANTONYMS: list[tuple[tuple[str, ...], tuple[str, ...]]] = [
 ]
 
 
+# Whole words of the pairs, to put damaged slide ligatures back ("Connec8on-oriented") before comparing.
+_PAIR_WORDS = {w for left, right in ANTONYMS for group in (left, right) for w in group if " " not in w}
+
+
 def _hits(words: list[str], stems: tuple[str, ...]) -> list[str]:
     out = []
     for w in words:
@@ -75,6 +83,7 @@ def _hits(words: list[str], stems: tuple[str, ...]) -> list[str]:
 def antonym_conflict(claim: str, window: str, min_shared: int = 3) -> dict | None:
     """The claim uses one word of an opposite pair, the sentence the other, and the rest of the claim
     is in the sentence."""
+    window = repair_ocr(window, _PAIR_WORDS)
     cw, ww = _w(claim), _w(window)
     if has_negation(claim) != has_negation(window):
         return None
@@ -83,10 +92,14 @@ def antonym_conflict(claim: str, window: str, min_shared: int = 3) -> dict | Non
             in_claim, in_window = _hits(cw, a), _hits(ww, b)
             if not in_claim or not in_window or _hits(ww, a) or _hits(cw, b):
                 continue
-            rest = [t for t in dict.fromkeys(cw) if t not in in_claim and len(t) >= 3 and t not in {"the", "and", "that", "with"}]
+            hit_parts = {part for hit in in_claim for part in hit.split("-")}  # "connection-oriented" also made "connection", "oriented"
+            rest = [t for t in dict.fromkeys(cw) if t not in in_claim and t not in hit_parts and len(t) >= 3 and t not in {"the", "and", "that", "with"}]
             window_stems = {stem(t) for t in ww}
             shared = [t for t in rest if stem(t) in window_stems or stem_in(stem(t), window_stems)]
-            if len(shared) >= min_shared and len(shared) / max(1, len(rest)) >= 0.7:
+            # A short claim ("TCP is connectionless") has few other words: then ALL of them must be in the
+            # sentence, and the sentence must be one line (size 1 is the caller's choice for short claims).
+            needed = min(min_shared, len(rest)) if rest else 0
+            if needed >= 1 and len(shared) >= needed and len(shared) / max(1, len(rest)) >= (0.7 if len(rest) >= min_shared else 1.0):
                 return {"kind": "ANTONYM", "claim": [in_claim[0]], "source": [in_window[0]]}
     return None
 
