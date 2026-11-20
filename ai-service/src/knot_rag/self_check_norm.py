@@ -234,10 +234,15 @@ def slide_units(text: str) -> list[str]:
 def polar_word_present(word: str, folded_text: str) -> bool:
     """Is the reversing-affix word in the text, in full, or said the other way round ("connectionless" is
     "no connection" / "without connection")? `folded_text` is fold()-ed."""
-    if word in folded_text:
+    if word in folded_text or word.translate(_ASCII) in folded_text.translate(_ASCII):
         return True
     ascii_w = word.translate(_ASCII).lower()
     if ascii_w.endswith("less") and len(ascii_w) >= 8:
         base = re.escape(ascii_w[:-4][:7])
         return re.search(r"(?<![a-z])(?:no|without)\s+[^a-z0-9]*" + base, folded_text.translate(_ASCII)) is not None
+    for suffix in ("sizdir", "sizdur", "siz", "suz"):
+        if ascii_w.endswith(suffix) and len(ascii_w) >= 8:
+            # Turkish: "baglantisiz" is also "baglanti yok", "baglanti olmadan", "baglanti kurmadan"
+            base = re.escape(ascii_w[: -len(suffix)][:7])
+            return re.search(base + r"[a-z]*\s+[^a-z0-9]*(?:yok|olmadan|kurmadan|gerektirmez|icermez)", folded_text.translate(_ASCII)) is not None
     return False

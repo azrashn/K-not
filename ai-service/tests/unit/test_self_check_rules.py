@@ -62,3 +62,11 @@ def test_damaged_slide_text_still_shows_the_opposite_word():
 
 def test_hyphenated_opposite_word_does_not_count_its_own_parts_as_the_rest_of_the_claim():
     assert antonym_conflict("UDP is connection-oriented", "§Connectionless transport: UDP") is not None
+
+
+def test_general_vocabulary_opposites_not_only_computing():
+    assert antonym_conflict("Inflation makes the price level higher every year in this country.", "Inflation makes the price level lower every year in this country.") is not None
+    assert antonym_conflict("The treaty allows trade between the two countries in the region.", "The treaty forbids trade between the two countries in the region.") is not None
+    # the same word, or an unrelated sentence, stays quiet
+    assert antonym_conflict("The price level is higher every year in this country.", "The price level is higher every year in this country.") is None
+    assert antonym_conflict("Oil prices are higher in winter.", "The river flows lower near the coast.") is None

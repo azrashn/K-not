@@ -77,3 +77,13 @@ def test_an_o_sub_bullet_is_a_bullet():
     from knot_rag.self_check_norm import slide_units
 
     assert slide_units("▪ is a means used to access\nelements quickly\no the goal is O(1) time") == ["is a means used to access elements quickly", "the goal is O(1) time"]
+
+
+def test_turkish_siz_word_may_be_said_as_yok_or_olmadan():
+    from knot_rag.self_check_norm import polar_word_present
+    from knot_rag.text import fold
+
+    assert polar_word_present("baglantisiz", fold("UDP, bağlantı kurmadan çalışır"))
+    assert polar_word_present("baglantisiz", fold("UDP'de bağlantı yok"))
+    assert polar_word_present("baglantisiz", fold("UDP bağlantısızdır"))
+    assert not polar_word_present("baglantisiz", fold("TCP bağlantı kurar"))
