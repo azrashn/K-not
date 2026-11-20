@@ -248,5 +248,6 @@ test("found with a part that could not be compared says so", async () => {
   await user.type(screen.getByLabelText("Konuyu kendi cümlelerinle yaz"), "x");
   await user.click(screen.getByRole("button", { name: "Kontrol et" }));
   expect(await screen.findByText("Karşılaştırılabilen kısımlar kaynakta var; bir kısmı karşılaştırılamadı.")).toBeInTheDocument();
-  expect(screen.getByText("Kaynakta var", { selector: ".board-badge" })).toBeInTheDocument();
+  expect(screen.getAllByText("Kaynakta var", { selector: ".board-badge" })).toHaveLength(2); // the claim and its found part
+  expect(screen.getByText("Karşılaştırılamadı", { selector: ".board-badge" })).toBeInTheDocument();
 });
