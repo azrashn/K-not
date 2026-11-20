@@ -48,6 +48,11 @@ function cleanOne(c: any, allowed: Allowed, withParts: boolean): any {
       c.translation && ["model", "dictionary"].includes(c.translation.method) && ["tr", "en"].includes(c.translation.to)
         ? { text: typeof c.translation.text === "string" ? c.translation.text.slice(0, 400) : null, method: c.translation.method as string, to: c.translation.to as string }
         : null,
+    // The local model's second opinion: a warning with a quote that really is in the source, never a label.
+    meaning_warning:
+      c.meaning_warning && typeof c.meaning_warning.quote === "string" && c.meaning_warning.quote.trim()
+        ? { quote: c.meaning_warning.quote.slice(0, 240) }
+        : null,
     conflict:
       c.label === "CONFLICTS" && c.conflict && ["NUMBER", "NEGATION", "ANTONYM", "DIRECTION", "COMPARISON"].includes(c.conflict.kind)
         ? {
@@ -68,7 +73,7 @@ function cleanOne(c: any, allowed: Allowed, withParts: boolean): any {
   };
   // A claim that ended up without a source cannot be "found" or "conflicting": say only what is known.
   return !one.sources.length && ["IN_SOURCE", "CONFLICTS", "PARTIAL", "UNCHECKED"].includes(one.label)
-    ? { ...one, label: "NOT_IN_SOURCE", conflict: null, missing_terms: [], unmatched_numbers: [], translated: false, matched_terms: [], translation: null, parts: one.parts.length > 1 ? one.parts : [] }
+    ? { ...one, label: "NOT_IN_SOURCE", conflict: null, missing_terms: [], unmatched_numbers: [], translated: false, matched_terms: [], translation: null, meaning_warning: null, parts: one.parts.length > 1 ? one.parts : [] }
     : one;
 }
 

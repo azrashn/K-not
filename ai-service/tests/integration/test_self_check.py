@@ -389,3 +389,25 @@ def test_rule_based_conflicts_end_to_end():
     # the true versions stay "in the source"
     assert only(e.check("The client sends a SYN segment to the server in the first step of the handshake."))["label"] == "IN_SOURCE"
     assert only(e.check("UDP is faster than TCP because it has no handshake and no retransmission."))["label"] == "IN_SOURCE"
+
+
+def test_meaning_warning_never_changes_the_label():
+    e = Env()
+    e.add("pdf_m", [("Process B waits for process A before it releases the lock, so A always runs first.", 3)])
+    text = "Process A waits for process B before it releases the lock."
+    seen = []
+
+    def liar(pairs):
+        seen.extend(pairs)
+        return [{"verdict": "CONTRADICTS", "quote": "Process B waits for process A"} for _ in pairs]
+
+    def faker(pairs):
+        return [{"verdict": "CONTRADICTS", "quote": ""} if False else {"verdict": "UNSURE", "quote": ""} for _ in pairs]
+
+    r = self_check(e.index, SelfCheck(course_id=COURSE, materials=e.materials, text=text), judge_fn=liar)
+    c = only(r)
+    assert c["label"] == "IN_SOURCE"  # words match; only the warning speaks
+    assert c["meaning_warning"]["quote"] == "Process B waits for process A"
+    assert seen and "passage" not in str(c["sources"])  # the passage was only for the model
+    r2 = self_check(e.index, SelfCheck(course_id=COURSE, materials=e.materials, text=text + " "), judge_fn=faker)
+    assert only(r2)["meaning_warning"] is not None  # served from cache: same claim, same result

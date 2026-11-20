@@ -20,6 +20,7 @@ from pydantic import Field
 
 from knot_rag.claim_check import LIGHT_WORDS, MIN_TERMS, _sentences, check_claim
 from knot_rag.text import NEGATION_WORDS, STOPWORDS, content_tokens, fold, has_negation, normalize_text, numbers, stem, stem_in, stem_set
+from knot_rag.self_check_judge import judge, judge_enabled
 from knot_rag.self_check_rules import RULE_KINDS, rule_conflict
 from knot_rag.self_check_norm import canon, repair_ocr
 from knot_rag.self_check_translate import dictionary_translate, language_of, model_translate
@@ -210,6 +211,7 @@ def _source(evidence: dict, window: str, claim: str) -> dict:
         "kind": evidence.get("kind"),
         "location": _location(evidence),
         "quote": _quote(claim, window),
+        "passage": normalize_text(window)[:700],  # for the meaning check; removed before the answer leaves
     }
 
 
@@ -440,7 +442,7 @@ def _combine(claim: str, subs: list[dict]) -> dict:
         "conflict": conflict["conflict"] if conflict else None,
         "translated": any(x.get("translated") for x in subs),
         "matched_terms": [t for x in subs for t in x.get("matched_terms", [])][:6],
-        "parts": [{"text": t, "label": x["label"], "sources": x["sources"][:1], "missing_terms": x["missing_terms"],
+        "parts": [{"text": t, "label": x["label"], "sources": x["sources"][:1], "missing_terms": x["missing_terms"], "meaning_warning": None,
                    "unmatched_numbers": x["unmatched_numbers"], "conflict": x["conflict"]}
                   for t, x in zip(_part_texts(subs), subs)],
     }
@@ -477,6 +479,38 @@ def _remember(key: tuple, value: dict) -> None:
             _cache.popitem(last=False)
 
 
+def _join_translations(subs: list[dict]) -> dict | None:
+    used = [x["translation"] for x in subs if x.get("translation")]
+    if not used:
+        return None
+    return {"text": "; ".join(t["text"] for t in used if t["text"]) or None,
+            "method": "model" if any(t["method"] == "model" for t in used) else "dictionary", "to": used[0]["to"]}
+
+
+def _meaning_check(results: list[dict], judge_fn) -> None:
+    """Second opinion from the local model for claims found in a source. Adds `meaning_warning` (the
+    deciding quote) when the model says CONTRADICTS and the quote is literally in the passage. The label
+    is never changed here."""
+    if judge_fn is None and not judge_enabled():
+        return
+    targets = []
+    for r in results:
+        for t in (r["parts"] if len(r["parts"]) > 1 else [r]):
+            if t["label"] in ("IN_SOURCE", "PARTIAL") and t["sources"] and t["sources"][0].get("passage"):
+                targets.append((r, t))
+    verdicts = (judge_fn or judge)([(t["text"], t["sources"][0]["passage"]) for _, t in targets])
+    for (r, t), v in zip(targets, verdicts):
+        if v and v["verdict"] == "CONTRADICTS":
+            warning = {"quote": v["quote"][:240], "source_id": t["sources"][0]["source_id"]}
+            t["meaning_warning"] = warning
+            r["meaning_warning"] = r["meaning_warning"] or warning
+
+
+def _strip_passages(result: dict) -> None:
+    for t in [result, *result["parts"]]:
+        t["sources"] = [{k: v for k, v in s.items() if k != "passage"} for s in t["sources"]]
+
+
 _RANK = {"IN_SOURCE": 4, "PARTIAL": 3, "CONFLICTS": 2, "UNCHECKED": 1, "NOT_IN_SOURCE": 0}
 _materials_language_cache: dict[tuple, str | None] = {}
 
@@ -508,7 +542,7 @@ def materials_language(index: UnifiedIndex, body: SelfCheck) -> str | None:
     return language
 
 
-def self_check(index: UnifiedIndex, body: SelfCheck, translate=model_translate) -> dict:
+def self_check(index: UnifiedIndex, body: SelfCheck, translate=model_translate, judge_fn=None) -> dict:
     claims, skipped = split_claims(body.text)
     window = claims[body.offset:body.offset + MAX_CLAIMS]
     remaining = max(0, len(claims) - body.offset - len(window))
@@ -576,6 +610,7 @@ def self_check(index: UnifiedIndex, body: SelfCheck, translate=model_translate) 
         return best
 
     results = []
+    fresh: list[tuple[tuple, dict]] = []
     for claim in claims:
         key = _cache_key(body, claim)
         hit = _cached(key)
@@ -583,7 +618,7 @@ def self_check(index: UnifiedIndex, body: SelfCheck, translate=model_translate) 
             results.append(hit)
             continue
         parts = split_compound(claim)
-        base = {"text": claim, "translated": False, "matched_terms": [], "translation": None, "parts": []}
+        base = {"text": claim, "translated": False, "matched_terms": [], "translation": None, "parts": [], "meaning_warning": None}
         if len(parts) == 1:
             result = {**base, **check_statement(claim)}
             loose = split_compound(claim, loose=True)
@@ -593,19 +628,17 @@ def self_check(index: UnifiedIndex, body: SelfCheck, translate=model_translate) 
                 subs = [check_statement(p, short_ok=True) for p in loose]
                 if any(x["label"] == "IN_SOURCE" for x in subs):
                     result = {**base, **_combine(claim, subs)}
-                    used = [x["translation"] for x in subs if x.get("translation")]
-                    result["translation"] = ({"text": "; ".join(t["text"] for t in used if t["text"]) or None,
-                                              "method": "model" if any(t["method"] == "model" for t in used) else "dictionary",
-                                              "to": used[0]["to"]} if used else None)
+                    result["translation"] = _join_translations(subs)
         else:
             subs = [check_statement(p) for p in parts]
             result = {**base, **_combine(claim, subs)}
-            used = [x["translation"] for x in subs if x.get("translation")]
-            result["translation"] = ({"text": "; ".join(t["text"] for t in used if t["text"]) or None,
-                                      "method": "model" if any(t["method"] == "model" for t in used) else "dictionary",
-                                      "to": used[0]["to"]} if used else None)
-        _remember(key, result)
+            result["translation"] = _join_translations(subs)
+        fresh.append((key, result))
         results.append(result)
+    _meaning_check([r for _, r in fresh], judge_fn)
+    for key, result in fresh:
+        _strip_passages(result)
+        _remember(key, result)
     counts = {label: sum(1 for r in results if r["label"] == label)
               for label in ("IN_SOURCE", "NOT_IN_SOURCE", "CONFLICTS", "PARTIAL", "UNCHECKED")}
     return {

@@ -3096,3 +3096,4 @@ nav[aria-label='Ana gezinme'] { z-index: 2; }
 .self-check-parts { display: grid; gap: 6px; margin: 8px 0 0; padding: 0 0 0 4px; list-style: none; }
 .self-check-parts li { display: flex; align-items: flex-start; gap: 8px; font-size: 13px; color: var(--color-ink-2); }
 .self-check-parts small { color: var(--color-ink-3); }
+.self-check-meaning { padding-left: 8px; border-left: 2px solid var(--color-gevesek-line); color: var(--color-ink-2); }

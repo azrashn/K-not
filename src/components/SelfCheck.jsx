@@ -231,6 +231,11 @@ export default function SelfCheck({ courseId, onOpenSource }) {
                         })}
                       </ul>
                     )}
+                    {c.meaning_warning && (
+                      <p className="self-check-note self-check-meaning" role="note">
+                        Anlam farklı olabilir, kaynağa bak: “{c.meaning_warning.quote}”
+                      </p>
+                    )}
                     {c.sources.map((s) => (
                       <div key={s.source_id} className="self-check-source">
                         <blockquote>“{s.quote}”</blockquote>

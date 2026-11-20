@@ -219,3 +219,18 @@ test("rule-based conflicts are explained: opposite word, swapped direction, reve
   expect(screen.getByText("Kaynakta yön ters: kaynakta istemci → sunucu, sen sunucu → istemci yazdın.")).toBeInTheDocument();
   expect(screen.getByText("Kaynakta karşılaştırma ters yazılmış.")).toBeInTheDocument();
 });
+
+test("a meaning warning is a note with the source quote; the badge stays what the words said", async () => {
+  const user = userEvent.setup();
+  api.selfCheck.mockResolvedValue({
+    ...result,
+    claims: [{ text: "Süreç A, B'yi bekler", label: "IN_SOURCE", translated: false, matched_terms: [], translation: null, sources: [source()], missing_terms: [], unmatched_numbers: [], conflict: null, parts: [], meaning_warning: { quote: "Process B waits for process A" } }],
+    summary: { IN_SOURCE: 1, NOT_IN_SOURCE: 0, CONFLICTS: 0, PARTIAL: 0, UNCHECKED: 0, total: 1 },
+  });
+  render(<SelfCheck courseId="course" onOpenSource={vi.fn()} />);
+  await user.type(screen.getByLabelText("Konuyu kendi cümlelerinle yaz"), "x");
+  await user.click(screen.getByRole("button", { name: "Kontrol et" }));
+  expect(await screen.findByRole("note", { name: "" })).toBeDefined();
+  expect(screen.getByText("Anlam farklı olabilir, kaynağa bak: “Process B waits for process A”")).toBeInTheDocument();
+  expect(screen.getByText("Kaynakta var", { selector: ".board-badge" })).toBeInTheDocument();
+});
