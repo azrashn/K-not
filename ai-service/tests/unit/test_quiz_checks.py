@@ -71,6 +71,27 @@ def test_answer_matching_ignores_case_and_turkish_dotted_i():
     assert q["options"][int(q["expected"])] == "Kuyruk"
 
 
+@pytest.mark.parametrize("labels", [
+    ["a) ", "b) ", "c) ", "d) "], ["A) ", "B) ", "C) ", "D) "], ["a. ", "b. ", "c. ", "d. "],
+    ["A - ", "B - ", "C - ", "D - "], ["(a) ", "(b) ", "(c) ", "(d) "], ["a)", "b)", "c)", "d)"],
+])
+@pytest.mark.parametrize("answer", ["{label}Kuyruk", "Kuyruk", "{letter}", "{letter})"])
+def test_letter_labels_are_removed_from_options_and_answer(labels, answer):
+    """Mac trial: "a) javac, c) jvm, d) jar, b) java" after the shuffle."""
+    options = [label + text for label, text in zip(labels, ["Kuyruk", "Yığın", "İkili ağaç", "Karma tablosu"])]
+    answer = answer.format(label=labels[0], letter=labels[0].strip(" ()-.")[0])
+    q = check_question("MULTIPLE_CHOICE", mc(options=options, answer=answer), EVIDENCE)
+    assert sorted(q["options"]) == sorted(["Kuyruk", "Yığın", "İkili ağaç", "Karma tablosu"])
+    assert q["options"][int(q["expected"])] == "Kuyruk"
+
+
+def test_labels_are_kept_when_not_every_option_has_one():
+    # "C - dili" alone is a real option, not a label.
+    options, answer = qc.strip_option_labels(["C - dili", "Java", "Python", "Go"], "Java")
+    assert options == ["C - dili", "Java", "Python", "Go"] and answer == "Java"
+    assert qc.strip_option_labels(["C-dili", "a)x", "b)y", "c)z"], "a)x")[0][0] == "C-dili"
+
+
 def test_answer_must_be_one_of_the_options():
     assert code_of("MULTIPLE_CHOICE", mc(answer="Bağlı liste")) == qc.ANSWER_NOT_IN_OPTIONS
 

@@ -97,3 +97,30 @@ test('a set that ended without questions says so instead of an empty screen', as
   expect(await screen.findByText('Alıştırma seti boş kaldı')).toBeInTheDocument()
   expect(screen.getByText('Kaynaklara dayalı soru hazırlanamadı.')).toBeInTheDocument()
 })
+
+test('the next question follows the open one, even if the list order changed meanwhile (Mac: 2nd = 3rd)', async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true })
+  const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+  api.createQuiz.mockResolvedValue(set())
+  const q1 = question('q1', 'Nesne nedir?'), q2 = question('q2', 'Sınıf nedir?'), q3 = question('q3', 'Kalıtım nedir?')
+  api.quizSet
+    .mockResolvedValueOnce(set({ produced: 2, questions: [q1, q3] }))
+    // An older server sorted the finished set: q3 moved from the 2nd to the 3rd place.
+    .mockResolvedValue(set({ status: 'READY', produced: 3, questions: [q1, q2, q3] }))
+  api.answerQuiz.mockResolvedValue({ score: null, message: 'Yanıtın kaydedildi.', quote: 'Kalıtım devralmadır.' })
+  render(<CourseQuiz courseId="c" />)
+  await fill(user, { count: 3 })
+  expect(await screen.findByText('3 sorudan 0 tanesi hazır; diğerleri hazırlanıyor…')).toBeInTheDocument()
+  await act(async () => { vi.advanceTimersByTime(2000) })
+  expect(await screen.findByText('Nesne nedir?')).toBeInTheDocument()
+  await user.type(screen.getByLabelText('Yanıtın'), 'Bir örnek')
+  await user.click(screen.getByRole('button', { name: 'Yanıtı değerlendir' }))
+  await user.click(await screen.findByRole('button', { name: 'Sonraki soru →' }))
+  expect(await screen.findByText('Kalıtım nedir?')).toBeInTheDocument()
+  expect(screen.getByText('Soru 2 / 3')).toBeInTheDocument()
+
+  await act(async () => { vi.advanceTimersByTime(2000) })
+  expect(await screen.findByText('3 sorudan 3 tanesi hazırlandı.')).toBeInTheDocument()
+  expect(screen.getByText('Soru 3 / 3')).toBeInTheDocument() // the open question's new place
+  expect(screen.queryByRole('button', { name: 'Sonraki soru →' })).not.toBeInTheDocument()
+})

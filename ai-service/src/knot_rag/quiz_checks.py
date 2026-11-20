@@ -184,12 +184,48 @@ def check_option_balance(question: str, correct: str, wrong: list[str]) -> None:
                                          "wrong options must be the same type of answer")
 
 
+# A letter label the model writes before an option ("a) javac", "A) javac", "a. javac", "A - javac",
+# "(a) javac"). The server shuffles the options, so a kept label would read "a) …, c) …, b) …".
+# "a)", "(a)" and "a." need no space ("a)javac"); "A -" needs one on both sides, so "C-dili" stays.
+_OPTION_LABEL = re.compile(r"^\s*(?:\(\s*([a-eA-E])\s*\)|([a-eA-E])\s*[).]|([a-eA-E])\s+[-–—:]\s)\s*")
+# An answer that is only a label: "b", "B)", "(b)", "b.".
+_LABEL_ONLY = re.compile(r"^\s*\(?\s*([a-eA-E])\s*[).]?\s*$")
+
+
+def _label(text: str) -> tuple[str | None, str]:
+    """(label letter in lower case or None, text without the label)."""
+    match = _OPTION_LABEL.match(text)
+    if not match or not text[match.end():].strip():
+        return None, text.strip()
+    letter = next(g for g in match.groups() if g)
+    return letter.lower(), text[match.end():].strip()
+
+
+def strip_option_labels(options: list[str], answer: str) -> tuple[list[str], str]:
+    """Options and answer without letter labels. Labels are removed only when every option carries one
+    (a real option may start with "A." or "C -"); the answer then loses its label too, and an answer that
+    is only a letter ("b)") becomes the option that carried that letter."""
+    labelled = [_label(o) for o in options]
+    if not options or any(letter is None for letter, _ in labelled):
+        return [o.strip() for o in options], answer.strip()
+    clean = [text for _, text in labelled]
+    only = _LABEL_ONLY.match(answer)
+    if only:
+        letters = [letter for letter, _ in labelled]
+        wanted = only.group(1).lower()
+        return clean, clean[letters.index(wanted)] if letters.count(wanted) == 1 else answer.strip()
+    return clean, _label(answer)[1]
+
+
 def check_multiple_choice(draft: dict, evidence: list[dict], seed: str | None = None) -> dict:
     question = _text(draft, "question", 10, 600)
     options = draft.get("options")
     if not isinstance(options, list) or any(not isinstance(o, str) for o in options):
         raise QuizCheckError(SCHEMA_MISMATCH, "options must be a list of strings")
-    options = [o.strip() for o in options]
+    raw_answer = draft.get("answer")
+    options, answer_text = strip_option_labels(options, raw_answer if isinstance(raw_answer, str) else "")
+    if isinstance(raw_answer, str):
+        draft = {**draft, "answer": answer_text}
     if len(options) != 4 or any(not 1 <= len(o) <= 180 for o in options):
         raise QuizCheckError(BAD_FORMAT, "exactly four options of 1-180 characters required")
     keys = [canonical(o) for o in options]

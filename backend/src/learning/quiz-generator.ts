@@ -7,8 +7,7 @@ import { AiServiceClient } from "../ai/ai-client";
 import { findQuizSources, QuizScopeRequest } from "./quiz-sources";
 import { publicQuiz } from "./quiz-public";
 import { failure, QuizFailure, V2_PIPELINE } from "./quiz-failures";
-import { isDuplicateStem } from "./quiz-repeat";
-import type { RepeatGuard } from "./generation/repeat-guard";
+import { RepeatGuard } from "./generation/repeat-guard";
 
 export type QuizItemRequest = { kind: string; variant?: "CALCULATION" | null };
 
@@ -40,6 +39,19 @@ export type GenerateResult = {
 const OPTION_COUNT: Record<string, number> = { MULTIPLE_CHOICE: 4, TRUE_FALSE: 2 };
 // The HTTP wait covers the ai-service budget plus retrieval/transport slack.
 const HTTP_SLACK_MS = 20_000;
+
+// A letter label before an option: "a) javac", "A) javac", "a. javac", "A - javac", "(a) javac" (the same rule
+// as ai-service quiz_checks.strip_option_labels). A "A -" label needs spaces, so "C-dili" stays.
+const OPTION_LABEL = /^\s*(?:\(\s*[a-e]\s*\)|[a-e]\s*[).]|[a-e]\s+[-–—:]\s)\s*/i;
+
+/** Options without letter labels, removed only when every option carries one (the ai-service already does
+ *  this; an older or other ai-service must not store "a) …, c) …, b) …" after its shuffle). The correct
+ *  answer is an index, so it keeps pointing at the same option. */
+export function stripOptionLabels(options: unknown[]): unknown[] {
+  if (!options.length || !options.every((o) => typeof o === "string" && OPTION_LABEL.test(o) && o.replace(OPTION_LABEL, "").trim()))
+    return options;
+  return (options as string[]).map((o) => o.replace(OPTION_LABEL, "").trim());
+}
 
 /** Server-side recheck of an ai-service v2 question: the ai-service flags are not trusted alone. */
 export function validV2Question(q: any, item: QuizItemRequest, sources: any[]): boolean {
@@ -116,6 +128,8 @@ export class QuizGenerator {
   private async accept(u: AuthUser, c: string, b: GenerateRequest, sources: any[], body: any): Promise<GenerateResult> {
     const quizzes: GenerateResult["quizzes"] = [];
     const stems: string[] = [];
+    // Without the set's guard, one for this request: its avoid lists and the questions it stores.
+    const guard = b.guard ?? new RepeatGuard({ stems: b.avoidStems, quotes: b.avoidQuotes });
     const failures: QuizFailure[] = [];
     const answered = new Set<number>();
     for (const f of body.failures) {
@@ -125,23 +139,24 @@ export class QuizGenerator {
       const item = b.items[slot];
       failures.push(failure(slot, item.kind, String(f.code ?? "AI_ERROR"), Number(f.attempts) || 0, item.variant));
     }
-    for (const q of body.questions) {
-      const slot = Number(q?.slot);
+    for (const raw of body.questions) {
+      const slot = Number(raw?.slot);
       if (!Number.isInteger(slot) || slot < 0 || slot >= b.items.length || answered.has(slot)) continue;
       answered.add(slot);
       const item = b.items[slot];
+      const q = raw?.kind === "MULTIPLE_CHOICE" && Array.isArray(raw.options) ? { ...raw, options: stripOptionLabels(raw.options) } : raw;
       if (!validV2Question(q, item, sources)) {
         failures.push(failure(slot, item.kind, "INVALID_SHAPE", q?.quality?.attempts ?? 0, item.variant));
         continue;
       }
       // Checked before storing, so a repeated question never reaches the student's history.
-      const repeat = b.guard
-        ? b.guard.isRepeat(q.question) ? "DUPLICATE_STEM" : b.guard.isUsedQuote(q.quote) ? "DUPLICATE_QUOTE" : null
-        : isDuplicateStem(q.question, [...(b.avoidStems ?? []), ...stems]) ? "DUPLICATE_STEM" : null;
+      const repeat = guard.isRepeat(q.question) ? "DUPLICATE_STEM" : guard.isUsedQuote(q.quote) ? "DUPLICATE_QUOTE" : null;
       if (repeat) {
         failures.push(failure(slot, item.kind, repeat, q?.quality?.attempts ?? 0, item.variant));
         continue;
       }
+      // Recorded before any await: a check that runs meanwhile (another request with the same guard) sees it.
+      guard.accept(q.question, q.quote);
       const source = sources[q.source_index - 1];
       await this.knowledge.source(u, c, source.material_id, source.id);
       const { slot: _slot, ...data } = q;
@@ -166,7 +181,6 @@ export class QuizGenerator {
       });
       quizzes.push({ ...publicQuiz(row), slot });
       stems.push(q.question);
-      b.guard?.accept(q.question, q.quote);
     }
     b.items.forEach((it, slot) => {
       if (!answered.has(slot)) failures.push(failure(slot, it.kind, "MISSING", 0, it.variant));

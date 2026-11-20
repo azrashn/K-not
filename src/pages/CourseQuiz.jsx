@@ -113,6 +113,13 @@ export default function CourseQuiz({ courseId }) {
   useEffect(() => {
     if (quizSet && !quiz && setQuestions[setIndex]) setQuiz(setQuestions[setIndex]);
   }, [quizSet, setIndex]); // eslint-disable-line react-hooks/exhaustive-deps
+  // The position follows the open question, not the other way round: if the list order ever changes while the
+  // set is written, "Sonraki soru" must not open the question the student just answered.
+  useEffect(() => {
+    if (!quizSet || !quiz) return;
+    const i = setQuestions.findIndex((q) => q.id === quiz.id);
+    if (i >= 0 && i !== setIndex) setSetIndex(i);
+  }, [quizSet]); // eslint-disable-line react-hooks/exhaustive-deps
   function openSetQuestion(i) {
     setSetIndex(i);
     setQuiz(setQuestions[i]);
