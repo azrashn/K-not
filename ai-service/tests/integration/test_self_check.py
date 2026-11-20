@@ -457,3 +457,18 @@ def test_quote_prefers_a_sentence_over_a_bare_heading():
     e.add("pdf_q", [("TCP 3-way handshake\nthe client sends a SYN segment to the server and waits\n12/87", 106)])
     c = only(e.check("In the TCP 3-way handshake the client sends a SYN segment to the server."))
     assert "client sends a SYN" in c["sources"][0]["quote"]
+
+
+def test_connection_is_not_connectionless():
+    """Both words share the stem 'conne': the claim "X is connectionless" was found in any "X connection" line."""
+    e = Env()
+    e.add("pdf_cl", [("HTTP connections: two types\nNon-persistent HTTP\n1.TCP connection opened\n2.at most one object sent over the TCP connection\nClosing a TCP connection", 21),
+                     ("Chapter 3: roadmap\n§Connectionless transport: UDP\n§Principles of reliable data transfer\n§Connection-oriented transport: TCP", 81)])
+    assert only(e.check("TCP is connectionless."))["label"] in ("NOT_IN_SOURCE", "CONFLICTS")
+    assert only(e.check("TCP is connectionless."))["label"] != "IN_SOURCE"
+    assert only(e.check("UDP is connectionless."))["label"] == "IN_SOURCE"
+    assert only(e.check("TCP is connection-oriented."))["label"] == "IN_SOURCE"
+    # damaged slide text: the word is repaired, then found in full
+    e2 = Env()
+    e2.add("pdf_cl2", [("Ethernet: unreliable, connec)onless\nLink Layer: 6-59", 57)])
+    assert only(e2.check("Ethernet is connectionless."))["label"] == "IN_SOURCE"

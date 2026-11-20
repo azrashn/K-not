@@ -137,6 +137,8 @@ def repair_ocr(text: str, vocabulary: set[str]) -> str:
     """`vocabulary`: folded words of the claim. Returns `text` with damaged ligatures put back."""
     if not vocabulary:
         return text
+    # a bracket in the middle of a word ("connec)onless") is a damaged ligature, not punctuation
+    text = re.sub(r"(?<=[A-Za-z])[()](?=[A-Za-z])", "~", text)
 
     def fix(match: re.Match) -> str:
         token = match.group(0)
@@ -174,3 +176,24 @@ def is_readable(text: str) -> bool:
         return False
     letters = sum(ch.isalpha() for ch in compact)
     return letters / len(compact) >= MIN_ALPHA_RATIO
+
+
+# ── words whose affix reverses the meaning ─────────────────────────────────────────────────────
+# The comparison cuts words to a 5 letter stem, so "connection" and "connectionless" (or "reliable" and
+# "unreliable", "bağlantı" and "bağlantısız") look equal. A claim word carrying such an affix must appear
+# in the source in full: its stem alone says nothing.
+_UN_WORDS = frozenset("""unreliable unordered unsorted undirected unweighted unacknowledged unencrypted uncompressed
+unauthenticated unbalanced unallocated unlocked unsafe unstable unsecured unverified unavailable""".split())
+_TR_SUFFIXES = ("siz", "sız", "suz", "süz", "sizdir", "sızdır", "suzdur", "süzdür")
+
+
+def polar_words(words: list[str]) -> list[str]:
+    """The (folded) words of the list that carry a meaning-reversing affix."""
+    out = []
+    for w in words:
+        ascii_w = w.translate(_ASCII).lower()
+        if (len(ascii_w) >= 8 and ascii_w.endswith("less")) or ascii_w in _UN_WORDS or (len(ascii_w) >= 6 and ascii_w.startswith("non") and ascii_w not in ("nonce",)):
+            out.append(w)
+        elif len(ascii_w) >= 8 and any(ascii_w.endswith(x.translate(_ASCII)) for x in _TR_SUFFIXES):
+            out.append(w)
+    return out

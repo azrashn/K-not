@@ -43,3 +43,12 @@ def test_units_written_in_different_ways_are_one_unit():
     assert canon("2 megabayt") == canon("2 MB") == "2 megabyte"
     # ordinary words and sentences are left alone
     assert canon("the second packet is late") == "the second packet is late"
+
+
+def test_words_with_a_reversing_affix_are_found():
+    from knot_rag.self_check_norm import polar_words
+
+    assert polar_words(["tcp", "connectionless", "reliable"]) == ["connectionless"]
+    assert polar_words(["unreliable", "baglantisiz", "nonpreemptive", "connection", "union", "network"]) == ["unreliable", "baglantisiz", "nonpreemptive"]
+    assert polar_words(["wireless"]) == ["wireless"]
+    assert polar_words(["unit", "uniform", "internet", "input"]) == []

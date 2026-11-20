@@ -24,7 +24,7 @@ from knot_rag.text import NEGATION_WORDS, STOPWORDS, content_tokens, fold, has_n
 from knot_rag import self_check_glossary as glossary
 from knot_rag.self_check_judge import judge, judge_enabled
 from knot_rag.self_check_rules import RULE_KINDS, rule_conflict
-from knot_rag.self_check_norm import canon, is_readable, repair_ocr
+from knot_rag.self_check_norm import canon, is_readable, polar_words, repair_ocr
 from knot_rag.self_check_translate import dictionary_translate, language_of, model_translate
 from knot_rag.unified import Manifest, Search, UnifiedIndex
 
@@ -100,7 +100,9 @@ def split_claims(text: str) -> tuple[list[str], list[dict]]:
             continue
         words = [t for t in dict.fromkeys(content_tokens(body))
                  if not t.replace(".", "").replace(",", "").isdigit() and t not in LIGHT_WORDS]
-        if len(words) < MIN_TERMS:
+        # Two words are a claim when they name something ("TCP is connectionless", "UDP is unreliable").
+        specific = bool(_ACRONYM_RE.search(body)) or bool(polar_words(words))
+        if len(words) < (2 if specific else MIN_TERMS):
             skipped.append({"text": _short(sentence), "reason": "TOO_SHORT"})
             continue
         claims.append(body.rstrip(".!…").strip())
@@ -296,6 +298,8 @@ def _conflict(claim: str, window: str, size: int, all_numbers: set[str],
 
 
 PARTIAL_NUMBER_COVERAGE = 0.85
+# A claim of this many content words or fewer is one subject + one property.
+SHORT_CLAIM_WORDS = 4
 
 
 def classify(claim: str, evidence: list[dict], short_ok: bool = False, same_language: bool = False) -> dict:
@@ -321,7 +325,12 @@ def classify(claim: str, evidence: list[dict], short_ok: bool = False, same_lang
     multi_good = False
     line_conflict = False
     claim_negated = has_negation(claim)
+    claim_content = _claim_words(claim)
+    polar = polar_words(claim_content)
+    short_claim = len([w for w in claim_content if w not in NEGATION_WORDS]) <= SHORT_CLAIM_WORDS
     acronyms = {a.translate(_FOLD).lower() for a in re.findall(r"(?<![A-Za-z])[A-Z][A-Z0-9]{1,9}(?![A-Za-z])", claim)}
+    if len([w for w in claim_content if w not in NEGATION_WORDS]) == 2 and (acronyms or polar):
+        short_ok = True  # a two word statement about a named thing is judged inside one sentence
     for n, e in enumerate(evidence):
         for window, size in _windows(e["text"]):
             raw_window, window = window, repair_ocr(canon(window), vocabulary)
@@ -329,7 +338,7 @@ def classify(claim: str, evidence: list[dict], short_ok: bool = False, same_lang
             if same_language and "matched_terms" in support:
                 continue  # check_claim took its "different language" path on text that is not comparable
             if support.get("reason") == "TOO_SHORT_TO_CHECK":
-                if not (short_ok and size in (1, 2)):
+                if not (short_ok and size == 1):
                     continue
                 # A short half of a compound claim ("UDP is connectionless"): supported only when EVERY
                 # one of its words (and numbers) is in one or two consecutive source sentences.
@@ -349,6 +358,15 @@ def classify(claim: str, evidence: list[dict], short_ok: bool = False, same_lang
                 # check_claim forgives ONE missing word as rephrasing; an acronym (AES, TLS) is no rephrasing,
                 # it is the very thing the claim asserts.
                 support = {**support, "label": "UNSUPPORTED", "reason": "MISSING_ACRONYM"}
+            if support["label"] in _GOOD and polar:
+                # "connectionless" is not "connection": a word with a reversing affix must be there in full.
+                folded = fold(window)
+                if any(w not in folded for w in polar):
+                    support = {**support, "label": "UNSUPPORTED", "reason": "POLAR_WORD_MISSING"}
+            if support["label"] in _GOOD and polar and short_claim and size != 1 and "matched_terms" not in support:
+                # "TCP is connectionless": a subject and one reversing property. Both must be in ONE sentence; the
+                # same page, or the neighbouring line, is another statement.
+                support = {**support, "label": "UNSUPPORTED", "reason": "NEEDS_ONE_SENTENCE"}
             if support["label"] in _GOOD and claim_negated:
                 # A DENIAL needs a sentence that denies the same thing: not a page that merely contains a
                 # "not" somewhere. So: never from a whole page, and within 1-3 sentences the claim's own
