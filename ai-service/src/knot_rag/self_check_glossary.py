@@ -111,16 +111,49 @@ def remove_material(course_id: str, material_id: str) -> None:
             _write(course_id, data)
 
 
+# Words that translate to many things or to nothing: never a glossary entry.
+_FUNCTION_WORDS = frozenset("""den dan ten tan ile icin gibi daha cok olan olur var yok her bir bu su o ve veya ama
+yap yapar yapmak ara ne nasil neden kadar sonra once sahip yoksa from with without there when what that this
+each every have make will using use used also only more most than then them they their these those over under""".split())
+_ASCII = str.maketrans("çğıöşüâîûÇĞİÖŞÜ", "cgiosuaiuCGIOSU")
+
+
+def _good_model_pairs(pairs: list[list[str]]) -> list[tuple[str, str]]:
+    """Model made pairs are an aid, not a fact: only clean ones are used. A pair needs two real words of at
+    least 4 letters (no function words, no fragments like `connec`, no stray symbols), and a Turkish word
+    that the model translated in two different ways is dropped altogether (ambiguous)."""
+    clean = []
+    for tr, en in pairs:
+        t, e = tr.strip(), en.strip()
+        if len(t) < 4 or len(e) < 4 or t.translate(_ASCII).lower() in _FUNCTION_WORDS or e.lower() in _FUNCTION_WORDS:
+            continue
+        if not re.fullmatch(r"[A-Za-zÇĞİÖŞÜçğıöşüâîû][A-Za-zÇĞİÖŞÜçğıöşüâîû \-]*", t) or not re.fullmatch(r"[A-Za-z][A-Za-z \-]*", e):
+            continue
+        clean.append((t, e))
+    english = {e.lower() for _, e in clean}
+    out = []
+    for t, e in clean:
+        # a fragment of another term ("connec" next to "connection") is damaged text, not a word
+        if any(o != e.lower() and o.startswith(e.lower()) and len(o) > len(e) + 1 for o in english):
+            continue
+        out.append((t, e))
+    by_turkish: dict[str, set[str]] = {}
+    for t, e in out:
+        by_turkish.setdefault(t.translate(_ASCII).lower(), set()).add(e.lower())
+    return [(t, e) for t, e in out if len(by_turkish[t.translate(_ASCII).lower()]) == 1]
+
+
 def course_pairs(course_id: str, material_ids: list[str] | None = None) -> list[tuple[str, str]]:
-    """[(tr, en)] of the course: pairs from the materials (all or the selected ones) plus model pairs."""
+    """[(tr, en)] of the course: pairs written in the materials (all or the selected ones) plus the clean
+    model pairs."""
     data = _read(course_id)
     out: dict[tuple[str, str], None] = {}
     for mid, entry in data["materials"].items():
         if material_ids is None or mid in material_ids:
             for tr, en in entry.get("pairs", []):
                 out[(tr, en)] = None
-    for tr, en in data.get("model", []):
-        out[(tr, en)] = None
+    for pair in _good_model_pairs(data.get("model", [])):
+        out[pair] = None
     return list(out)
 
 

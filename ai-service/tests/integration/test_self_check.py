@@ -525,3 +525,20 @@ def test_short_halves_of_a_turkish_sentence_are_translated_like_the_whole():
     c = only(self_check(e.index, SelfCheck(course_id=COURSE, materials=e.materials, text=claim), translate=translate))
     assert "TCP baglantisizdir" in seen and "UDP baglanti odaklidir" in seen  # the halves are sent for translation too
     assert c["label"] == "CONFLICTS", c
+
+
+def test_a_lucky_dictionary_translation_never_hides_a_conflict_found_through_the_model():
+    e = Env()
+    e.add("pdf_dh", [("Chapter 3: roadmap\n§Connectionless transport: UDP\n§Connection-oriented transport: TCP", 81),
+                     ("TCP and the congested bottleneck link\nTCP flows share the bottleneck link fairly", 132)])
+    claim = "TCP baglantisizdir."
+    # a bad course glossary pair makes the dictionary say "tcp link", which matches the bottleneck slide
+    from knot_rag import self_check as sc
+    original = sc.glossary.course_pairs
+    sc.glossary.course_pairs = lambda course, ids=None: [("baglanti", "link")]
+    try:
+        r = self_check(e.index, SelfCheck(course_id=COURSE, materials=e.materials, text=claim),
+                       translate=lambda texts, target: ["TCP is connectionless" if t == "TCP baglantisizdir" else None for t in texts])
+    finally:
+        sc.glossary.course_pairs = original
+    assert only(r)["label"] == "CONFLICTS"

@@ -720,26 +720,32 @@ def self_check(index: UnifiedIndex, body: SelfCheck, translate=model_translate, 
         trace.append(step)
         if not source_language or lang(text) == source_language:
             return first
-        best, best_key = first, (_RANK[first["label"]], 0)  # ties: model translation > dictionary > as written
+        best, best_key = first, (_RANK[first["label"]], 0)
         variants = []
         dictionary = dictionary_translate(text, source_language, course_pairs)
         if dictionary:
             variants.append((dictionary, "dictionary"))
         if text in model_translations:
             variants.append((model_translations[text], "model"))
+        informed = None  # the model translation, when it compared something
         for variant, method in variants:
             result = classify(variant, evidence_for(variant, context), short_ok, same_language=True)
             conflict = result.get("conflict")
+            step["variants"].append({"method": method, "text": variant, **_brief(result)})
             if result["label"] == "CONFLICTS" and method == "dictionary" and (not conflict or conflict["kind"] != "NUMBER"):
                 # a word-by-word translation can lose a negation: only a number difference is trusted
                 continue
-            step["variants"].append({"method": method, "text": variant, **_brief(result)})
             candidate = {**first, **result, "text": text, "translated": True, "matched_terms": [],
                          "translation": {"text": variant if method == "model" else None, "method": method, "to": source_language}}
+            if method == "model" and result["label"] in ("IN_SOURCE", "PARTIAL", "CONFLICTS"):
+                informed = candidate
             key = (_RANK[candidate["label"]], 2 if method == "model" else 1)
             if key > best_key:
                 best, best_key = candidate, key
-        return best
+        # A sentence the model translated and the sources answered (found / partly / contradicted) is judged
+        # on THAT comparison. A word-by-word dictionary translation, however lucky its match, never
+        # outranks it: it is the weaker translation.
+        return informed or best
 
     results = []
     fresh: list[tuple[tuple, dict]] = []

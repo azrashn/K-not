@@ -39,3 +39,10 @@ def test_model_translate_with_injected_model_drops_unfaithful_items():
     assert model_translate(texts, "en", complete) == ["TCP starts with 10 MSS", None]
     assert model_translate(texts, "en", lambda r: "not json") == [None, None]
     assert model_translate(texts, "en", lambda r: json.dumps({"translations": ["x"]})) == [None, None]
+
+
+def test_short_turkish_typed_without_turkish_letters_is_turkish():
+    assert language_of("TCP baglantisizdir") == "tr"
+    assert language_of("UDP baglanti odaklidir") == "tr"
+    assert language_of("TCP is connectionless") == "en"
+    assert language_of("The TCP segment header") == "en"

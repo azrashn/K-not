@@ -56,3 +56,16 @@ def test_model_fills_terms_once_and_drops_entries_that_do_not_contain_the_term(t
     assert g.fill("c1", "pdf_a", complete) == 2
     assert len(g.course_pairs("c1")) == 2 and not any("unrelated" in p for p in g.course_pairs("c1"))
     assert g.fill("c1", "pdf_a", complete) == 0 and len(calls) == 1  # once per material version
+
+
+def test_model_pairs_are_filtered_and_ambiguous_turkish_words_dropped(tmp_path, monkeypatch):
+    monkeypatch.setenv("STORAGE_ROOT", str(tmp_path))
+    g.update_material("c9", "pdf_a", "a" * 64, ["x"])
+    data = g._read("c9")
+    data["model"] = [["bağlantı", "link"], ["bağlantı", "connec"], ["bağlantı", "connection"], ["den", "from"], ["yap", "make"],
+                     ["düğüm", "node"], ["kenar", "edge"], ["ad\ufffdm-", "step-"], ["algoritma", "algorithm"], ["uygulama", "applica"], ["uygulama", "application"]]
+    g._write("c9", data)
+    pairs = g.course_pairs("c9")
+    english = {e for _, e in pairs}
+    assert {"node", "edge", "algorithm"} <= english
+    assert not ({"link", "connec", "connection", "from", "make", "step-", "applica"} & english)  # ambiguous, fragments, function words

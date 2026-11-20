@@ -74,8 +74,22 @@ def _fold(text: str) -> str:
     return text.translate(_ASCII).lower()
 
 
+# Turkish stems that are not also an English word ("baglantisiz", not "segment"): a short sentence typed
+# without Turkish letters ("TCP baglantisizdir") has no other mark of its language.
+_TR_ONLY_STEMS = frozenset(
+    _fold(tr) for tr, en in GLOSSARY
+    if " " not in tr and len(_fold(tr)) >= 6 and _fold(tr) != en.lower()
+)
+_EN_FUNCTION = frozenset("the and of to in is are for with that this as by on it be an not".split())
+
+
 def language_of(text: str) -> str:
-    return "tr" if _is_turkish(text) else "en"
+    if _is_turkish(text):
+        return "tr"
+    tokens = re.findall(r"[a-z]+", _fold(text))
+    if tokens and not (set(tokens) & _EN_FUNCTION) and any(t.startswith(stem) for t in tokens for stem in _TR_ONLY_STEMS):
+        return "tr"
+    return "en"
 
 
 def _tr_to_en() -> list[tuple[re.Pattern, str]]:
