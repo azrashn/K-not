@@ -1,0 +1,22 @@
+[
+  {"kind": "true", "text": "A hash function transforms a key into an index in a hash table."},
+  {"kind": "true", "text": "A collision occurs when a hash function maps two or more search keys into the same array location."},
+  {"kind": "true", "text": "Modulo arithmetic provides a simple and effective hash function h(x) = x mod tableSize."},
+  {"kind": "true", "text": "Horner's rule minimizes the number of arithmetic operations when converting a string to an integer."},
+  {"kind": "true", "text": "Quadratic probing can virtually eliminate primary clusters of linear probing."},
+  {"kind": "true", "text": "Double hashing is an open-addressing scheme that drastically reduces clustering."},
+  {"kind": "true", "text": "The BFS spanning tree traverses the vertices of a graph using breadth-first search."},
+  {"kind": "true", "text": "A recursive inorder traversal of a binary search tree uses an implicit stack."},
+  {"kind": "true", "text": "Hash fonksiyonu bir anahtarı hash tablosunda bir indekse dönüştürür."},
+  {"kind": "true", "text": "İki veya daha fazla arama anahtarı aynı dizi konumuna eşlenirse buna çakışma denir."},
+  {"kind": "fake", "text": "Hash tables keep all keys sorted in ascending order using a red-black tree."},
+  {"kind": "fake", "text": "A hash table encrypts each key with SHA-256 before storing it."},
+  {"kind": "fake", "text": "Quadratic probing requires a sorted array of keys to work."},
+  {"kind": "fake", "text": "Folding multiplies the digits of the key and takes the logarithm."},
+  {"kind": "fake", "text": "Hash tablosu anahtarları kırmızı-siyah ağaçla sıralı tutar."},
+  {"kind": "fake", "text": "Double hashing and linear probing both use TLS handshakes."},
+  {"kind": "conflict", "text": "The goal of hashing is O(n) time."},
+  {"kind": "conflict", "text": "A perfect hash function does not map each search key into a unique location of the hash table."},
+  {"kind": "conflict", "text": "Double hashing is an open-addressing scheme that drastically increases clustering."},
+  {"kind": "conflict", "text": "Hashing'in amacı O(n) arama süresidir."}
+]

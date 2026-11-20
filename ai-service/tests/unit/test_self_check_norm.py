@@ -71,3 +71,9 @@ def test_repair_ignores_typographic_quotes_around_a_damaged_word():
     assert "connection" in fixed
     assert polar_word_present("connectionless", fold(fixed))
     assert not polar_word_present("connectionless", fold("TCP connection opened"))
+
+
+def test_an_o_sub_bullet_is_a_bullet():
+    from knot_rag.self_check_norm import slide_units
+
+    assert slide_units("▪ is a means used to access\nelements quickly\no the goal is O(1) time") == ["is a means used to access elements quickly", "the goal is O(1) time"]

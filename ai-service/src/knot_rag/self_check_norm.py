@@ -204,7 +204,7 @@ def polar_words(words: list[str]) -> list[str]:
 # "client first opens TCP", then "socket to web server") and starts every bullet with a marker. The unit of
 # comparison is the bullet item: a line with a marker opens an item, a line without one continues the item
 # before it.
-_MARKER = re.compile(r"^\s*(?:[§•▪●◦·‣–—-]|\d{1,2}[.)])\s*")
+_MARKER = re.compile(r"^\s*(?:o(?=\s)|[§•▪●◦·‣–—-]|\d{1,2}[.)])\s*")
 _SENTENCE_END = re.compile(r"(?<=[.!?])\s+")
 
 

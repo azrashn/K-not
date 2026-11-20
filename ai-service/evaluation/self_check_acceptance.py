@@ -31,7 +31,7 @@ from knot_rag.self_check_norm import is_readable  # noqa: E402
 from knot_rag.unified import Material, UnifiedIndex  # noqa: E402
 
 
-def open_index(chroma: str):
+def open_index(chroma: str, course_title: str | None = None):
     settings = Settings(
         embedding_backend="sentence_transformers", embedding_model="intfloat/multilingual-e5-small",
         embedding_query_prefix="query: ", embedding_document_prefix="passage: ",
@@ -42,17 +42,23 @@ def open_index(chroma: str):
     for m in rows["metadatas"]:
         courses.setdefault(m["course_id"], {})[m["material_id"]] = Material(
             id=m["material_id"], version=m["version"], kind=m["kind"], title=m["title"])
-    course = max(courses, key=lambda c: len(courses[c]))
+    if course_title:
+        # the course that holds a material with this word in its title
+        matching = [c for c, mats in courses.items() if any(course_title.lower() in m.title.lower() for m in mats.values())]
+        course = matching[0]
+    else:
+        course = max(courses, key=lambda c: len(courses[c]))
     return index, course, list(courses[course].values())
 
 
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--chroma", default=str(ROOT / ".chroma"))
+    ap.add_argument("--course-title", default=None, help="pick the course that has a material whose title contains this")
     ap.add_argument("--claims", default=str(ROOT / "evaluation" / "self_check_claims_computer_network.json"))
     args = ap.parse_args()
     claims = json.loads(Path(args.claims).read_text(encoding="utf-8"))
-    index, course, materials = open_index(args.chroma)
+    index, course, materials = open_index(args.chroma, args.course_title)
     print(f"course {course}: {[m.title for m in materials]}")
     started = time.time()
     results = {}
