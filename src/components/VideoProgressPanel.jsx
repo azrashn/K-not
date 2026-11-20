@@ -1,6 +1,7 @@
 import { videoTime } from "../lib/video";
 export default function VideoProgressPanel({
   progress,
+  title,
   currentMs = 0,
   saving,
   error,
@@ -28,6 +29,7 @@ export default function VideoProgressPanel({
               : "İlerleme kayıtlı"}
         </span>
       </div>
+      {title && <p className="video-progress-name">{title}</p>}
       <div className="video-progress-metrics">
         <div>
           <span>İzlenen bölüm</span>

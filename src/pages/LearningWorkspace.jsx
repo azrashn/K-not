@@ -1,3 +1,4 @@
+import { displayTitle } from "../lib/material-title.js";
 import Voice from "../components/Voice";
 import { loadLocalVoice } from "../lib/local-voice";
 import { isSubmitKey } from "../lib/composer-keys";
@@ -89,7 +90,7 @@ function QuoteBlock({ text, label }) {
 
 // Öneri düğmesi etiketi tek başına soru olmaz: arama bir konu ister. Açık materyalin adı (ve sayfa) soruya eklenir.
 function suggestionQuestions(selected, viewport) {
-  const title = (selected?.title || "").replace(/\.[a-z0-9]{2,4}$/i, "").trim();
+  const title = displayTitle(selected?.title);
   const page = viewport?.page ?? viewport?.location?.page;
   const where = title ? `${title}${page ? `, sayfa ${page}` : ""}` : "";
   const about = where ? ` (${where})` : "";
@@ -1017,7 +1018,7 @@ export default function LearningWorkspace({ courseId }) {
                     data-type={m.type || m.documentType || ""}
                   >
                     <span className="source-badge">{m.kind}</span>
-                    <strong>{m.title}</strong>
+                    <strong title={m.title}>{displayTitle(m.title)}</strong>
                     <small>
                       {m.status === "READY"
                         ? "Hazır"
@@ -1332,7 +1333,9 @@ export default function LearningWorkspace({ courseId }) {
             <span className="product-eyebrow">
               {selected?.kind || "Çalışma alanı"}
             </span>
-            <h2>{selected?.title || "Kaynağın burada açılacak"}</h2>
+            <h2 title={selected?.title || undefined}>
+              {displayTitle(selected?.title) || "Kaynağın burada açılacak"}
+            </h2>
           </header>
           {selected && selected.status === "READY" && (
             <div className="viewer-tabs" role="tablist" aria-label="Kaynak görünümü">
@@ -1511,6 +1514,7 @@ export default function LearningWorkspace({ courseId }) {
                 <p role="status">Video açılıyor…</p>
               )}
               <VideoProgressPanel
+                title={selected?.title}
                 progress={
                   watch.progress?.video_id === videoId ? watch.progress : null
                 }

@@ -2948,3 +2948,15 @@ nav[aria-label='Ana gezinme'] { z-index: 2; }
   cursor: pointer;
 }
 .cite-link:hover { background: var(--color-accent-tint); }
+
+/* Uzun materyal adı: başlık kendi satırında tam genişlikte, en fazla 2 satır; sekmeler altta. */
+.viewer-top { flex-wrap: wrap; row-gap: 6px; }
+.viewer-top > header { order: -1; flex: 1 1 100%; min-width: 0; align-items: flex-start; }
+.viewer-top > header h2 {
+  height: auto; min-width: 0; line-height: 1.35; padding-top: calc((var(--ctl-h) - 1.35em) / 2);
+  overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2;
+  overflow-wrap: anywhere; letter-spacing: -0.03em;
+}
+.viewer-top .viewer-tabs { min-width: 0; flex-wrap: wrap; }
+.viewer-top > .viewer-more { margin-left: auto; }
+.video-progress-name { margin: 0 0 8px; font-size: 12px; color: var(--color-ink-2); overflow-wrap: anywhere; }
