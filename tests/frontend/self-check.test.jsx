@@ -251,3 +251,23 @@ test("found with a part that could not be compared says so", async () => {
   expect(screen.getAllByText("Kaynakta var", { selector: ".board-badge" })).toHaveLength(2); // the claim and its found part
   expect(screen.getByText("Karşılaştırılamadı", { selector: ".board-badge" })).toBeInTheDocument();
 });
+
+test("preparation starts when the panel is shown, and a waiting check tells how many materials are being prepared", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  try {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    let finish;
+    api.selfCheck.mockReturnValue(new Promise((r) => (finish = r)));
+    api.selfCheckPrepare.mockResolvedValue({ started: true });
+    api.selfCheckReadiness.mockResolvedValue({ total: 7, pending: 4, preparing: true });
+    render(<SelfCheck courseId="course" onOpenSource={vi.fn()} />);
+    expect(api.selfCheckPrepare).toHaveBeenCalledWith("course");
+    await user.type(screen.getByLabelText("Konuyu kendi cümlelerinle yaz"), "x");
+    await user.click(screen.getByRole("button", { name: "Kontrol et" }));
+    await vi.advanceTimersByTimeAsync(3500);
+    expect(await screen.findByText(/4 materyal ilk kez hazırlanıyor; bu bir kez birkaç dakika sürebilir\./)).toBeInTheDocument();
+    finish({ ...result });
+  } finally {
+    vi.useRealTimers();
+  }
+});

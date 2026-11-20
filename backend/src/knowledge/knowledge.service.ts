@@ -60,6 +60,7 @@ export class KnowledgeService {
   // Self-check has its own budget: it must not be starved by chat questions (and the other way round).
   private readonly selfLimiter = new RateLimiter(10);
   private readonly webLimiter = new RateLimiter(6);
+  private readonly prepareLimiter = new RateLimiter(12);
   private readonly synchronizing = new Map<string, Promise<void>>();
   private readonly linkCache = new TtlLru<{ material_id: string; links: any[]; preparing: boolean }>(200, 10 * 60_000);
   // Scene frames of a video are read (OCR) once, in the background; a failure is remembered 10 minutes.
@@ -665,6 +666,27 @@ export class KnowledgeService {
       r.body,
       new Map(scoped.map((m) => [m.id, { title: m.title, kind: m.kind }])),
     );
+  }
+  /** How many ready materials are not in the search index yet (they are prepared on first use, which can take
+   *  minutes). Shown to the student while a check waits. */
+  async selfCheckReadiness(user: AuthUser, course: string) {
+    const ready = (await this.materials(user, course)).filter((m) => m.status === "READY");
+    if (!ready.length) return { total: 0, pending: 0, preparing: false };
+    const state = await this.call("POST", "/state", this.manifest(course, ready));
+    const pending = ready.filter((m) => state.versions?.[m.id] !== m.version);
+    return {
+      total: ready.length,
+      pending: pending.length,
+      preparing: pending.some((m) => this.synchronizing.has(course + ":" + m.id)),
+    };
+  }
+  /** Starts preparing the materials in the background (nothing is waited for). */
+  async selfCheckPrepare(user: AuthUser, course: string) {
+    if (!this.prepareLimiter.take(user.id))
+      throw new ApiError("RATE_LIMITED", "Biraz bekleyip yeniden deneyin.");
+    const ready = (await this.materials(user, course)).filter((m) => m.status === "READY");
+    if (ready.length) void this.sync(user, course, ready).catch(() => undefined);
+    return { started: ready.length > 0 };
   }
   /** Optional web check of ONE claim, started by the student. Only the claim text leaves; the answer is
    *  kept apart from the course materials (see ai-service self_check_web.py). */

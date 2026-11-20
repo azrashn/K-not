@@ -99,6 +99,10 @@ export default function SelfCheck({ courseId, onOpenSource }) {
   const hintId = useId();
 
   useEffect(() => () => abort.current?.abort(), []);
+  // Materyaller ilk kullanımda arama dizinine alınır (dakikalar sürebilir): panel hazır olmadan başlat.
+  useEffect(() => {
+    Promise.resolve(api.selfCheckPrepare?.(courseId)).catch(() => {});
+  }, [courseId]);
   // Başka bir derse geçilirse önceki dersin sonucu gösterilmez.
   useEffect(() => {
     abort.current?.abort();
@@ -107,6 +111,26 @@ export default function SelfCheck({ courseId, onOpenSource }) {
 
   const empty = !text.trim();
   const loading = state.status === "loading";
+  // Beklerken gerçek durum: kaç materyal henüz hazırlanıyor?
+  const [pending, setPending] = useState(0);
+  useEffect(() => {
+    if (!loading) {
+      setPending(0);
+      return undefined;
+    }
+    let alive = true;
+    const poll = () =>
+      Promise.resolve(api.selfCheckReadiness?.(courseId))
+        .then((r) => alive && setPending(Number(r?.pending) || 0))
+        .catch(() => {});
+    const first = setTimeout(poll, 3000);
+    const timer = setInterval(poll, 6000);
+    return () => {
+      alive = false;
+      clearTimeout(first);
+      clearInterval(timer);
+    };
+  }, [loading, courseId]);
 
   async function run() {
     if (empty || loading) return;
@@ -190,6 +214,7 @@ export default function SelfCheck({ courseId, onOpenSource }) {
       {loading && (
         <p role="status" className="product-note">
           Cümlelerin ders materyalleriyle karşılaştırılıyor…
+          {pending > 0 && ` ${pending} materyal ilk kez hazırlanıyor; bu bir kez birkaç dakika sürebilir.`}
         </p>
       )}
 

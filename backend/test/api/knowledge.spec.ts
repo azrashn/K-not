@@ -1329,6 +1329,23 @@ describe("self-check: the student's own text against the course materials", () =
     expect((await h.http().post(web).set(await h.as("ayse")).send({ claim: "TCP uses a handshake." }).expect(200)).body.status).toBe("NOT_FOUND");
   });
 
+  test("readiness counts materials not indexed yet; prepare starts indexing without waiting; both need membership", async () => {
+    const id = await readyPdf();
+    let indexed: string[] = [];
+    h.ai.on("POST", "/api/v1/knowledge/state", () => ({ status: 200, body: { versions: {} } }));
+    h.ai.on("POST", "/api/v1/knowledge/index", (r: any) => { indexed.push(r.body.material.id); return { status: 200, body: { indexed: 1 } }; });
+    const ready = await h.http().get(`${route()}/self-check/readiness`).set(await h.as("ayse")).expect(200);
+    expect(ready.body).toMatchObject({ total: 2, pending: 2 }); // the uploaded pdf and the study note of the fixture
+    const started = await h.http().post(`${route()}/self-check/prepare`).set(await h.as("ayse")).send({}).expect(200);
+    expect(started.body).toEqual({ started: true });
+    for (let i = 0; i < 60 && indexed.length < 2; i++) await new Promise((r) => setTimeout(r, 50));
+    expect(indexed.sort()).toEqual([id, "file_water-notes"].sort());
+    h.ai.on("POST", "/api/v1/knowledge/state", () => ({ status: 200, body: { versions: Object.fromEntries([[id, "x"]]) } }));
+    await h.http().get(`${route()}/self-check/readiness`).set(await h.as("outsider")).expect(404);
+    await h.http().post(`${route()}/self-check/prepare`).set(await h.as("outsider")).send({}).expect(404);
+    await h.http().get(`${route()}/self-check/readiness`).expect(401);
+  });
+
   test("the service being down is a Turkish error in the standard shape", async () => {
     await readyPdf();
     h.ai.on("POST", "/api/v1/knowledge/self-check", () => ({ status: 500, body: {} }));

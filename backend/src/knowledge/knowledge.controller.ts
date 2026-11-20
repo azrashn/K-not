@@ -294,6 +294,15 @@ export class KnowledgeController {
   ) {
     return this.knowledge.selfCheck(u, p.courseId, b);
   }
+  @Get("self-check/readiness")
+  selfCheckReadiness(@CurrentUser() u: AuthUser, @Param() p: IdParam.Course) {
+    return this.knowledge.selfCheckReadiness(u, p.courseId);
+  }
+  @Post("self-check/prepare")
+  @HttpCode(200)
+  selfCheckPrepare(@CurrentUser() u: AuthUser, @Param() p: IdParam.Course) {
+    return this.knowledge.selfCheckPrepare(u, p.courseId);
+  }
   @Post("self-check/web")
   @HttpCode(200)
   selfCheckWeb(
