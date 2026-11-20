@@ -14,3 +14,19 @@ tests/frontend/api-client.test.js:generic-api-key:22
 # Old print statement in the seed script that interpolated the email and password variables
 # (a code template, no value). The current script never prints passwords.
 bc0f3cfa61791688fe62e0a2c31debad47409bf6:backend/scripts/seed.ts:generated-password-output:44
+
+# Test placeholders, not secrets: fake DB URLs/passwords in unit tests (doctor-core, mariadb-url)
+# and the throwaway MySQL service password of the CI job (exists only inside the runner).
+# Reviewed; all found in older commits.
+78b2db6795fa72acb495229c3c317699192d4a4e:.github/workflows/quality-linux.yml:db-password-assignment:14
+78b2db6795fa72acb495229c3c317699192d4a4e:.github/workflows/quality-linux.yml:db-password-assignment:37
+78b2db6795fa72acb495229c3c317699192d4a4e:.github/workflows/quality-linux.yml:db-password-assignment:86
+874ae23e8b9e044307c56a9198e223f384d937e8:backend/test/unit/mariadb-url.spec.ts:db-url-with-password:21
+e7c9a890fc78594919043d33b08f458b0abe2ab3:scripts/lib/doctor-core.mjs:db-url-with-password:4
+e7c9a890fc78594919043d33b08f458b0abe2ab3:tests/scripts/doctor-core.test.js:db-url-with-password:16
+e7c9a890fc78594919043d33b08f458b0abe2ab3:tests/scripts/doctor-core.test.js:db-url-with-password:20
+e7c9a890fc78594919043d33b08f458b0abe2ab3:tests/scripts/doctor-core.test.js:db-url-with-password:23
+e7c9a890fc78594919043d33b08f458b0abe2ab3:tests/scripts/doctor-core.test.js:db-url-with-password:25
+e7c9a890fc78594919043d33b08f458b0abe2ab3:tests/scripts/doctor-core.test.js:db-url-with-password:26
+e7c9a890fc78594919043d33b08f458b0abe2ab3:tests/scripts/doctor-core.test.js:db-url-with-password:82
+e7c9a890fc78594919043d33b08f458b0abe2ab3:tests/scripts/doctor-core.test.js:db-url-with-password:9
