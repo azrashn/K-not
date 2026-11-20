@@ -36,7 +36,7 @@ def test_real_pdf_with_ti_glyph_decoded_as_digit_is_repaired():
     from pathlib import Path
     from knot_ingest.extraction import extract_pdf
 
-    data = (Path(__file__).parent.parent / "fixtures" / "ligature_ti_as_digit.pdf").read_bytes()
+    data = (Path(__file__).parent / "fixtures" / "ligature_ti_as_digit.pdf").read_bytes()
     doc = extract_pdf(data, max_pages=10, max_empty_page_ratio=0.5)
     text = "\n".join(doc.page_texts)
     assert "application" in text and "Encapsulation" in text and "Introduction" in text

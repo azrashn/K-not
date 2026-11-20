@@ -167,9 +167,10 @@ describe('choosing several past exams', () => {
     render(<CourseExams courseId="c" />)
     expect(await screen.findByRole('checkbox', { name: /Final 2025/ })).toBeChecked()
     expect(screen.getByRole('checkbox', { name: /Vize 2025/ })).not.toBeChecked()
-    expect(screen.getByLabelText('Soru sayısı')).toHaveValue(4)
+    // the size is prefilled by an effect after the styles load: wait for it instead of reading it at once
+    await waitFor(() => expect(screen.getByLabelText('Soru sayısı')).toHaveValue(4))
     await user.click(screen.getByRole('checkbox', { name: /Vize 2025/ }))
-    expect(screen.getByLabelText('Soru sayısı')).toHaveValue(6) // (4 + 7) / 2, rounded
+    await waitFor(() => expect(screen.getByLabelText('Soru sayısı')).toHaveValue(6)) // (4 + 7) / 2, rounded
     expect(screen.getByText(/Seçilen 2 sınavın/)).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Sınavı hazırla' }))
     expect(api.createExam).toHaveBeenCalledWith('c', { exam_style_ids: [style.id, vize.id], count: 6 })

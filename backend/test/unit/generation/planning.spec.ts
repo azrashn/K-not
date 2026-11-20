@@ -115,9 +115,9 @@ describe('question plan', () => {
 });
 
 describe('quiz items', () => {
-  test('one kind, 1 to 10 questions', () => {
+  test('one kind, 1 to 15 questions', () => {
     expect(quizItems('CLOZE', 3)).toEqual([{ kind: 'CLOZE' }, { kind: 'CLOZE' }, { kind: 'CLOZE' }]);
-    for (const bad of [0, 11, 2.5, NaN]) expect(() => quizItems('OPEN', bad)).toThrow('1 ile 10');
+    for (const bad of [0, 16, 2.5, NaN]) expect(() => quizItems('OPEN', bad)).toThrow('1 ile 15');
   });
 
   test('"Karışık" takes the kinds in turn', () => {

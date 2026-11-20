@@ -93,7 +93,7 @@ describe('one question, returned at once', () => {
 
   test.each([0, 16])('count %i is refused before any search', async (count) => {
     const { builder, k } = world();
-    await expect(builder.startSet(u, 'c', { topic: 'nesne', kind: 'OPEN', count }, 240)).rejects.toThrow('1 ile 10');
+    await expect(builder.startSet(u, 'c', { topic: 'nesne', kind: 'OPEN', count }, 240)).rejects.toThrow('1 ile 15');
     expect(k.ask).not.toHaveBeenCalled();
   });
 });

@@ -5,9 +5,11 @@ import hashlib
 from types import SimpleNamespace
 
 import chromadb
-import cv2
 import numpy as np
 import pytest
+
+# OCR extras (requirements-ocr.txt) are optional: without OpenCV these tests are skipped, not failed.
+cv2 = pytest.importorskip("cv2", reason="opencv-python-headless (requirements-ocr.txt) is not installed")
 from knot_rag import frame_text
 from knot_rag.bootstrap import build_components
 from knot_rag.config import Settings
