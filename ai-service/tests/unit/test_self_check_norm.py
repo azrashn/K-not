@@ -61,3 +61,13 @@ def test_slide_units_join_wrapped_bullets_but_not_new_statements():
     assert slide_units(text) == ["A day in the life", "to send HTTP request, client first opens TCP socket to web server",
                                  "TCP SYN segment (step 1)", "Ethernet frames carry 1500 bytes.", "Link Layer: 6-104"]
     assert slide_units("Plain line one\nplain line two") == ["Plain line one", "plain line two"]
+
+
+def test_repair_ignores_typographic_quotes_around_a_damaged_word():
+    from knot_rag.self_check_norm import polar_word_present, repair_ocr
+    from knot_rag.text import fold
+
+    fixed = repair_ocr("UDP: no “connec1on” between client and server", {"connection", "udp"})
+    assert "connection" in fixed
+    assert polar_word_present("connectionless", fold(fixed))
+    assert not polar_word_present("connectionless", fold("TCP connection opened"))

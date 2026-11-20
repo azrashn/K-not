@@ -119,7 +119,7 @@ def canon(text: str) -> str:
 # ONLY when putting a ligature in place of one suspect character gives a word that the claim itself
 # contains, so nothing is invented: the student's own word has to be there.
 _LIGATURES = ("ti", "tt", "ft", "fi", "fl", "ff")
-_TOKEN = re.compile(r"[^\s,.;:()\[\]{}\"'<>•▪●◦·§–—]{3,}")
+_TOKEN = re.compile(r"[^\s,.;:()\[\]{}\"'<>“”‘’•▪●◦·§–—]{3,}")
 
 
 def _suspect(token: str, i: int) -> bool:
@@ -229,3 +229,15 @@ def slide_units(text: str) -> list[str]:
     for item in items:
         units.extend(x.strip() for x in _SENTENCE_END.split(item) if x.strip())
     return units
+
+
+def polar_word_present(word: str, folded_text: str) -> bool:
+    """Is the reversing-affix word in the text, in full, or said the other way round ("connectionless" is
+    "no connection" / "without connection")? `folded_text` is fold()-ed."""
+    if word in folded_text:
+        return True
+    ascii_w = word.translate(_ASCII).lower()
+    if ascii_w.endswith("less") and len(ascii_w) >= 8:
+        base = re.escape(ascii_w[:-4][:7])
+        return re.search(r"(?<![a-z])(?:no|without)\s+[^a-z0-9]*" + base, folded_text.translate(_ASCII)) is not None
+    return False

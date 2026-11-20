@@ -487,3 +487,24 @@ def test_a_direction_the_source_does_not_state_is_not_confirmed():
     assert c["label"] != "IN_SOURCE"
     # no direction in the claim: nothing changes
     assert only(e.check("TCP SYN segment is part of the three way handshake."))["label"] == "IN_SOURCE"
+
+
+def test_connectionless_may_be_said_as_no_connection():
+    e = Env()
+    e.add("pdf_nc", [("Socket programming with UDP\nUDP: no connec1on between\nclient and server:\n§no handshaking before sending data", 108),
+                     ("HTTP connections\n1.TCP connection opened\nClosing a TCP connection", 21)])
+    assert only(e.check("UDP is connectionless."))["label"] == "IN_SOURCE"
+    assert only(e.check("TCP is connectionless."))["label"] != "IN_SOURCE"
+
+
+def test_direction_is_also_read_from_a_video_transcript():
+    e = Env()
+    # transcript text has sentences, not bullets; the same units and rules apply
+    m = Material(id="video_t", kind="VIDEO", title="Lecture.mp4", version="a" * 64)
+    e.index.upsert(Projection(course_id=COURSE, material=m, segments=[
+        Segment(id=hashlib.sha256(b"t1").hexdigest(), text="So now the client sends a SYN segment to the server and waits. Then the server replies with a SYNACK segment.",
+                location={"kind": "video", "start_ms": 1000, "end_ms": 9000})]))
+    e.materials.append(m)
+    assert only(e.check("The client sends a SYN segment to the server."))["label"] == "IN_SOURCE"
+    swapped = only(e.check("The server sends a SYN segment to the client."))
+    assert swapped["label"] in ("PARTIAL", "CONFLICTS") and swapped["label"] != "IN_SOURCE"

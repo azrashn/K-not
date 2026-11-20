@@ -24,7 +24,7 @@ from knot_rag.text import NEGATION_WORDS, STOPWORDS, content_tokens, fold, has_n
 from knot_rag import self_check_glossary as glossary
 from knot_rag.self_check_judge import judge, judge_enabled
 from knot_rag.self_check_rules import RULE_KINDS, direction_confirmed, roles as claim_roles, rule_conflict
-from knot_rag.self_check_norm import canon, is_readable, polar_words, repair_ocr, slide_units as _sentences
+from knot_rag.self_check_norm import canon, is_readable, polar_word_present, polar_words, repair_ocr, slide_units as _sentences
 from knot_rag.self_check_translate import dictionary_translate, language_of, model_translate
 from knot_rag.unified import Manifest, Search, UnifiedIndex
 
@@ -33,6 +33,7 @@ MAX_TEXT_CHARS = 4000
 MAX_CLAIMS = 25
 MAX_SKIPPED = 10
 QUOTE_CHARS = 160
+PASSAGE_WHOLE_CHARS = 900
 MAX_SOURCES = 2
 WINDOW_SENTENCES = 3
 # A contradiction needs the claim to be about the same thing as the source sentence: almost all of the
@@ -136,17 +137,22 @@ def _windows(passage: str) -> list[tuple[str, int]]:
     return out + [(passage, 0)]
 
 
-def _best_line(claim: str, window: str) -> str:
-    """The line (or sentence) of the window that shares the most words with the claim."""
+def _best_in(claim: str, lines: list[str]) -> str:
+    """The unit of `lines` that shares the most words with the claim."""
     claim_stems = {stem(t) for t in _claim_words(claim)}
     best, score = "", (-1, 0)
-    for line in _sentences(window):
+    for line in lines:
         overlap = len(claim_stems & stem_set(line))
         # equal overlap: prefer a real sentence/bullet over a bare heading ("TCP 3-way handshake")
         key = (overlap, min(len(line.split()), 8))
         if key > score:
             best, score = line, key
-    return best or window
+    return best
+
+
+def _best_line(claim: str, window: str) -> str:
+    """The unit (bullet item or sentence) of the window that shares the most words with the claim."""
+    return _best_in(claim, _sentences(window)) or window
 
 
 _COMPLEXITY = re.compile(r"(?<![A-Za-z])O\s*\(([^()]{1,24})\)")
@@ -189,7 +195,7 @@ def _best_at(claim: str, window: str) -> tuple[list[str], int]:
     repaired = _sentences(repair_ocr(window, vocabulary))
     # repair keeps the line structure, so the index found on the repaired lines is valid for the originals
     if len(repaired) == len(lines):
-        return lines, repaired.index(_best_line(claim, chr(10).join(repaired)))
+        return lines, repaired.index(_best_in(claim, repaired))
     return lines, lines.index(_best_line(claim, window))
 
 
@@ -202,9 +208,13 @@ def _quote(claim: str, window: str) -> str:
 
 
 def _passage(claim: str, window: str) -> str:
-    """Context for the meaning check: the matching line and its neighbours (not just the start of a page)."""
+    """Context for the meaning check: a small slide is given whole (its bullets explain each other); a long
+    passage as the matching unit with its neighbours."""
+    whole = normalize_text(window)
+    if len(whole) <= PASSAGE_WHOLE_CHARS:
+        return whole
     lines, at = _best_at(claim, window)
-    return normalize_text(" ".join(lines[max(0, at - 3):at + 5]))[:700]
+    return normalize_text(" ".join(lines[max(0, at - 3):at + 5]))[:PASSAGE_WHOLE_CHARS]
 
 
 def _location(evidence: dict) -> dict:
@@ -312,6 +322,7 @@ def classify(claim: str, evidence: list[dict], short_ok: bool = False, same_lang
         return {"label": "NOT_IN_SOURCE", "sources": [], "missing_terms": [], "unmatched_numbers": [], "conflict": None}
     claim = canon(claim)  # compared in the same form as the source: number words become digits
     vocabulary = {w.translate(_FOLD).lower() for w in re.findall(r"[^\W\d_]{3,}", claim)}
+    vocabulary |= {w[:-4] for w in vocabulary if w.endswith("less") and len(w) >= 8}  # "connection" for "connectionless"
     all_numbers: set[str] = set()
     for e in evidence:
         all_numbers |= _quantities(canon(e["text"]))
@@ -361,7 +372,7 @@ def classify(claim: str, evidence: list[dict], short_ok: bool = False, same_lang
             if support["label"] in _GOOD and polar:
                 # "connectionless" is not "connection": a word with a reversing affix must be there in full.
                 folded = fold(window)
-                if any(w not in folded for w in polar):
+                if any(not polar_word_present(w, folded) for w in polar):
                     support = {**support, "label": "UNSUPPORTED", "reason": "POLAR_WORD_MISSING"}
             if support["label"] in _GOOD and polar and short_claim and size != 1 and "matched_terms" not in support:
                 # "TCP is connectionless": a subject and one reversing property. Both must be in ONE sentence; the

@@ -5,6 +5,9 @@
   {"kind": "true", "text": "UDP is connectionless transport while TCP is connection-oriented reliable transport."},
   {"kind": "true", "text": "In the TCP 3-way handshake the client sends a SYN message and the server answers with a SYNACK."},
   {"kind": "true", "text": "UDP is connectionless and TCP is connection-oriented."},
+  {"kind": "true", "text": "UDP is connectionless."},
+  {"kind": "true", "text": "TCP is connection-oriented."},
+  {"kind": "true", "text": "The client sends a SYN to the server to open the connection."},
   {"kind": "true", "text": "TCP bağlantı kurulumunda istemci SYN gönderir, sunucu SYNACK ile yanıt verir."},
   {"kind": "true", "text": "UDP bağlantısız, TCP ise bağlantı odaklı güvenilir bir taşıma protokolüdür."},
   {"kind": "true", "text": "Üç tekrarlı ACK alındığında TCP kayıp segmenti yeniden gönderir (fast retransmit)."},
@@ -26,6 +29,9 @@
   {"kind": "conflict", "text": "In the TCP handshake the server sends a SYN message to the client and the client answers with SYNACK."},
   {"kind": "conflict", "text": "TCP is connectionless and UDP is connection-oriented."},
   {"kind": "conflict", "text": "TCP yavaş başlangıçta cwnd değerini 10 MSS ile başlatır."},
+  {"kind": "conflict", "text": "TCP is connectionless."},
+  {"kind": "conflict", "text": "TCP bağlantısızdır."},
+  {"kind": "conflict", "text": "The server sends a SYN to the client to open the connection."},
   {"kind": "conflict", "text": "Hızlı yeniden iletim beş tekrarlı ACK sonrasında yapılır."},
-  {"kind": "conflict_hard", "text": "Sunucu istemciye SYN gönderir, istemci SYNACK ile yanıt verir."}
+  {"kind": "conflict", "text": "Sunucu istemciye SYN gönderir, istemci SYNACK ile yanıt verir."}
 ]

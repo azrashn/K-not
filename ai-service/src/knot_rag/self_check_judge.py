@@ -31,7 +31,7 @@ SYSTEM = (
 )
 VERDICTS = ("SUPPORTS", "CONTRADICTS", "UNSURE")
 MAX_ITEMS = 25
-PASSAGE_CHARS = 700
+PASSAGE_CHARS = 900
 
 
 def judge_enabled() -> bool:
