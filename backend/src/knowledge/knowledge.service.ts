@@ -18,7 +18,7 @@ import { TtlLru, bucketTime } from "./links-cache";
 import { correctionsDigest } from "../videos/transcript-corrections";
 import { STUDY_FILE_MAX_BYTES, mbText } from "../common/limits";
 import { boardSteps } from "../board/steps";
-import { cleanSelfCheck } from "./self-check";
+import { cleanSelfCheck, cleanWebCheck } from "./self-check";
 
 const hash = (value: string) =>
   createHash("sha256").update(value).digest("hex");
@@ -59,6 +59,7 @@ export class KnowledgeService {
   private readonly limiter = new RateLimiter(15);
   // Self-check has its own budget: it must not be starved by chat questions (and the other way round).
   private readonly selfLimiter = new RateLimiter(10);
+  private readonly webLimiter = new RateLimiter(6);
   private readonly synchronizing = new Map<string, Promise<void>>();
   private readonly linkCache = new TtlLru<{ material_id: string; links: any[]; preparing: boolean }>(200, 10 * 60_000);
   // Scene frames of a video are read (OCR) once, in the background; a failure is remembered 10 minutes.
@@ -664,6 +665,22 @@ export class KnowledgeService {
       r.body,
       new Map(scoped.map((m) => [m.id, { title: m.title, kind: m.kind }])),
     );
+  }
+  /** Optional web check of ONE claim, started by the student. Only the claim text leaves; the answer is
+   *  kept apart from the course materials (see ai-service self_check_web.py). */
+  async selfCheckWeb(user: AuthUser, course: string, claim: string) {
+    await this.access.requireMember(user, course);
+    if (!this.webLimiter.take(user.id))
+      throw new ApiError("RATE_LIMITED", "Biraz bekleyip yeniden deneyin.");
+    const r = await this.ai.call("POST", "/api/v1/knowledge/self-check/web", {
+      body: { claim },
+      timeoutMs: 30000,
+    });
+    if (r.kind === "timeout")
+      throw new ApiError("PROVIDER_TIMEOUT", "Web araması uzun sürdü. Daha sonra yeniden deneyin.");
+    if (r.kind !== "response" || r.status !== 200)
+      throw new ApiError("AI_SERVICE_UNAVAILABLE", "Web araması şu anda yapılamadı.");
+    return cleanWebCheck(r.body);
   }
   async summarize(
     user: AuthUser,

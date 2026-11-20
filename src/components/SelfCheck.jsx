@@ -40,6 +40,54 @@ function conflictNote(c) {
     : "Senin cümlen olumlu, kaynaktaki cümle olumsuz.";
 }
 
+// Web'de ara: yalnızca öğrenci isterse, tek iddia için. Ders kaynağından ayrı gösterilir ve özete karışmaz.
+function WebCheck({ courseId, claim }) {
+  const [state, setState] = useState({ status: "idle" });
+  const abort = useRef(null);
+  useEffect(() => () => abort.current?.abort(), []);
+  async function run() {
+    abort.current?.abort();
+    const controller = new AbortController();
+    abort.current = controller;
+    setState({ status: "loading" });
+    try {
+      const r = await api.selfCheckWeb(courseId, claim, controller.signal);
+      if (!controller.signal.aborted) setState({ status: "ready", result: r });
+    } catch (e) {
+      if (e?.name !== "AbortError" && !controller.signal.aborted) setState({ status: "error", message: videoErrorText(e) });
+    }
+  }
+  const r = state.status === "ready" ? state.result : null;
+  return (
+    <div className="self-check-web">
+      {(state.status === "idle" || state.status === "error") && (
+        <button type="button" className="board-control" onClick={run}>
+          Web'de ara
+        </button>
+      )}
+      {state.status === "idle" && <small>Yalnızca bu cümle Vikipedi'ye gönderilir.</small>}
+      {state.status === "loading" && <span role="status">Vikipedi'de aranıyor…</span>}
+      {state.status === "error" && <span role="alert" className="product-error">{state.message}</span>}
+      {r?.status === "UNAVAILABLE" && <span role="status">Web araması şu anda yapılamadı.</span>}
+      {r?.status === "NOT_FOUND" && <span role="status">Web'de de bulunamadı. Yanlış demek değil.</span>}
+      {r?.status === "FOUND" && (
+        <div role="status">
+          <span className="board-badge" data-source="web">Web'de bulundu</span>{" "}
+          <small>Ders kaynağın değil; doğru olduğunu kanıtlamaz.</small>
+          {r.sources.map((s) => (
+            <blockquote key={s.url}>
+              “{s.quote}”{" "}
+              <a href={s.url} target="_blank" rel="noopener noreferrer" className="product-link">
+                {s.title} · {s.site}
+              </a>
+            </blockquote>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // "Beni kontrol et": öğrencinin kendi cümleleri iddialara bölünür ve her biri ders materyalleriyle
 // karşılaştırılır. Sonuç bir not değil, kayıtlı kaynakla sözcük/sayı karşılaştırmasıdır; doğruluk kanıtı sayılmaz.
 export default function SelfCheck({ courseId, onOpenSource }) {
@@ -205,7 +253,10 @@ export default function SelfCheck({ courseId, onOpenSource }) {
                       </p>
                     )}
                     {c.label === "NOT_IN_SOURCE" && (
-                      <p className="self-check-note">Bu iddia için materyallerinde kanıt bulunamadı. Yanlış demek değil.</p>
+                      <>
+                        <p className="self-check-note">Bu iddia için materyallerinde kanıt bulunamadı. Yanlış demek değil.</p>
+                        <WebCheck courseId={courseId} claim={c.text} />
+                      </>
                     )}
                     {c.label === "CONFLICTS" && <p className="self-check-note">{conflictNote(c.conflict)}</p>}
                     {c.label === "PARTIAL" && (c.missing_terms.length > 0 || c.unmatched_numbers.length > 0) && (

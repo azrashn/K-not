@@ -1311,6 +1311,24 @@ describe("self-check: the student's own text against the course materials", () =
     await h.http().post(url()).set(await h.as("ayse")).send({ text: "TCP kurulumu yapılır." }).expect(429);
   });
 
+  test("web check: member only, only the claim is forwarded, non-Wikipedia links are dropped", async () => {
+    const web = `${route()}/self-check/web`;
+    h.ai.on("POST", "/api/v1/knowledge/self-check/web", () => ({ status: 200, body: { status: "FOUND", sources: [
+      { title: "TCP", url: "https://en.wikipedia.org/wiki/TCP", quote: "q", site: "x" },
+      { title: "evil", url: "https://evil.example/phish", quote: "no", site: "x" },
+      { title: "js", url: "javascript:alert(1)", quote: "no", site: "x" } ] } }));
+    const ok = await h.http().post(web).set(await h.as("ayse")).send({ claim: "TCP uses a three-way handshake." }).expect(200);
+    expect(ok.body).toEqual({ status: "FOUND", sources: [{ title: "TCP", url: "https://en.wikipedia.org/wiki/TCP", quote: "q", site: "en.wikipedia.org" }] });
+    const sent = h.ai.calls("POST", "/api/v1/knowledge/self-check/web")[0];
+    expect(sent.body).toEqual({ claim: "TCP uses a three-way handshake." }); // nothing about the user or the course
+    for (const bad of [{}, { claim: "" }, { claim: "   " }, { claim: "a".repeat(601) }, { claim: "x", extra: 1 }])
+      await h.http().post(web).set(await h.as("ayse")).send(bad).expect(422);
+    await h.http().post(web).set(await h.as("outsider")).send({ claim: "TCP uses a handshake." }).expect(404);
+    await h.http().post(web).send({ claim: "TCP uses a handshake." }).expect(401);
+    h.ai.on("POST", "/api/v1/knowledge/self-check/web", () => ({ status: 200, body: { status: "FOUND", sources: [] } }));
+    expect((await h.http().post(web).set(await h.as("ayse")).send({ claim: "TCP uses a handshake." }).expect(200)).body.status).toBe("NOT_FOUND");
+  });
+
   test("the service being down is a Turkish error in the standard shape", async () => {
     await readyPdf();
     h.ai.on("POST", "/api/v1/knowledge/self-check", () => ({ status: 500, body: {} }));

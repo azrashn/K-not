@@ -104,3 +104,18 @@ export function cleanSelfCheck(body: any, allowed: Allowed) {
     verified: false,
   };
 }
+
+/** Web check answer: only https Wikipedia pages, short quotes; anything else is dropped. */
+export function cleanWebCheck(body: any) {
+  const status = ["FOUND", "NOT_FOUND", "UNAVAILABLE"].includes(body?.status) ? (body.status as string) : "UNAVAILABLE";
+  const sources = (Array.isArray(body?.sources) ? body.sources : [])
+    .filter((s: any) => typeof s?.url === "string" && /^https:\/\/(tr|en)\.wikipedia\.org\/wiki\/[^\s]{1,300}$/.test(s.url))
+    .slice(0, 2)
+    .map((s: any) => ({
+      title: text(s.title, 160),
+      url: s.url as string,
+      quote: text(s.quote, 240),
+      site: s.url.startsWith("https://tr.") ? "tr.wikipedia.org" : "en.wikipedia.org",
+    }));
+  return { status: status === "FOUND" && !sources.length ? "NOT_FOUND" : status, sources };
+}

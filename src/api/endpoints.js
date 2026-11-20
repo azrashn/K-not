@@ -46,6 +46,7 @@ export const api = {
   materialLinks: (courseId, materialId, { page, timeMs } = {}, signal) => request('GET', `/courses/${enc(courseId)}/knowledge/materials/${enc(materialId)}/links?${page != null ? 'page=' + enc(page) : 'time_ms=' + enc(Math.round(timeMs))}`, { signal }),
   materialSummary: (courseId, materialId, focus, signal) => request('POST', `/courses/${enc(courseId)}/knowledge/materials/${enc(materialId)}/summary`, { body: { focus }, signal }),
   selfCheck: (courseId, body, signal) => request('POST', `/courses/${enc(courseId)}/knowledge/self-check`, { body, signal }),
+  selfCheckWeb: (courseId, claim, signal) => request('POST', `/courses/${enc(courseId)}/knowledge/self-check/web`, { body: { claim }, signal }),
   knowledgeGrade: (courseId, id, answer) => request('POST', `/courses/${enc(courseId)}/knowledge/practice/${enc(id)}/answers`, { body: { answer } }),
   knowledgeRemove: (courseId, id) => request('DELETE', `/courses/${enc(courseId)}/knowledge/materials/${enc(id)}`),
   knowledgeRename: (course,id,title) => request('PATCH',`/courses/${enc(course)}/knowledge/materials/${enc(id)}`,{body:{title}}),

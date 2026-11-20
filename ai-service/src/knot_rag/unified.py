@@ -860,6 +860,15 @@ def install(app, components, auth):
             raise RequestValidationError(exc.errors(include_url=False)) from exc
         return self_check(index, request)
 
+    @router.post("/self-check/web")
+    def self_check_web_route(body: dict = Body(...)):
+        from knot_rag.self_check_web import web_check
+
+        claim = body.get("claim") if isinstance(body, dict) else None
+        if not isinstance(claim, str) or not claim.strip() or len(claim) > 600 or set(body) - {"claim"}:
+            raise HTTPException(422, "claim must be a non-empty text of at most 600 characters")
+        return web_check(claim.strip())
+
     @router.post("/frame-text")
     def frame_texts(body: dict = Body(...)):
         from pydantic import ValidationError

@@ -125,6 +125,9 @@ class SelfCheckRequest {
   material_ids?: string[];
   @IsOptional() @IsInt() @Min(0) @Max(500) offset?: number;
 }
+class SelfCheckWebRequest {
+  @IsString() @MinLength(1) @MaxLength(600) @Matches(/\S/) claim!: string;
+}
 class PracticeAnswer {
   @IsString() @MaxLength(300) answer!: string;
 }
@@ -290,6 +293,15 @@ export class KnowledgeController {
     @Body() b: SelfCheckRequest,
   ) {
     return this.knowledge.selfCheck(u, p.courseId, b);
+  }
+  @Post("self-check/web")
+  @HttpCode(200)
+  selfCheckWeb(
+    @CurrentUser() u: AuthUser,
+    @Param() p: IdParam.Course,
+    @Body() b: SelfCheckWebRequest,
+  ) {
+    return this.knowledge.selfCheckWeb(u, p.courseId, b.claim);
   }
   @Post("practice")
   @HttpCode(200)
