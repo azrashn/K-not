@@ -1229,3 +1229,79 @@ describe("board steps (additive field)", () => {
     expect(saved.body.messages[1].payload.steps).toEqual(body.steps);
   });
 });
+
+describe("self-check: the student's own text against the course materials", () => {
+  const url = () => `${route()}/self-check`;
+  const sid = "d".repeat(64);
+  const readyPdf = async () => {
+    const pdf = await h.uploadOk("ayse", h.world.courses.vy, { name: "net.pdf" });
+    await h.makeReady(pdf.id, ["TCP kurulumu"]);
+    return "pdf_" + pdf.id;
+  };
+  const answer = (materialId: string) => ({
+    claims: [
+      { text: "TCP üç yollu el sıkışma kullanır", label: "IN_SOURCE", missing_terms: [], unmatched_numbers: [], conflict: null,
+        sources: [{ source_id: sid, material_id: materialId, title: "x", kind: "PDF", location: { page: 4 }, quote: "q".repeat(300) },
+                  { source_id: sid, material_id: "pdf_someone-elses", title: "leak", kind: "PDF", location: { page: 1 }, quote: "no" }] },
+      // a conflict whose only source belongs to a material the student cannot read must not survive
+      { text: "başka", label: "CONFLICTS", missing_terms: [], unmatched_numbers: [], conflict: { kind: "NUMBER", claim: ["1"], source: ["2"] },
+        sources: [{ source_id: sid, material_id: "pdf_someone-elses", title: "leak", kind: "PDF", location: { page: 1 }, quote: "no" }] },
+    ],
+    skipped: [{ text: "Bu nasıl?", reason: "QUESTION" }],
+    summary: { IN_SOURCE: 99, total: 99 },
+    truncated: false,
+  });
+  beforeEach(() => {
+    h.ai.on("POST", "/api/v1/knowledge/self-check", () => ({ status: 200, body: {} }));
+  });
+
+  test("forwards the text with the course manifest and returns only sources the student may read", async () => {
+    const id = await readyPdf();
+    h.ai.on("POST", "/api/v1/knowledge/self-check", () => ({ status: 200, body: answer(id) }));
+    const res = await h.http().post(url()).set(await h.as("ayse")).send({ text: "TCP üç yollu el sıkışma kullanır." }).expect(200);
+    const sent = h.ai.calls("POST", "/api/v1/knowledge/self-check");
+    expect(sent).toHaveLength(1);
+    expect(sent[0].body).toMatchObject({ course_id: h.world.courses.vy, text: "TCP üç yollu el sıkışma kullanır." });
+    expect(sent[0].body.materials.map((m: any) => m.id)).toContain(id);
+    expect(res.body.claims[0].sources).toHaveLength(1);
+    expect(res.body.claims[0].sources[0]).toMatchObject({ material_id: id, location: { page: 4 } });
+    expect(res.body.claims[0].sources[0].quote).toHaveLength(160);
+    // the conflicting claim lost its only source: it is reported as not found, never as a conflict
+    expect(res.body.claims[1]).toMatchObject({ label: "NOT_IN_SOURCE", conflict: null, sources: [] });
+    // counts come from the cleaned claims, not from the service's own numbers
+    expect(res.body.summary).toEqual({ IN_SOURCE: 1, NOT_IN_SOURCE: 1, CONFLICTS: 0, PARTIAL: 0, UNCHECKED: 0, total: 2 });
+    expect(JSON.stringify(res.body)).not.toMatch(/score|percent/i);
+  });
+
+  test("empty, blank, missing, too long or malformed input is 422 and never reaches the ai service", async () => {
+    await readyPdf();
+    for (const body of [{}, { text: "" }, { text: "   \n " }, { text: "a".repeat(4001) }, { text: 5 },
+      { text: "x", material_ids: ["../x"] }, { text: "x", unknown: 1 }])
+      await h.http().post(url()).set(await h.as("ayse")).send(body).expect(422);
+    expect(h.ai.calls("POST", "/api/v1/knowledge/self-check")).toHaveLength(0);
+    await h.http().post(url()).set(await h.as("ayse")).send({ text: "a".repeat(4000) }).expect(200);
+  });
+
+  test("a non-member gets 404, a classmate never compares against private material, unauthenticated is 401", async () => {
+    await readyPdf();
+    await h.http().post(url()).set(await h.as("outsider")).send({ text: "TCP kurulumu yapılır." }).expect(404);
+    // a classmate sees none of ayse's private material: there is nothing to compare with
+    await h.http().post(url()).set(await h.as("mehmet")).send({ text: "TCP kurulumu yapılır." }).expect(422);
+    await h.http().post(url()).send({ text: "TCP kurulumu yapılır." }).expect(401);
+    expect(h.ai.calls("POST", "/api/v1/knowledge/self-check")).toHaveLength(0);
+  });
+
+  test("a selected material the student cannot see is 404; a course without ready material is 422", async () => {
+    await h.http().post(url()).set(await h.as("ayse")).send({ text: "x", material_ids: ["pdf_nobody"] }).expect(404);
+    await h.prisma.studyMaterial.deleteMany({});
+    await h.http().post(url()).set(await h.as("ayse")).send({ text: "TCP kurulumu yapılır." }).expect(422);
+  });
+
+  test("the service being down is a Turkish error in the standard shape", async () => {
+    await readyPdf();
+    h.ai.on("POST", "/api/v1/knowledge/self-check", () => ({ status: 500, body: {} }));
+    const res = await h.http().post(url()).set(await h.as("ayse")).send({ text: "TCP kurulumu yapılır." });
+    expect(res.status).toBeGreaterThanOrEqual(500);
+    expect(res.body.error?.code ?? res.body.code).toBe("AI_SERVICE_UNAVAILABLE");
+  });
+});

@@ -18,6 +18,7 @@ import { TtlLru, bucketTime } from "./links-cache";
 import { correctionsDigest } from "../videos/transcript-corrections";
 import { STUDY_FILE_MAX_BYTES, mbText } from "../common/limits";
 import { boardSteps } from "../board/steps";
+import { cleanSelfCheck } from "./self-check";
 
 const hash = (value: string) =>
   createHash("sha256").update(value).digest("hex");
@@ -618,6 +619,49 @@ export class KnowledgeService {
     };
     if (!preparing) this.linkCache.set(key, result);
     return result;
+  }
+  async selfCheck(
+    user: AuthUser,
+    course: string,
+    body: { text: string; material_ids?: string[] },
+  ) {
+    if (!this.limiter.take(user.id))
+      throw new ApiError("RATE_LIMITED", "Biraz bekleyip yeniden deneyin.");
+    const materials = await this.materials(user, course);
+    const scoped = resolveScope(
+      materials,
+      undefined,
+      body.material_ids?.length
+        ? { mode: "selected", material_ids: body.material_ids }
+        : { mode: "course" },
+    );
+    if (!scoped.length)
+      throw new ApiError(
+        "VALIDATION_ERROR",
+        "Kontrol için hazır materyal yok. Önce bir materyal yükleyin.",
+      );
+    await this.sync(user, course, scoped);
+    // The text is only forwarded; it is never logged or stored.
+    const r = await this.ai.call("POST", "/api/v1/knowledge/self-check", {
+      body: { ...this.manifest(course, scoped), text: body.text },
+      timeoutMs: 90000,
+    });
+    if (r.kind === "timeout")
+      throw new ApiError(
+        "PROVIDER_TIMEOUT",
+        "Kontrol beklenenden uzun sürdü. Metni kısaltıp yeniden deneyin.",
+      );
+    if (r.kind === "response" && r.status === 422)
+      throw new ApiError("VALIDATION_ERROR", "Metin kontrol edilemedi. Boş olmayan, en fazla 4000 karakterlik bir metin yazın.");
+    if (r.kind !== "response" || r.status !== 200)
+      throw new ApiError(
+        "AI_SERVICE_UNAVAILABLE",
+        "Kontrol şu anda yapılamadı. Yeniden deneyin.",
+      );
+    return cleanSelfCheck(
+      r.body,
+      new Map(scoped.map((m) => [m.id, { title: m.title, kind: m.kind }])),
+    );
   }
   async summarize(
     user: AuthUser,

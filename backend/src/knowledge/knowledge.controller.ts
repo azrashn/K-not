@@ -43,6 +43,7 @@ import { KnowledgeService } from "./knowledge.service";
 import { STUDY_FILE_MAX_BYTES } from "../common/limits";
 import { LearningHistoryService } from "../learning/history.service";
 import { AccessService } from "../courses/access.service";
+import { SELF_CHECK_MAX_CHARS } from "./self-check";
 
 export class KnowledgeScope {
   @IsIn(["course", "active", "selected"]) mode!:
@@ -113,6 +114,15 @@ class LinksQuery {
 }
 class SummaryRequest {
   @IsIn(["summary", "concepts"]) focus!: "summary" | "concepts";
+}
+class SelfCheckRequest {
+  @IsString() @MinLength(1) @MaxLength(SELF_CHECK_MAX_CHARS) @Matches(/\S/) text!: string;
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(20)
+  @ArrayUnique()
+  @Matches(/^(pdf|video|file)_[A-Za-z0-9_-]{1,80}$/, { each: true })
+  material_ids?: string[];
 }
 class PracticeAnswer {
   @IsString() @MaxLength(300) answer!: string;
@@ -270,6 +280,15 @@ export class KnowledgeController {
     @Body() body: Question,
   ) {
     return this.knowledge.ask(u, p.courseId, { ...body, retrieve_only: true });
+  }
+  @Post("self-check")
+  @HttpCode(200)
+  selfCheck(
+    @CurrentUser() u: AuthUser,
+    @Param() p: IdParam.Course,
+    @Body() b: SelfCheckRequest,
+  ) {
+    return this.knowledge.selfCheck(u, p.courseId, b);
   }
   @Post("practice")
   @HttpCode(200)
