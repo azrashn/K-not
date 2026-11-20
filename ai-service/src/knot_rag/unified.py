@@ -396,6 +396,9 @@ class UnifiedIndex:
 
         if os.environ.get("STORAGE_ROOT"):
             purge(course_id, material_id)
+            from knot_rag.frame_text import purge as purge_frame_text
+
+            purge_frame_text(course_id, material_id)
         with self.lock:
             col = self.collection()
             col.delete(
@@ -821,6 +824,18 @@ def install(app, components, auth):
         except ValidationError as exc:
             raise RequestValidationError(exc.errors(include_url=False)) from exc
         return find_links(index, request)
+
+    @router.post("/frame-text")
+    def frame_texts(body: dict = Body(...)):
+        from pydantic import ValidationError
+        from fastapi.exceptions import RequestValidationError
+        from knot_rag.frame_text import FrameText, save_batch
+
+        try:
+            request = FrameText.model_validate(body)
+        except ValidationError as exc:
+            raise RequestValidationError(exc.errors(include_url=False)) from exc
+        return save_batch(request)
 
     @router.post("/extract")
     def extract(body: Extract):
