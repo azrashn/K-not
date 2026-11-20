@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { FilmStrip, FileText } from "@phosphor-icons/react";
 import { api } from "../api/endpoints";
 import { videoErrorText } from "../lib/video";
@@ -36,6 +37,7 @@ export default function MaterialLinks({ mode, courseId, materialId, page, getTim
   const [state, setState] = useState({ status: "idle" });
   const button = useRef(null);
   const root = useRef(null);
+  const panel = useRef(null);
   const regionId = useId();
   const requestKey = useRef(0);
 
@@ -100,7 +102,8 @@ export default function MaterialLinks({ mode, courseId, materialId, page, getTim
   useEffect(() => {
     if (!open) return undefined;
     const outside = (e) => {
-      if (root.current && !root.current.contains(e.target)) setOpen(false);
+      // the panel lives in <body> (see below), so it is "outside" the root element but is not an outside click
+      if (root.current && !root.current.contains(e.target) && !panel.current?.contains(e.target)) setOpen(false);
     };
     document.addEventListener("pointerdown", outside);
     return () => document.removeEventListener("pointerdown", outside);
@@ -128,8 +131,9 @@ export default function MaterialLinks({ mode, courseId, materialId, page, getTim
         <copy.Icon size={14} weight="bold" aria-hidden="true" />
         {copy.button}
       </button>
-      {open && (
-        <div id={regionId} role="region" aria-label={copy.region} className="material-links-panel" style={place_ || undefined}>
+      {open && createPortal(
+        <div id={regionId} ref={panel} role="region" aria-label={copy.region} className="material-links-panel" style={place_ || undefined}
+          onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); close(true); } }}>
           <p className="material-links-head">Benzer anlatım · tahmini eşleşme</p>
           {state.status === "loading" && (
             <ul className="material-links-list" aria-busy="true" aria-label="Yükleniyor">
@@ -193,7 +197,8 @@ export default function MaterialLinks({ mode, courseId, materialId, page, getTim
               ))}
             </ul>
           )}
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );
