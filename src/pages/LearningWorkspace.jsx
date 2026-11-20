@@ -832,6 +832,9 @@ export default function LearningWorkspace({ courseId }) {
           >
             Alıştırma yap ↗
           </button>
+          <button className="product-link" onClick={() => navigate(`/dersler/${courseId}`)}>
+            Kapsam haritası ↗
+          </button>
           <button
             className="workspace-toggle"
             aria-expanded={assistantOpen}

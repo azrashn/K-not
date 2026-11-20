@@ -431,3 +431,10 @@ test("with a ready video the slide's link opens the video at that moment and say
   expect(await screen.findByText("Hafta 3 dersi açıldı")).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Belgeye dön" })).toBeInTheDocument();
 });
+test("çalışma alanından Kapsam haritasına gidilir", async () => {
+  const user = userEvent.setup();
+  render(<LearningWorkspace courseId="course" />);
+  await screen.findByRole("heading", { name: "Physics" });
+  await user.click(screen.getByRole("button", { name: /Kapsam haritası/ }));
+  expect(nav).toHaveBeenCalledWith("/dersler/course");
+});
