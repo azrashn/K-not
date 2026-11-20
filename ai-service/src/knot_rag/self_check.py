@@ -284,6 +284,7 @@ def classify(claim: str, evidence: list[dict]) -> dict:
     conflicts = []
     single_good = False
     claim_negated = has_negation(claim)
+    acronyms = {a.translate(_FOLD).lower() for a in re.findall(r"(?<![A-Za-z])[A-Z][A-Z0-9]{1,9}(?![A-Za-z])", claim)}
     for n, e in enumerate(evidence):
         for window, size in _windows(e["text"]):
             raw_window, window = window, repair_ocr(canon(window), vocabulary)
@@ -299,8 +300,10 @@ def classify(claim: str, evidence: list[dict]) -> dict:
             if support["label"] in _GOOD and claim_negated and not has_negation(window):
                 # The student denies something the source states without any negation.
                 support = {**support, "label": "UNSUPPORTED", "reason": "NEGATION_MISMATCH"}
-            elif support["label"] == "PARTIAL" and not (
-                (support["coverage"] or 0) >= PARTIAL_MIN_COVERAGE and len(support["missing_terms"]) <= PARTIAL_MAX_MISSING
+            elif support["label"] == "PARTIAL" and (
+                not ((support["coverage"] or 0) >= PARTIAL_MIN_COVERAGE and len(support["missing_terms"]) <= PARTIAL_MAX_MISSING)
+                # an acronym of the claim (AES, TLS) that the source lacks is the very thing being asserted
+                or set(support["missing_terms"]) & acronyms
             ):
                 support = {**support, "label": "UNSUPPORTED", "reason": "LOW_COVERAGE"}
             scored.append((rank[support["label"]], support["coverage"] or 0.0, -n, raw_window, support, e))
