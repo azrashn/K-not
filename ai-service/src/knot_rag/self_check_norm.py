@@ -129,3 +129,23 @@ def repair_ocr(text: str, vocabulary: set[str]) -> str:
         return token
 
     return _TOKEN.sub(fix, text)
+
+
+# ── unreadable source text ─────────────────────────────────────────────────────────────────────
+# Some material text is not prose: IP / MAC tables, or video transcripts garbled into mixed alphabets
+# ("Nenut cell工 teams научin ..."). Such a passage can neither support nor contradict a claim and must
+# never be shown to the student as a quote.
+_FOREIGN = re.compile(r"[Ѐ-ӿ֐-ۿऀ-෿぀-ヿ㐀-鿿가-힯]")
+MIN_ALPHA_RATIO = 0.5
+MAX_FOREIGN_CHARS = 1
+
+
+def is_readable(text: str) -> bool:
+    """False for number/symbol tables and for text mixing in characters of other alphabets."""
+    compact = re.sub(r"\s+", "", text)
+    if len(compact) < 12:
+        return True  # too short to judge; short lines are filtered by the comparison itself
+    if len(_FOREIGN.findall(compact)) > MAX_FOREIGN_CHARS:
+        return False
+    letters = sum(ch.isalpha() for ch in compact)
+    return letters / len(compact) >= MIN_ALPHA_RATIO

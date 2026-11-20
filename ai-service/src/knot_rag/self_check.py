@@ -24,7 +24,7 @@ from knot_rag.text import NEGATION_WORDS, STOPWORDS, content_tokens, fold, has_n
 from knot_rag import self_check_glossary as glossary
 from knot_rag.self_check_judge import judge, judge_enabled
 from knot_rag.self_check_rules import RULE_KINDS, rule_conflict
-from knot_rag.self_check_norm import canon, repair_ocr
+from knot_rag.self_check_norm import canon, is_readable, repair_ocr
 from knot_rag.self_check_translate import dictionary_translate, language_of, model_translate
 from knot_rag.unified import Manifest, Search, UnifiedIndex
 
@@ -293,8 +293,15 @@ def _conflict(claim: str, window: str, size: int, all_numbers: set[str],
     return _basic_conflict(claim, window, size, all_numbers, all_pairs) or rule_conflict(claim, window, size)
 
 
-def classify(claim: str, evidence: list[dict], short_ok: bool = False) -> dict:
-    """{label, sources, missing_terms, unmatched_numbers, conflict} for one claim and its retrieved evidence."""
+PARTIAL_NUMBER_COVERAGE = 0.85
+
+
+def classify(claim: str, evidence: list[dict], short_ok: bool = False, same_language: bool = False) -> dict:
+    """{label, sources, missing_terms, unmatched_numbers, conflict} for one claim and its retrieved evidence.
+    `same_language`: the claim and the materials are known to be in one language (the claim is written in it
+    or was translated into it). check_claim's "other language" shortcut (acronyms only) is then not
+    meaningful and its answers are ignored: it fires on number tables and garbled text."""
+    evidence = [e for e in evidence if is_readable(e["text"])]
     if not evidence:
         return {"label": "NOT_IN_SOURCE", "sources": [], "missing_terms": [], "unmatched_numbers": [], "conflict": None}
     claim = canon(claim)  # compared in the same form as the source: number words become digits
@@ -315,6 +322,8 @@ def classify(claim: str, evidence: list[dict], short_ok: bool = False) -> dict:
         for window, size in _windows(e["text"]):
             raw_window, window = window, repair_ocr(canon(window), vocabulary)
             support = check_claim(claim, [window])
+            if same_language and "matched_terms" in support:
+                continue  # check_claim took its "different language" path on text that is not comparable
             if support.get("reason") == "TOO_SHORT_TO_CHECK":
                 if not (short_ok and size in (1, 2)):
                     continue
@@ -332,11 +341,17 @@ def classify(claim: str, evidence: list[dict], short_ok: bool = False) -> dict:
                            "unmatched_numbers": [*support.get("unmatched_numbers", []), *missing_quantity]}
             if support.get("reason") == "TERMS_FOUND_TRANSLATED" and len(support.get("matched_terms", [])) < 2:
                 support = {**support, "label": "UNCHECKED"}
+            if support["label"] == "SUPPORTED" and set(support.get("missing_terms", [])) & acronyms:
+                # check_claim forgives ONE missing word as rephrasing; an acronym (AES, TLS) is no rephrasing,
+                # it is the very thing the claim asserts.
+                support = {**support, "label": "UNSUPPORTED", "reason": "MISSING_ACRONYM"}
             if support["label"] in _GOOD and claim_negated and not has_negation(window):
                 # The student denies something the source states without any negation.
                 support = {**support, "label": "UNSUPPORTED", "reason": "NEGATION_MISMATCH"}
             elif support["label"] == "PARTIAL" and (
                 not ((support["coverage"] or 0) >= PARTIAL_MIN_COVERAGE and len(support["missing_terms"]) <= PARTIAL_MAX_MISSING)
+                # a number of the claim that is nowhere in the window is a specific the source does not give
+                or (support.get("unmatched_numbers") and (support["coverage"] or 0) < PARTIAL_NUMBER_COVERAGE)
                 # an acronym of the claim (AES, TLS) that the source lacks is the very thing being asserted
                 or set(support["missing_terms"]) & acronyms
             ):
@@ -386,8 +401,8 @@ def classify(claim: str, evidence: list[dict], short_ok: bool = False) -> dict:
                 "missing_terms": support.get("missing_terms", []),
                 "unmatched_numbers": support.get("unmatched_numbers", []), "conflict": None}
     if label_rank == rank["UNCHECKED"]:
-        return {"label": "UNCHECKED", "sources": pick([s for s in scored if s[0] == rank["UNCHECKED"]]),
-                "missing_terms": [], "unmatched_numbers": [], "conflict": None}
+        # Nothing was compared, so nothing is shown as evidence.
+        return {"label": "UNCHECKED", "sources": [], "missing_terms": [], "unmatched_numbers": [], "conflict": None}
     return {"label": "NOT_IN_SOURCE", "sources": [], "missing_terms": [], "unmatched_numbers": [], "conflict": None}
 
 
@@ -612,7 +627,7 @@ def self_check(index: UnifiedIndex, body: SelfCheck, translate=model_translate, 
                 model_translations[text] = translated
 
     def check_statement(text: str, short_ok: bool = False) -> dict:
-        first = {"text": text, "translated": False, "matched_terms": [], "translation": None, **classify(text, evidence_for(text), short_ok)}
+        first = {"text": text, "translated": False, "matched_terms": [], "translation": None, **classify(text, evidence_for(text), short_ok, same_language=bool(source_language) and language_of(text) == source_language)}
         step = {"statement": text, "source_language": source_language, "as_written": _brief(first), "variants": []}
         trace.append(step)
         if not source_language or language_of(text) == source_language:
@@ -625,7 +640,7 @@ def self_check(index: UnifiedIndex, body: SelfCheck, translate=model_translate, 
         if text in model_translations:
             variants.append((model_translations[text], "model"))
         for variant, method in variants:
-            result = classify(variant, evidence_for(variant), short_ok)
+            result = classify(variant, evidence_for(variant), short_ok, same_language=True)
             conflict = result.get("conflict")
             if result["label"] == "CONFLICTS" and method == "dictionary" and (not conflict or conflict["kind"] != "NUMBER"):
                 # a word-by-word translation can lose a negation: only a number difference is trusted
