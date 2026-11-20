@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { FilmStrip, FileText } from "@phosphor-icons/react";
 import { api } from "../api/endpoints";
 import { videoErrorText } from "../lib/video";
@@ -72,6 +72,31 @@ export default function MaterialLinks({ mode, courseId, materialId, page, getTim
     if (returnFocus) button.current?.focus();
   }
 
+  // The panel is placed against the window, not against its (narrow, clipping) toolbar: it opens under the
+  // button, never wider than the screen, and never cut off at either edge.
+  const [place_, setPlace] = useState(null);
+  useLayoutEffect(() => {
+    if (!open) {
+      setPlace(null);
+      return undefined;
+    }
+    const measure = () => {
+      const rect = button.current?.getBoundingClientRect();
+      if (!rect) return;
+      const margin = 8;
+      const width = Math.min(352, window.innerWidth - 2 * margin);
+      const left = Math.max(margin, Math.min(rect.left, window.innerWidth - width - margin));
+      setPlace({ position: "fixed", top: Math.round(rect.bottom + 6), left: Math.round(left), width, right: "auto" });
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    window.addEventListener("scroll", measure, true);
+    return () => {
+      window.removeEventListener("resize", measure);
+      window.removeEventListener("scroll", measure, true);
+    };
+  }, [open]);
+
   useEffect(() => {
     if (!open) return undefined;
     const outside = (e) => {
@@ -104,7 +129,7 @@ export default function MaterialLinks({ mode, courseId, materialId, page, getTim
         {copy.button}
       </button>
       {open && (
-        <div id={regionId} role="region" aria-label={copy.region} className="material-links-panel">
+        <div id={regionId} role="region" aria-label={copy.region} className="material-links-panel" style={place_ || undefined}>
           <p className="material-links-head">Benzer anlatım · tahmini eşleşme</p>
           {state.status === "loading" && (
             <ul className="material-links-list" aria-busy="true" aria-label="Yükleniyor">

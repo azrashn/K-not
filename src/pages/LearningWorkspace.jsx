@@ -851,7 +851,7 @@ export default function LearningWorkspace({ courseId }) {
           </button>
           <button
             type="button"
-            className="board-control self-check-open"
+            className="workspace-toggle self-check-open"
             aria-expanded={selfCheckOpen}
             aria-controls="self-check-panel"
             ref={selfCheckButton}

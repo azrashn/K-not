@@ -17,8 +17,8 @@ from knot_rag.generation.providers.openai_compatible import OpenAICompatibleProv
 from knot_rag.generation.providers.policy import is_local_endpoint
 from knot_rag.structured import array, obj, string
 
-MAX_SOURCES = 8
-MAX_ITEMS = 6
+MAX_SOURCES = 12
+MAX_ITEMS = 10
 SOURCE_CHARS = 1800
 FOCI = ("summary", "concepts")
 
@@ -73,17 +73,34 @@ def verified_items(raw, focus, sources):
     return items, len(proposed)
 
 
-def build_summary(provider, focus, language, sources):
+def build_summary(provider, focus, language, sources, terms=None):
     numbered = "\n\n".join(f"[{i}] {s['text'][:SOURCE_CHARS]}" for i, s in enumerate(sources, 1))
     lang = "Turkish" if language == "tr" else "English"
+    hint = ""
+    clean_terms = [t for t in (terms or []) if isinstance(t, str) and 2 <= len(t) <= 60][:16]
+    if clean_terms:
+        hint = " Terms this material stresses (prefer concepts among them): " + ", ".join(clean_terms) + "."
     if focus == "concepts":
-        task = ('List the key concepts a student must know. Return JSON {"concepts":[{"term","explanation","quote","source_index"}]}.')
+        task = (
+            "List the 6 to 10 key concepts a student must know, each from a different source when possible. "
+            "term: the concept as the source names it (English term as written in the source). "
+            f"explanation: ONE or TWO sentences in {lang} that explain what the concept is and why it matters, "
+            "written in your own words from what the source says. "
+            "quote: ONE sentence or bullet copied exactly from the source that supports the explanation. "
+            'Return JSON {"concepts":[{"term","explanation","quote","source_index"}]}.'
+        )
     else:
-        task = ('Summarize the material in short points. Return JSON {"points":[{"text","quote","source_index"}]}.')
+        task = (
+            "Write 6 to 10 points that together summarize the material from beginning to end, in the order of the "
+            "sources, covering different sources. "
+            f"text: ONE or TWO sentences in {lang} that state the idea (not a copy of the quote, not a title). "
+            "quote: ONE sentence or bullet copied exactly from the source that supports the point. "
+            'Skip titles, page numbers and diagram labels. Return JSON {"points":[{"text","quote","source_index"}]}.'
+        )
     system = (
-        f"Write in {lang}. Use ONLY the numbered sources. {task} "
+        f"Write in {lang}. Use ONLY the numbered sources. {task}{hint} "
         "quote must be copied exactly, word for word, from the source named by source_index. "
-        "Do not add facts that no source states. Keep each item short."
+        "Do not add facts that no source states."
     )
     try:
         result = provider.complete(
@@ -91,8 +108,8 @@ def build_summary(provider, focus, language, sources):
                 system=system,
                 user=numbered,
                 temperature=0.0,
-                max_output_tokens=900,
-                timeout_seconds=90,
+                max_output_tokens=1800,
+                timeout_seconds=110,
                 response_schema=summary_schema(focus, len(sources)),
             )
         )
@@ -120,4 +137,4 @@ def summarize(body):
         raise HTTPException(422, "No source for summary")
     with httpx.Client() as client:
         provider = OpenAICompatibleProvider(url, model, client=client)
-        return build_summary(provider, body.focus, body.language, sources)
+        return build_summary(provider, body.focus, body.language, sources, body.terms)

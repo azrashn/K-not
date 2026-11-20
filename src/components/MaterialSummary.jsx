@@ -47,7 +47,17 @@ export default function MaterialSummary({ courseId, material, labelOf, onOpenSou
         Her madde yalnızca kaynakta birebir bulunan bir alıntıyla gösterilir. Bu, materyalin tüm
         konularını kapsadığı anlamına gelmez.
       </p>
-      {state.status === "loading" && <p role="status">Kaynaklar okunuyor ve doğrulanıyor…</p>}
+      {state.status === "loading" && <p role="status">Materyalin en çok şey anlatan sayfaları okunuyor ve doğrulanıyor…</p>}
+      {state.status === "ready" && state.result.method === "model" && (
+        <p className="product-note" role="note">
+          Açıklamaları yerel model yazdı ve doğrulanmadı. Altındaki alıntı ise kaynaktan birebir alınmıştır.
+        </p>
+      )}
+      {state.status === "ready" && state.result.method === "extractive" && (
+        <p className="product-note" role="note">
+          Model doğrulanabilir bir özet çıkaramadı; bu yüzden materyalin tamamından seçilen cümleler gösteriliyor. Yeniden yazılmadı.
+        </p>
+      )}
       {state.status === "error" && (
         <p role="alert" className="product-error">{state.message}</p>
       )}

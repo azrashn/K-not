@@ -73,3 +73,15 @@ test("workspace scenario: open a material, request a summary, and jump to its ci
   await user.click(within(panel).getByRole("button", { name: /Kaynağa git/ }));
   expect(api.knowledgeSource).toHaveBeenCalledWith("course", material.id, segment.id);
 });
+
+test("the summary says whether the model wrote it or the sentences were only selected", async () => {
+  const user = userEvent.setup();
+  render(<MaterialSummary courseId="course" material={material} onOpenSource={vi.fn()} />);
+  api.materialSummary.mockResolvedValueOnce({ ...summary, method: "model" });
+  await user.click(screen.getByRole("button", { name: "Özet hazırla" }));
+  expect(await screen.findByText(/Açıklamaları yerel model yazdı ve doğrulanmadı/)).toBeInTheDocument();
+  api.materialSummary.mockResolvedValueOnce({ ...summary, method: "extractive" });
+  await user.click(screen.getByRole("button", { name: "Özet hazırla" }));
+  expect(await screen.findByText(/materyalin tamamından seçilen cümleler gösteriliyor/)).toBeInTheDocument();
+  expect(screen.queryByText(/Açıklamaları yerel model yazdı/)).toBeNull();
+});

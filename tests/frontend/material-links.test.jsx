@@ -119,3 +119,28 @@ test('while the video screen text is still being read it says so instead of clai
   await user.click(screen.getByRole('button', { name: 'Yeniden dene' }))
   expect(await screen.findByText('Hafta 3 dersi')).toBeInTheDocument()
 })
+
+test('the panel is placed against the window: never wider than the screen, never cut off at the left or right edge', async () => {
+  const user = userEvent.setup()
+  api.materialLinks.mockResolvedValue({ links: [videoLink] })
+  const spy = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect')
+  window.innerWidth = 1000
+  videoPanel()
+  const button = screen.getByRole('button', { name: 'Videoda anlatılışı' })
+  // a button at the far left of a narrow pane, and one at the far right
+  for (const [left, expected] of [[2, 8], [980, 1000 - 352 - 8]]) {
+    spy.mockReturnValue({ left, right: left + 120, top: 100, bottom: 130, width: 120, height: 30, x: left, y: 100, toJSON() {} })
+    await user.click(button)
+    const region = await screen.findByRole('region', { name: 'Videoda benzer anlatımlar' })
+    expect(region.style.position).toBe('fixed')
+    expect(parseInt(region.style.left, 10)).toBe(expected)
+    expect(parseInt(region.style.width, 10)).toBeLessThanOrEqual(352)
+    await user.click(button) // close
+  }
+  window.innerWidth = 300
+  spy.mockReturnValue({ left: 10, right: 130, top: 100, bottom: 130, width: 120, height: 30, x: 10, y: 100, toJSON() {} })
+  await user.click(button)
+  const narrow = await screen.findByRole('region', { name: 'Videoda benzer anlatımlar' })
+  expect(parseInt(narrow.style.width, 10)).toBe(300 - 16)
+  spy.mockRestore()
+})

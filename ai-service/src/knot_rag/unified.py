@@ -120,7 +120,9 @@ class ExamFile(StrictModel):
 class Summary(StrictModel):
     focus: Literal["summary", "concepts"] = "summary"
     language: Literal["tr", "en"] = "tr"
-    evidence: list[dict] = Field(min_length=1, max_length=8)
+    evidence: list[dict] = Field(min_length=1, max_length=12)
+    # Key terms of the material (found by the backend); a hint for which concepts matter.
+    terms: list[str] = Field(default_factory=list, max_length=24)
 
 
 class QuizDraft(Explain):

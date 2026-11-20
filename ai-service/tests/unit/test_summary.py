@@ -96,6 +96,38 @@ def test_summarize_refuses_when_no_local_model_is_configured(monkeypatch):
 
 def test_request_model_bounds_the_evidence_count():
     with pytest.raises(Exception):
-        Summary(evidence=[{"text": "x"}] * 9, focus="summary")
+        Summary(evidence=[{"text": "x"}] * 13, focus="summary")
     with pytest.raises(Exception):
         Summary(evidence=[], focus="summary")
+
+
+def test_key_terms_reach_the_model_as_a_hint_and_items_are_written_in_the_requested_language():
+    import json
+
+    from knot_rag.summary import build_summary
+
+    seen = {}
+
+    class Provider:
+        def complete(self, request):
+            seen["system"], seen["user"] = request.system, request.user
+            from types import SimpleNamespace
+
+            return SimpleNamespace(text=json.dumps({"points": [{"text": "TCP bağlantıyı üç adımda kurar.", "quote": "three-way handshake", "source_index": 1}]}))
+
+    sources = [{"id": "a" * 64, "text": "TCP uses a three-way handshake to open a connection.", "location": {"kind": "page", "page": 4}}]
+    out = build_summary(Provider(), "summary", "tr", sources, ["congestion control", "TCP", 7, "x"])
+    assert "congestion control, TCP" in seen["system"] and "Turkish" in seen["system"]
+    assert out["items"][0]["quote"] == "three-way handshake" and out["items"][0]["text"].startswith("TCP bağlantıyı")
+    # a quote that is not in the source is dropped
+    class Liar(Provider):
+        def complete(self, request):
+            from types import SimpleNamespace
+
+            return SimpleNamespace(text=json.dumps({"points": [{"text": "Uydurma madde burada.", "quote": "not in the source at all", "source_index": 1}]}))
+
+    import pytest
+    from fastapi import HTTPException
+
+    with pytest.raises(HTTPException):
+        build_summary(Liar(), "summary", "tr", sources)

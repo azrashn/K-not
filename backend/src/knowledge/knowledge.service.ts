@@ -19,6 +19,7 @@ import { correctionsDigest } from "../videos/transcript-corrections";
 import { STUDY_FILE_MAX_BYTES, mbText } from "../common/limits";
 import { boardSteps } from "../board/steps";
 import { cleanSelfCheck, cleanWebCheck } from "./self-check";
+import { extractSummary, selectKeyPages } from "./summary-extract";
 
 const hash = (value: string) =>
   createHash("sha256").update(value).digest("hex");
@@ -721,11 +722,41 @@ export class KnowledgeService {
         "VALIDATION_ERROR",
         "Bu materyalde özetlenecek metin yok.",
       );
-    const picked = pickSpread(usable, 8);
+    // The model reads the pages that say the most (one per section of the material, chosen by the key terms
+    // the material itself stresses), not an even sample that may be title slides.
+    const { picked, terms: keyTerms } = selectKeyPages(usable, 10);
+    let items: any[] = [];
+    let failure: ApiError | null = null;
+    try {
+      items = await this.modelSummary(focus, picked, keyTerms);
+    } catch (e) {
+      if (!(e instanceof ApiError)) throw e;
+      failure = e;
+    }
+    if (!items.length) {
+      // The model could not give a verifiable summary: the key sentences of the whole material, selected
+      // (not rewritten), are better than nothing and say so ("method").
+      const extracted = extractSummary(focus, usable);
+      if (extracted.length)
+        return { material: preview.material, focus, status: "SOURCE_VERIFIED", method: "extractive", items: extracted };
+      throw failure ?? new ApiError("GENERATION_FAILED", "Özet kaynak doğrulamasından geçmedi; yayınlanmadı.");
+    }
+    return {
+      material: preview.material,
+      focus,
+      status: "SOURCE_VERIFIED",
+      method: "model",
+      items,
+    };
+  }
+  /** The model writes the points from the pages that say the most; a point stays only when its quote is a
+   *  literal piece of the page it cites. */
+  private async modelSummary(focus: SummaryFocus, picked: any[], keyTerms: string[]) {
     const r = await this.ai.call("POST", "/api/v1/knowledge/summary", {
       body: {
         focus,
         language: "tr",
+        terms: keyTerms,
         evidence: picked.map((s: any) => ({
           id: s.id,
           text: s.text,
@@ -760,12 +791,7 @@ export class KnowledgeService {
         "GENERATION_FAILED",
         "Özet kaynak doğrulamasından geçmedi; yayınlanmadı.",
       );
-    return {
-      material: preview.material,
-      focus,
-      status: "SOURCE_VERIFIED",
-      items,
-    };
+    return items;
   }
   async visual(user: AuthUser, course: string, id: string, page: number) {
     const m = (await this.materials(user, course)).find(

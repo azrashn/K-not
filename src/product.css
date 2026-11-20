@@ -2964,6 +2964,9 @@ nav[aria-label='Ana gezinme'] { z-index: 2; }
   background: var(--color-sheet);
   color: var(--color-ink-2);
   animation: material-links-in 160ms ease-out;
+  z-index: 40;
+  max-height: calc(100vh - 6rem);
+  overflow-y: auto;
 }
 @keyframes material-links-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
 .material-links-head {
@@ -3045,6 +3048,7 @@ nav[aria-label='Ana gezinme'] { z-index: 2; }
 .self-check-panel[hidden] { display: none; }
 .self-check-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .self-check-head h2 { margin: 0; font-size: 16px; font-weight: 600; letter-spacing: -0.03em; }
+.self-check-open { display: inline-flex; align-items: center; gap: 6px; }
 .self-check-open svg { flex: none; }
 .self-check-label { display: block; margin: 12px 0 6px; font-size: 13px; font-weight: 600; color: var(--color-ink-2); }
 .self-check-area {

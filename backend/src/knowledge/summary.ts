@@ -7,7 +7,7 @@ export type SummaryItem =
   | { text: string; quote: string; source: SummarySource }
   | { term: string; explanation: string; quote: string; source: SummarySource };
 
-const MAX_ITEMS = 6;
+const MAX_ITEMS = 10;
 
 /** Evenly spread up to `n` items so a long material is summarized from its whole length. */
 export function pickSpread<T>(items: T[], n: number): T[] {
