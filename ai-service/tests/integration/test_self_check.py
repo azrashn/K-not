@@ -103,7 +103,7 @@ def test_partial_lists_missing_terms(env):
     c = only(env.check("TCP bağlantı kurulumu üç yollu el sıkışma ile yapılır ve şifreleme anahtarı değişimi sağlar."))
     assert c["label"] in ("PARTIAL", "NOT_IN_SOURCE")
     if c["label"] == "PARTIAL":
-        assert c["missing_terms"]
+        assert c["missing_terms"] or c["parts"]
 
 
 def test_non_claims_are_skipped_with_reason(env):
@@ -354,3 +354,18 @@ def test_same_language_claims_are_never_translated():
              text="UDP is a connectionless transport protocol that gives no delivery guarantee."),
              translate=lambda texts, target: called.append(texts) or [None] * len(texts)))
     assert c["label"] == "IN_SOURCE" and called == [] and c["translation"] is None
+
+
+def test_short_first_half_is_split_when_the_sources_confirm_it():
+    e = Env()
+    e.add("pdf_s", [("UDP is a connectionless transport protocol that gives no delivery guarantee at all.", 4),
+                    ("TCP is a reliable connection-oriented protocol with a three-way handshake.", 5)])
+    c = only(e.check("UDP is connectionless and TCP uses AES encryption for every segment."))
+    assert c["label"] == "PARTIAL"
+    assert [p["label"] for p in c["parts"]] == ["IN_SOURCE", "NOT_IN_SOURCE"]
+    # nothing confirmed by the sources: still one statement, no invented parts
+    c = only(e.check("Quantum entanglement and photon routing use AES encryption."))
+    assert c["label"] == "NOT_IN_SOURCE" and c["parts"] == []
+    # a plain list is not a compound claim
+    c = only(e.check("TCP and UDP are transport protocols."))
+    assert c["parts"] == []

@@ -272,7 +272,7 @@ def _conflict(claim: str, window: str, size: int, all_numbers: set[str],
     return None
 
 
-def classify(claim: str, evidence: list[dict]) -> dict:
+def classify(claim: str, evidence: list[dict], short_ok: bool = False) -> dict:
     """{label, sources, missing_terms, unmatched_numbers, conflict} for one claim and its retrieved evidence."""
     if not evidence:
         return {"label": "NOT_IN_SOURCE", "sources": [], "missing_terms": [], "unmatched_numbers": [], "conflict": None}
@@ -295,7 +295,16 @@ def classify(claim: str, evidence: list[dict]) -> dict:
             raw_window, window = window, repair_ocr(canon(window), vocabulary)
             support = check_claim(claim, [window])
             if support.get("reason") == "TOO_SHORT_TO_CHECK":
-                continue
+                if not (short_ok and size in (1, 2)):
+                    continue
+                # A short half of a compound claim ("UDP is connectionless"): supported only when EVERY
+                # one of its words (and numbers) is in one or two consecutive source sentences.
+                words = _claim_words(claim)
+                stems_in = stem_set(window)
+                if len(words) < 2 or not all(stem_in(stem(t), stems_in) for t in words) or (numbers(claim) - numbers(window)):
+                    continue
+                support = {"label": "SUPPORTED", "reason": "WORDS_FOUND_IN_SOURCE", "coverage": 1.0,
+                           "missing_terms": [], "unmatched_numbers": [], "negation_mismatch": False}
             missing_quantity = sorted(_complexities(claim) - _complexities(window))
             if support["label"] in _GOOD and missing_quantity:
                 support = {**support, "label": "PARTIAL", "reason": "NUMBER_NOT_IN_SOURCE",
@@ -370,10 +379,16 @@ def _content_count(text: str) -> int:
     return len(_claim_words(text))
 
 
-def split_compound(claim: str) -> list[str]:
-    """Halves of a compound claim, or [claim] when it is a single statement."""
+LOOSE_MIN_WORDS = 2
+
+
+def split_compound(claim: str, loose: bool = False) -> list[str]:
+    """Halves of a compound claim, or [claim] when it is a single statement. `loose` also splits a short
+    half ("UDP is connectionless and TCP uses AES"); it is only trusted when the split is confirmed by
+    the sources (see self_check)."""
     parts = [claim]
-    for pattern, minimum in ((_STRONG_JOIN, PART_MIN_WORDS), (_PLAIN_JOIN, PART_MIN_WORDS + 1)):
+    low = LOOSE_MIN_WORDS if loose else PART_MIN_WORDS
+    for pattern, minimum in ((_STRONG_JOIN, low), (_PLAIN_JOIN, low if loose else PART_MIN_WORDS + 1)):
         nxt: list[str] = []
         for part in parts:
             pieces = [x.strip(" ,") for x in pattern.split(part) if x and x.strip(" ,")]
@@ -504,7 +519,8 @@ def self_check(index: UnifiedIndex, body: SelfCheck, translate=model_translate) 
             evidence_cache[text] = found.get("evidence", [])
         return evidence_cache[text]
 
-    pending = [(c, split_compound(c)) for c in claims if _cached(_cache_key(body, c)) is None]
+    pending = [(c, split_compound(c) + [x for x in split_compound(c, loose=True) if len(split_compound(c)) == 1])
+               for c in claims if _cached(_cache_key(body, c)) is None]
     source_language = materials_language(index, body) if pending else None
     # Statements written in another language than the materials are compared through a translation.
     cross = sorted({p for _, parts in pending for p in parts if source_language and language_of(p) != source_language})
@@ -514,8 +530,8 @@ def self_check(index: UnifiedIndex, body: SelfCheck, translate=model_translate) 
             if translated:
                 model_translations[text] = translated
 
-    def check_statement(text: str) -> dict:
-        first = {"text": text, "translated": False, "matched_terms": [], "translation": None, **classify(text, evidence_for(text))}
+    def check_statement(text: str, short_ok: bool = False) -> dict:
+        first = {"text": text, "translated": False, "matched_terms": [], "translation": None, **classify(text, evidence_for(text), short_ok)}
         if not source_language or language_of(text) == source_language:
             return first
         best, best_key = first, (_RANK[first["label"]], 0)  # ties: model translation > dictionary > as written
@@ -526,7 +542,7 @@ def self_check(index: UnifiedIndex, body: SelfCheck, translate=model_translate) 
         if text in model_translations:
             variants.append((model_translations[text], "model"))
         for variant, method in variants:
-            result = classify(variant, evidence_for(variant))
+            result = classify(variant, evidence_for(variant), short_ok)
             conflict = result.get("conflict")
             if result["label"] == "CONFLICTS" and method == "dictionary" and (not conflict or conflict["kind"] != "NUMBER"):
                 # a word-by-word translation can lose a negation: only a number difference is trusted
@@ -549,6 +565,17 @@ def self_check(index: UnifiedIndex, body: SelfCheck, translate=model_translate) 
         base = {"text": claim, "translated": False, "matched_terms": [], "translation": None, "parts": []}
         if len(parts) == 1:
             result = {**base, **check_statement(claim)}
+            loose = split_compound(claim, loose=True)
+            if len(loose) > 1 and result["label"] in ("NOT_IN_SOURCE", "PARTIAL", "UNCHECKED"):
+                # A short half hid a supported half. The split is kept only when the sources confirm it:
+                # at least one part must be found in them, otherwise the claim stays one statement.
+                subs = [check_statement(p, short_ok=True) for p in loose]
+                if any(x["label"] == "IN_SOURCE" for x in subs):
+                    result = {**base, **_combine(claim, subs)}
+                    used = [x["translation"] for x in subs if x.get("translation")]
+                    result["translation"] = ({"text": "; ".join(t["text"] for t in used if t["text"]) or None,
+                                              "method": "model" if any(t["method"] == "model" for t in used) else "dictionary",
+                                              "to": used[0]["to"]} if used else None)
         else:
             subs = [check_statement(p) for p in parts]
             result = {**base, **_combine(claim, subs)}
