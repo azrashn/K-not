@@ -67,7 +67,29 @@ export default function SelfCheck({ courseId, onOpenSource }) {
     }
   }
 
-  const result = state.status === "ready" ? state.result : null;
+  // "Kalan N iddiayı kontrol et": aynı metnin sonraki iddiaları; önceki sonuçlar korunur.
+  async function more() {
+    if (state.status !== "ready" || loading) return;
+    abort.current?.abort();
+    const controller = new AbortController();
+    abort.current = controller;
+    const { result: prev, sent } = state;
+    setState({ status: "loading", keep: { result: prev, sent } });
+    try {
+      const next = await api.selfCheck(courseId, { text: sent, offset: prev.next_offset }, controller.signal);
+      if (controller.signal.aborted) return;
+      const sum = { ...prev.summary };
+      for (const k of Object.keys(next.summary)) sum[k] = (sum[k] || 0) + next.summary[k];
+      setState({ status: "ready", sent, result: { ...next, claims: [...prev.claims, ...next.claims], skipped: prev.skipped, summary: sum } });
+    } catch (e) {
+      if (e?.name !== "AbortError" && !controller.signal.aborted) {
+        setState({ status: "ready", sent, result: prev, moreError: videoErrorText(e) });
+      }
+    }
+  }
+
+  const shown = state.status === "loading" ? state.keep : state.status === "ready" ? state : null;
+  const result = shown ? shown.result : null;
   const summary = result?.summary;
   const parts = summary ? ORDER.filter((k) => summary[k] > 0) : [];
   return (
@@ -129,7 +151,7 @@ export default function SelfCheck({ courseId, onOpenSource }) {
               ))}
             </p>
           )}
-          {state.sent !== text && (
+          {shown.sent !== text && (
             <p className="product-note">Metni değiştirdin; bu sonuç önceki metne aittir. Yeniden kontrol et.</p>
           )}
           {summary.total > 0 && (
@@ -137,7 +159,15 @@ export default function SelfCheck({ courseId, onOpenSource }) {
               Bu bir not değildir. Sözcük, sayı ve olumsuzluk karşılaştırmasıdır; iddianın doğru olduğunu kanıtlamaz.
             </p>
           )}
-          {result.truncated && <p className="product-note">Yalnızca ilk 25 iddia kontrol edildi.</p>}
+          {result.remaining > 0 && (
+            <div className="self-check-more">
+              <p className="product-note">Metinde {result.remaining} iddia daha var; ilk {result.claims.length} iddia kontrol edildi.</p>
+              <button type="button" className="board-control" onClick={more} disabled={loading}>
+                {loading ? "Kontrol ediliyor…" : `Kalan ${result.remaining} iddiayı kontrol et`}
+              </button>
+              {state.moreError && <p role="alert" className="product-error">{state.moreError}</p>}
+            </div>
+          )}
           {summary.total > 0 && (
             <ol className="self-check-list">
               {result.claims.map((c, i) => {

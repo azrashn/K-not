@@ -88,6 +88,8 @@ export function cleanSelfCheck(body: any, allowed: Allowed) {
       total: claims.length,
     },
     truncated: body?.truncated === true,
+    remaining: Number.isSafeInteger(body?.remaining) && body.remaining > 0 ? Math.min(body.remaining, 500) : 0,
+    next_offset: Number.isSafeInteger(body?.next_offset) && body.next_offset >= 0 ? Math.min(body.next_offset, 500) : 0,
     method: "lexical",
     verified: false,
   };

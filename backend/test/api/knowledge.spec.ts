@@ -1298,6 +1298,19 @@ describe("self-check: the student's own text against the course materials", () =
     await h.http().post(url()).set(await h.as("ayse")).send({ text: "TCP kurulumu yapılır." }).expect(422);
   });
 
+  test("offset is forwarded for 'check the rest'; self-check has its own rate budget", async () => {
+    const id = await readyPdf();
+    h.ai.on("POST", "/api/v1/knowledge/self-check", () => ({ status: 200, body: { ...answer(id), remaining: 3, next_offset: 25 } }));
+    const res = await h.http().post(url()).set(await h.as("ayse")).send({ text: "TCP kurulumu yapılır.", offset: 25 }).expect(200);
+    expect(h.ai.calls("POST", "/api/v1/knowledge/self-check")[0].body.offset).toBe(25);
+    expect(res.body).toMatchObject({ remaining: 3, next_offset: 25 });
+    for (const bad of [-1, 501, 1.5, "x"])
+      await h.http().post(url()).set(await h.as("ayse")).send({ text: "x", offset: bad }).expect(422);
+    // self-check has its own budget of 10 calls a minute, separate from the chat limiter
+    for (let i = 0; i < 9; i++) await h.http().post(url()).set(await h.as("ayse")).send({ text: "TCP kurulumu yapılır." }).expect(200);
+    await h.http().post(url()).set(await h.as("ayse")).send({ text: "TCP kurulumu yapılır." }).expect(429);
+  });
+
   test("the service being down is a Turkish error in the standard shape", async () => {
     await readyPdf();
     h.ai.on("POST", "/api/v1/knowledge/self-check", () => ({ status: 500, body: {} }));

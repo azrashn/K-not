@@ -274,3 +274,23 @@ def test_compound_claim_is_judged_per_half():
     # one true half and one invented half is partly in the sources
     mixed = only(e.check("TCP is a connection-oriented protocol with a three-way handshake, but UDP encrypts payload using AES keys."))
     assert mixed["label"] == "PARTIAL" and [p["label"] for p in mixed["parts"]] == ["IN_SOURCE", "NOT_IN_SOURCE"]
+
+
+def test_remaining_claims_and_cache():
+    e = Env()
+    e.add("pdf_r", [("UDP is a connectionless protocol that gives no delivery guarantee at all.", 4)])
+    text = " ".join(f"UDP is a connectionless protocol number {i}." for i in range(30))
+    first = e.check(text)
+    assert len(first["claims"]) == MAX_CLAIMS and first["remaining"] == 5 and first["next_offset"] == MAX_CLAIMS
+    rest = self_check(e.index, SelfCheck(course_id=COURSE, materials=e.materials, text=text, offset=first["next_offset"]))
+    assert len(rest["claims"]) == 5 and rest["remaining"] == 0 and rest["skipped"] == []
+    # unchanged claims are answered from the cache: no new search
+    calls = []
+    real = e.index.search
+    e.index.search = lambda body: calls.append(1) or real(body)
+    e.check(text)
+    assert calls == []
+    e.check("UDP is a connectionless brand new claim xyzzy. " + text)
+    assert 0 < len(calls) <= 2
+    # another version of the material is another cache entry
+    e.materials[0] = Material(id=e.materials[0].id, kind="PDF", title="t", version="b" * 64)

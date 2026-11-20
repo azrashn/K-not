@@ -123,6 +123,7 @@ class SelfCheckRequest {
   @ArrayUnique()
   @Matches(/^(pdf|video|file)_[A-Za-z0-9_-]{1,80}$/, { each: true })
   material_ids?: string[];
+  @IsOptional() @IsInt() @Min(0) @Max(500) offset?: number;
 }
 class PracticeAnswer {
   @IsString() @MaxLength(300) answer!: string;

@@ -13,6 +13,8 @@ whenever that is not clear the claim is reported as NOT_IN_SOURCE, never as a ma
 from __future__ import annotations
 
 import re
+import threading
+from collections import OrderedDict
 
 from pydantic import Field
 
@@ -56,6 +58,8 @@ _OPINION = re.compile(r"^(?:bence|bana göre|bence de|i think|i feel|in my opini
 
 class SelfCheck(Manifest):
     text: str = Field(min_length=1, max_length=MAX_TEXT_CHARS)
+    # Claims already checked in an earlier request for the same text ("check the rest").
+    offset: int = Field(default=0, ge=0, le=500)
 
 
 def split_claims(text: str) -> tuple[list[str], list[dict]]:
@@ -418,10 +422,40 @@ def _part_texts(subs: list[dict]) -> list[str]:
     return [x["text"] for x in subs]
 
 
+# One checked claim stays valid while the materials (ids + versions) are the same: editing one sentence
+# and checking again only works on the sentence that changed.
+CACHE_SIZE = 600
+_cache: "OrderedDict[tuple, dict]" = OrderedDict()
+_cache_lock = threading.Lock()
+
+
+def _cache_key(body: SelfCheck, claim: str) -> tuple:
+    return (body.course_id, tuple(sorted((m.id, m.version) for m in body.materials)), claim)
+
+
+def _cached(key: tuple):
+    with _cache_lock:
+        if key in _cache:
+            _cache.move_to_end(key)
+            return _cache[key]
+    return None
+
+
+def _remember(key: tuple, value: dict) -> None:
+    with _cache_lock:
+        _cache[key] = value
+        _cache.move_to_end(key)
+        while len(_cache) > CACHE_SIZE:
+            _cache.popitem(last=False)
+
+
 def self_check(index: UnifiedIndex, body: SelfCheck) -> dict:
     claims, skipped = split_claims(body.text)
-    truncated = len(claims) > MAX_CLAIMS
-    claims = claims[:MAX_CLAIMS]
+    window = claims[body.offset:body.offset + MAX_CLAIMS]
+    remaining = max(0, len(claims) - body.offset - len(window))
+    claims = window
+    if body.offset:
+        skipped = []  # already reported with the first part
     evidence_cache: dict[str, list[dict]] = {}
 
     def evidence_for(text: str) -> list[dict]:
@@ -440,20 +474,29 @@ def self_check(index: UnifiedIndex, body: SelfCheck) -> dict:
 
     results = []
     for claim in claims:
+        key = _cache_key(body, claim)
+        hit = _cached(key)
+        if hit is not None:
+            results.append(hit)
+            continue
         parts = split_compound(claim)
         base = {"text": claim, "translated": False, "matched_terms": [], "parts": []}
         if len(parts) == 1:
-            results.append({**base, **classify(claim, evidence_for(claim))})
-            continue
-        subs = [{"text": p, **classify(p, evidence_for(p))} for p in parts]
-        results.append({**base, **_combine(claim, subs)})
+            result = {**base, **classify(claim, evidence_for(claim))}
+        else:
+            subs = [{"text": p, **classify(p, evidence_for(p))} for p in parts]
+            result = {**base, **_combine(claim, subs)}
+        _remember(key, result)
+        results.append(result)
     counts = {label: sum(1 for r in results if r["label"] == label)
               for label in ("IN_SOURCE", "NOT_IN_SOURCE", "CONFLICTS", "PARTIAL", "UNCHECKED")}
     return {
         "claims": results,
         "skipped": skipped,
         "summary": {**counts, "total": len(results)},
-        "truncated": truncated,
+        "truncated": remaining > 0,
+        "remaining": remaining,
+        "next_offset": body.offset + len(claims),
         "method": METHOD,
         "verified": False,
     }

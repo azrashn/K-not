@@ -166,3 +166,21 @@ test("a compound claim lists each half with its own badge, and a conflicting hal
   expect(within(parts).getByText("Kaynakta var")).toBeInTheDocument();
   expect(within(parts).getByText(/Sayı farklı: sen 9000 yazdın, kaynakta 1500 geçiyor/)).toBeInTheDocument();
 });
+
+test("the rest of a long text is checked on request and the earlier results stay", async () => {
+  const user = userEvent.setup();
+  const claim = (t, label) => ({ text: t, label, translated: false, matched_terms: [], sources: label === "IN_SOURCE" ? [source()] : [], missing_terms: [], unmatched_numbers: [], conflict: null, parts: [] });
+  const sum = (o) => ({ IN_SOURCE: 0, NOT_IN_SOURCE: 0, CONFLICTS: 0, PARTIAL: 0, UNCHECKED: 0, ...o });
+  api.selfCheck
+    .mockResolvedValueOnce({ claims: [claim("Birinci iddia metni burada", "IN_SOURCE")], skipped: [], summary: sum({ IN_SOURCE: 1, total: 1 }), truncated: true, remaining: 1, next_offset: 1 })
+    .mockResolvedValueOnce({ claims: [claim("İkinci iddia metni burada", "NOT_IN_SOURCE")], skipped: [], summary: sum({ NOT_IN_SOURCE: 1, total: 1 }), truncated: false, remaining: 0, next_offset: 2 });
+  render(<SelfCheck courseId="course" onOpenSource={vi.fn()} />);
+  await user.type(screen.getByLabelText("Konuyu kendi cümlelerinle yaz"), "uzun metin");
+  await user.click(screen.getByRole("button", { name: "Kontrol et" }));
+  await user.click(await screen.findByRole("button", { name: "Kalan 1 iddiayı kontrol et" }));
+  expect(api.selfCheck).toHaveBeenLastCalledWith("course", { text: "uzun metin", offset: 1 }, expect.any(AbortSignal));
+  expect(await screen.findByText("İkinci iddia metni burada")).toBeInTheDocument();
+  expect(screen.getByText("Birinci iddia metni burada")).toBeInTheDocument();
+  expect(screen.getByText(/2 iddia:/).closest("p")).toHaveTextContent("2 iddia: 1 kaynakta var, 1 kaynakta yok");
+  expect(screen.queryByRole("button", { name: /Kalan/ })).toBeNull();
+});

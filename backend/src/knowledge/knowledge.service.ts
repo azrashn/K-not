@@ -57,6 +57,8 @@ const STEP_ANSWERS = new Set([
 export class KnowledgeService {
   private readonly receipts = new Map<string, Receipt>();
   private readonly limiter = new RateLimiter(15);
+  // Self-check has its own budget: it must not be starved by chat questions (and the other way round).
+  private readonly selfLimiter = new RateLimiter(10);
   private readonly synchronizing = new Map<string, Promise<void>>();
   private readonly linkCache = new TtlLru<{ material_id: string; links: any[]; preparing: boolean }>(200, 10 * 60_000);
   // Scene frames of a video are read (OCR) once, in the background; a failure is remembered 10 minutes.
@@ -623,9 +625,9 @@ export class KnowledgeService {
   async selfCheck(
     user: AuthUser,
     course: string,
-    body: { text: string; material_ids?: string[] },
+    body: { text: string; material_ids?: string[]; offset?: number },
   ) {
-    if (!this.limiter.take(user.id))
+    if (!this.selfLimiter.take(user.id))
       throw new ApiError("RATE_LIMITED", "Biraz bekleyip yeniden deneyin.");
     const materials = await this.materials(user, course);
     const scoped = resolveScope(
@@ -643,7 +645,7 @@ export class KnowledgeService {
     await this.sync(user, course, scoped);
     // The text is only forwarded; it is never logged or stored.
     const r = await this.ai.call("POST", "/api/v1/knowledge/self-check", {
-      body: { ...this.manifest(course, scoped), text: body.text },
+      body: { ...this.manifest(course, scoped), text: body.text, offset: body.offset ?? 0 },
       timeoutMs: 90000,
     });
     if (r.kind === "timeout")
