@@ -60,7 +60,7 @@ describe('exam topics (Azra: one topic "object" for a whole exam)', () => {
   test('labels: a heading, else the most frequent subject words, never a sentence', () => {
     expect(heading('Kapsülleme\nVeri gizlenir.')).toBe('Kapsülleme');
     expect(heading('Java bir dildir.')).toBeNull();
-    expect(partLabel(pool.parts[2].text)).toBe('Final, sınıftan'); // final ×3, sınıf- ×2 (sınıftan, sınıflarda)
+    expect(partLabel(pool.parts[2].text)).toBe('Final'); // final ×3; no phrase holds it twice
     expect(partLabel(pool.parts[3].text)).toMatch(/^Nesne|^Bellek/);
   });
 });

@@ -283,9 +283,10 @@ export class ExamsService implements OnModuleInit {
       title: row.title,
       status: row.status,
       requested: row.requested,
-      produced: (row.items as Item[]).length,
-      topics: row.topics,
-      failures: row.failures,
+      // An older row may hold JSON null or another shape here; it is listed, not a 500.
+      produced: Array.isArray(row.items) ? row.items.length : 0,
+      topics: Array.isArray(row.topics) ? row.topics : [],
+      failures: Array.isArray(row.failures) ? row.failures : [],
       note: row.note,
       style_id: row.styleId,
       // Exams made before several styles could be combined only have styleId.

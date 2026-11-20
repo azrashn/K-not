@@ -97,6 +97,34 @@ const FRAMEWORK_CODES: Record<number, PublicErrorCode> = {
   429: 'RATE_LIMITED',
 };
 
+/**
+ * What a Prisma error says about itself, for the log only: its code (P2022, P2024…), the model and the
+ * column, field or index names it names, and the database driver's error kind and code. Never the message,
+ * the query or a value: those can hold personal data or request parameters.
+ */
+export function prismaErrorFields(e: unknown): Record<string, unknown> {
+  if (!(e instanceof Error) || !e.constructor.name.startsWith('PrismaClient')) return {};
+  const x = e as Error & { code?: unknown; errorCode?: unknown; meta?: Record<string, unknown> };
+  const meta = x.meta && typeof x.meta === 'object' ? x.meta : {};
+  const cause = ((meta.driverAdapterError as { cause?: Record<string, unknown> } | undefined)?.cause ?? {}) as Record<string, unknown>;
+  const name = (v: unknown) =>
+    typeof v === 'string' ? v.slice(0, 120)
+      : Array.isArray(v) ? v.filter((s): s is string => typeof s === 'string').slice(0, 10).map((s) => s.slice(0, 120))
+        : undefined;
+  const code = (v: unknown) => (typeof v === 'string' || typeof v === 'number' ? String(v).slice(0, 40) : undefined);
+  const out: Record<string, unknown> = {
+    prisma_code: code(x.code ?? x.errorCode),
+    prisma_model: name(meta.modelName),
+    prisma_target: name(meta.target),
+    prisma_column: name(meta.column),
+    prisma_field: name(meta.field_name),
+    db_error_kind: name(cause.kind),
+    db_error_code: code(cause.originalCode),
+  };
+  for (const k of Object.keys(out)) if (out[k] === undefined) delete out[k];
+  return out;
+}
+
 @Catch()
 export class ApiExceptionFilter implements ExceptionFilter {
   private readonly log = new Logger('http');
@@ -128,6 +156,7 @@ export class ApiExceptionFilter implements ExceptionFilter {
     this.log.error({
       event: 'http.unhandled_error', request_id: requestId,
       error_type: exception instanceof Error ? exception.constructor.name : typeof exception,
+      ...prismaErrorFields(exception),
     });
     res.status(HttpStatus.INTERNAL_SERVER_ERROR).json(envelope('INTERNAL_ERROR', 'Internal error.', requestId));
   }

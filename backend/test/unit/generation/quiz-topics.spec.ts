@@ -1,7 +1,8 @@
 import { LearningService } from '../../../src/learning/learning.service';
 import { buildPool } from '../../../src/learning/generation/source-pool';
-import { cleanHeading, examTopics, heading, suggestTopics } from '../../../src/learning/generation/topic-planner';
+import { cleanHeading, examTopics, heading, subjectLabel, suggestTopics, VERB_FORM } from '../../../src/learning/generation/topic-planner';
 import type { PoolMaterial, PoolSegment } from '../../../src/learning/generation/source-pool';
+import { fold } from '../../../src/learning/generation/roots';
 import { knowledge as course, NOTES, SEGMENTS, SLIDES, VIDEO } from './java-course';
 
 const u = { id: 'u', role: 'USER' } as any;
@@ -31,9 +32,14 @@ describe('topic suggestions for the quiz form (Azra: the raw video title filled 
     expect(await service([VIDEO], 'never').learning.quizTopics(u, 'c')).toEqual({ topics: [] });
   });
 
-  test('a course with only the video suggests from its transcript (the questions would too)', async () => {
-    const { topics } = await service([VIDEO]).learning.quizTopics(u, 'c');
-    expect(topics.length).toBeGreaterThan(0);
+  test('a course with only the video suggests from its transcript, but only a noun it repeats', async () => {
+    // Each transcript part names "object" once: nothing to suggest (the form then offers the video's subject).
+    expect((await service([VIDEO]).learning.quizTopics(u, 'c')).topics).toEqual([]);
+    const segments = new Map([[VIDEO.id, [{ id: 'v9', text: 'Kalıtım ile alt sınıf üst sınıfın alanlarını devralır. Kalıtım kodu tekrar kullanmayı sağlar.', location: { kind: 'video', start_ms: 0 } }]]]);
+    const k = course([VIDEO], segments);
+    const learning = new LearningService({} as any, { requireMember: jest.fn() } as any, k as any, {} as any, undefined,
+      { quizEngine: 'v2', quizTranscriptPolicy: 'documents_first' } as any);
+    expect((await learning.quizTopics(u, 'c')).topics).toEqual(['Kalıtım']);
   });
 
   test('at most the asked number, and only as many labels as needed are computed', () => {
@@ -102,5 +108,37 @@ describe('topic suggestions come from the section headings, cleaned (Mac trial)'
     expect(cleanHeading('Java Programlama', { title: 'Java Programlama – Ders Notları' })).toBeNull();
     expect(cleanHeading('Java Sanal Makinesi', { text: 'Kod derlendikten sonra Java bytecode çalışır.' })).toBe('Java sanal makinesi');
     expect(heading('Kapsülleme\nVeri gizlenir.')).toBe('Kapsülleme');
+  });
+});
+
+/** Windows trial: a document without numbered headings gave "çevrilir", "collector", "çalışabilmesinin". */
+describe('suggestions without headings: a noun or noun phrase the part repeats, else nothing', () => {
+  test.each([
+    'çevrilir', 'alınır', 'çalışır', 'çalışabilmesinin', 'derlenmesi', 'programlamasının', 'kullanarak', 'kullanılan',
+    'tanımlanan', 'geliyor', 'derlemek', 'yapamaz', 'nesnedir', 'basittir',
+  ])('%s is a verb form', (w) => expect(VERB_FORM.test(fold(w))).toBe(true));
+
+  test.each(['durum', 'değer', 'satır', 'kültür', 'yumuşak', 'grup', 'sınıf', 'kalıtım', 'derleyici', 'bytecode', 'collector'])(
+    '%s is not', (w) => expect(VERB_FORM.test(fold(w))).toBe(false),
+  );
+
+  test('a phrase the noun stands in is named whole ("Garbage collector", not "collector")', () => {
+    const text = 'Garbage collector kullanılmayan nesneleri siler. Java sanal makinesinde garbage collector arka planda çalışır.';
+    expect(subjectLabel(text)).toBe('Garbage collector');
+  });
+
+  test('only verbs, function words and words met once: no label, and no suggestion', () => {
+    const text = 'Kaynak kod derleyici tarafından çevrilir ve çalışabilmesinin koşulları sağlanır. There is also more.';
+    expect(subjectLabel(text)).toBeNull();
+    const pool = buildPool([NOTES], new Map([[NOTES.id, [{ id: 'x1', text }]]]));
+    expect(suggestTopics(pool)).toEqual([]);
+  });
+
+  test('no suggestion is ever a verb form or a function word', () => {
+    const pool = buildPool([NOTES, SLIDES], SEGMENTS);
+    for (const t of suggestTopics(pool)) {
+      for (const w of t.split(/\s+/)) expect(VERB_FORM.test(fold(w))).toBe(false);
+      expect(t).not.toMatch(/^(The|There|Also|Ve|İle|Için|Gibi)\b/u);
+    }
   });
 });

@@ -8,7 +8,7 @@ import { KnowledgeService } from "../knowledge/knowledge.service";
 import { AiServiceClient } from "../ai/ai-client";
 import { APP_CONFIG, AppConfig, QuizEngine } from "../config/config";
 import { validSourceCompletion } from "./quiz-validation";
-import { quizHistoryItem } from "./quiz-history";
+import { quizHistoryItem, setsByQuiz } from "./quiz-history";
 import { buildExamProfile, examStyleHint, ExamProfile } from "./exam-style";
 import { matchAnswer, rubricCoverage, rubricTerms } from "./answer-match";
 import { findQuizSources } from "./quiz-sources";
@@ -145,7 +145,8 @@ export class LearningService {
         outcome: a.outcome,
         score: a.score,
         created_at: a.createdAt,
-        source: (a.quiz.data as any).source,
+        // An older question may hold JSON null as its data: listed without a source, not a 500.
+        source: (a.quiz.data as any)?.source ?? null,
       })),
       quiz_count: quizzes,
       graded_count: graded.length,
@@ -163,7 +164,7 @@ export class LearningService {
         ? {
             course_id: review.quiz.courseId,
             topic: review.quiz.topic,
-            source: (review.quiz.data as any).source,
+            source: (review.quiz.data as any)?.source ?? null,
           }
         : null,
       mastery_estimated: false,
@@ -472,13 +473,14 @@ export class LearningService {
   /** Quiz history: practice by default; the questions of generated exams only when asked for (EXAM). */
   async quizzes(u: AuthUser, c: string, purpose: "PRACTICE" | "EXAM" = "PRACTICE") {
     await this.access.requireMember(u, c);
-    const rows = await this.prisma.learningQuiz.findMany({
+    const [rows, sets] = await Promise.all([this.prisma.learningQuiz.findMany({
       where: { userId: u.id, courseId: c, redacted: false, purpose },
       select: {
         id: true,
         kind: true,
         topic: true,
         createdAt: true,
+        data: true,
         attempts: {
           select: { outcome: true, score: true, createdAt: true },
           orderBy: { createdAt: "desc" },
@@ -488,7 +490,15 @@ export class LearningService {
       },
       orderBy: { createdAt: "desc" },
       take: 100,
-    });
-    return rows.map((row) => quizHistoryItem(row));
+    }),
+    // Quiz sets (PRACTICE) or generated exams (EXAM): which card each question belongs to.
+    this.prisma.generatedExam.findMany({
+      where: { userId: u.id, courseId: c, purpose },
+      select: { id: true, title: true, items: true },
+      orderBy: { createdAt: "desc" },
+      take: 200,
+    })]);
+    const bySet = setsByQuiz(sets);
+    return rows.map((row) => quizHistoryItem(row, bySet.get(row.id) ?? null));
   }
 }

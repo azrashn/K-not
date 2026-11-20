@@ -27,8 +27,23 @@ const STOP = new Set(
    "tarafından üzerinde üzerinden sayesinde boyunca arasında içinde dışında yerine göre karşı doğru değil " +
    "değildir zorunda hale halde şekilde durumda sırasında artık hiçbir " +
    "the and or of to in on for with from that this " +
-   "is are was be by as an a it its into also which when").split(/\s+/).map(fold),
+   "is are was be by as an a it its into also which when " +
+   // More English function words: a label is never "There" or "Using".
+   "can could will would should may might must not only all any each more most such than then there " +
+   "these those they them their what where who how why use used uses using have has had been being do does " +
+   "done one two other same very just so if but at we you our your about over under between through").split(/\s+/).map(fold),
 );
+
+// An inflected verb or a verbal noun, on folded words (ı → i): "çevrilir", "alınır", "çalışır", "yapamaz",
+// "çalışabilmesinin", "kullanarak", "kullanılan", "tanımlanan", "derlenmesi", "geliyor", "derlemek".
+// Only endings a noun rarely has: "durum", "değer", "satır", "kültür", "yumuşak" and "grup" are not matched
+// (the copula "-tır" counts only after a voiceless consonant: "basittir", "yoktur").
+export const VERB_FORM =
+  /(?:[iuü]l[iuü]r|[iuü]n[iuü]r|[şç][iuü]r|[ae]maz|[ae]mez|[ae]bil\p{L}*|[iuü]yor\p{L}*|m[ae]si\p{L}*|m[ae]k|m[ae]kt[ae]\p{L}*|d[iuü]r|[çfhkpsşt]t[iuü]r|d[iuü]rl[ae]r|[ae]c[ae]k\p{L}*|m[iuü]ş(?:t[iuü]r)?|[ae]r[ae]k|[iuü]l[ae]n|l[ae]n[ae]n|n[ae]n)$/u;
+
+/** A word that can name a topic: not a function word, a number or an inflected verb. */
+const nounLike = (folded: string, min = 4) =>
+  folded.length >= min && !STOP.has(folded) && !/^\d+$/.test(folded) && !VERB_FORM.test(folded);
 
 const contentWords = (text: string) => [...new Set(words(text).filter((w) => w.length >= 3 && !STOP.has(w)))];
 
@@ -127,45 +142,69 @@ export function heading(text: string, title?: string): string | null {
   return headings(text, title)[0] ?? null;
 }
 
-/** The part's 1–2 most frequent subject words (by root), or null when it has none. Words of the document's
- *  title are left out: a page header repeats them, and they name the document, not the part. */
-export function subjectLabel(text: string, title?: string): string | null {
+/**
+ * What a part without a heading is about, or null when nothing in it can name a topic: its most frequent
+ * noun (by root, at least twice), or the two-word phrase it usually stands in ("Garbage collector", not
+ * "collector"). Never an inflected verb ("çevrilir", "çalışabilmesinin"), a function word or a word of the
+ * document's title (a page header repeats them, and they name the document, not the part).
+ */
+export function subjectLabel(text: string, title?: string, minCount = 2): string | null {
   const titleWords = title ? words(title) : [];
-  // Words as written (Turkish lower case, apostrophe suffixes cut), grouped by root; a group is shown
-  // by its shortest form. Exam boilerplate is not filtered here: "final" is a Java keyword, not a header.
-  const groups: { forms: string[]; n: number; first: number }[] = [];
   // A short boilerplate line (the page header "1 JAVA PROGRAMLAMA - VİZE SINAVI") is not what the part is about.
   const running = String(text)
     .split(/\r?\n/)
     .filter((l) => !(l.trim().split(/\s+/).length <= 8 && BOILERPLATE.test(fold(l))))
     .join("\n");
-  const written = running.toLocaleLowerCase("tr").match(/[\p{L}\p{N}]+(?:['’][\p{L}]+)?/gu) ?? [];
-  written.forEach((raw, i) => {
-    const w = raw.replace(/['’].*$/u, "");
-    if (w.length < 4 || STOP.has(fold(w)) || /^\d+$/.test(w) || /[ae]bilme/.test(w)) return;
-    if (titleWords.some((t) => sameRoot(t, w))) return;
-    const hit = groups.find((g) => sameRoot(g.forms[0], w));
-    if (hit) {
-      hit.n++;
-      if (!hit.forms.includes(w)) hit.forms.push(w);
-    } else groups.push({ forms: [w], n: 1, first: i });
-  });
-  const top = groups
-    .sort((a, b) => b.n - a.n || a.first - b.first)
-    .slice(0, 2)
-    // A second word only when it recurs: "Bytecode", not "Bytecode, yılında".
-    .filter((g, i) => i === 0 || g.n >= 2)
-    .map((g) => [...g.forms].sort((a, b) => a.length - b.length)[0]);
-  if (!top.length) return null;
-  const label = top.join(", ");
+  const usable = (w: string, min = 4) => nounLike(fold(w), min) && !titleWords.some((t) => sameRoot(t, w));
+  // Words as written (Turkish lower case, apostrophe suffixes cut), grouped by root; a group is shown by its
+  // shortest form. Exam boilerplate is not filtered here: "final" is a Java keyword, not a header.
+  const groups: { forms: string[]; n: number; first: number }[] = [];
+  // Two neighbouring words of one clause (punctuation breaks a phrase), by their folded form.
+  const pairs = new Map<string, { written: string; n: number; words: [string, string] }>();
+  let position = 0;
+  for (const clause of running.split(/[,.;:!?()[\]{}"“”\n]+/u)) {
+    const written = (clause.toLocaleLowerCase("tr").match(/[\p{L}\p{N}]+(?:['’][\p{L}]+)?/gu) ?? []).map((raw) =>
+      raw.replace(/['’].*$/u, ""),
+    );
+    written.forEach((w, i) => {
+      const at = position++;
+      if (usable(w)) {
+        const hit = groups.find((g) => sameRoot(g.forms[0], w));
+        if (hit) {
+          hit.n++;
+          if (!hit.forms.includes(w)) hit.forms.push(w);
+        } else groups.push({ forms: [w], n: 1, first: at });
+      }
+      const next = written[i + 1];
+      if (next && usable(w, 3) && usable(next, 3)) {
+        const key = `${fold(w)} ${fold(next)}`;
+        const pair = pairs.get(key) ?? { written: `${w} ${next}`, n: 0, words: [w, next] as [string, string] };
+        pair.n++;
+        pairs.set(key, pair);
+      }
+    });
+  }
+  const top = groups.sort((a, b) => b.n - a.n || a.first - b.first)[0];
+  if (!top || top.n < minCount) return null; // a word met once says little about the part
+  // The phrase the word stands in: met twice or more, and holding at least half of the word's uses
+  // ("Kalıtım kodu" once next to "Kalıtım" twice is a sentence, not a name).
+  const phrase = [...pairs.values()]
+    .filter((p) => p.words.some((w) => sameRoot(w, top.forms[0])))
+    .sort((a, b) => b.n - a.n)[0];
+  const label = phrase && phrase.n >= Math.max(2, Math.ceil(top.n / 2)) ? phrase.written : [...top.forms].sort((a, b) => a.length - b.length)[0];
   return label.charAt(0).toLocaleUpperCase("tr") + label.slice(1, 80);
 }
 
-/** A short label: the part's heading, else its subject words, else its first whole words (never cut). */
+/** A short label for an exam topic (every part needs one): the part's heading, else its subject (a noun met
+ *  twice, then one met once), else its first whole words outside page headers (never cut). */
 export function partLabel(text: string, title?: string): string {
-  const label = heading(text, title) ?? subjectLabel(text, title);
+  const label = heading(text, title) ?? subjectLabel(text, title) ?? subjectLabel(text, title, 1);
   if (label) return label;
-  const first = String(text).trim().split(/\s+/).slice(0, 6);
+  const body = String(text)
+    .split(/\r?\n/)
+    .filter((l) => !(l.trim().split(/\s+/).length <= 8 && BOILERPLATE.test(fold(l))))
+    .join(" ");
+  const first = (body.trim() || String(text).trim()).split(/\s+/).slice(0, 6);
   while (first.length > 1 && STOP.has(fold(first[first.length - 1]))) first.pop();
   const joined = first.join(" ").replace(/[\s,;:–-]+$/u, "");
   return joined.charAt(0).toLocaleUpperCase("tr") + joined.slice(1, 80);

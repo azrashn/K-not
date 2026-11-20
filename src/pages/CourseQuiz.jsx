@@ -7,15 +7,10 @@ import { PageFrame, Btn } from "../components/ui";
 import { MobileBar } from "../components/PageBits";
 import { PageTitle, EmptyState } from "../components/ProductUI";
 import { videoErrorText } from "../lib/video";
-import { HISTORY_FILTERS, filterHistory, historyLabel, summarizeHistory } from "../lib/quiz-history";
+import { KIND_LABELS } from "../lib/quiz-history";
+import QuizHistory from "../components/QuizHistory";
 import { cleanTitle } from "../lib/topic-title";
-const labels = {
-  MULTIPLE_CHOICE: "Çoktan seçmeli",
-  TRUE_FALSE: "Doğru / yanlış",
-  CLOZE: "Boşluk doldurma",
-  SHORT_ANSWER: "Kısa yanıt",
-  OPEN: "Açık uçlu yansıtma",
-};
+const labels = KIND_LABELS;
 /** The form also offers "Karışık": the kinds in turn (one question is a multiple-choice one). */
 const kindChoices = { ...labels, MIXED: "Karışık (türler sırayla)" };
 /** 1 question comes back at once; 2-10 are a set written in the background (GET /quiz-sets/:id). */
@@ -34,7 +29,8 @@ export default function CourseQuiz({ courseId }) {
     [setIndex, setSetIndex] = useState(0);
   const [materials, setMaterials] = useState([]),
     [history, setHistory] = useState([]),
-    [historyFilter, setHistoryFilter] = useState("all"),
+    // The course's practice list has arrived (an empty one too): until then no "no practice yet" text.
+    [historyLoaded, setHistoryLoaded] = useState(false),
     // Questions of generated exams: not practice, shown only under the "Sınavdan" filter.
     [examHistory, setExamHistory] = useState([]),
     // Short topics from the course sources (GET /quiz-topics); null until they arrive or when unavailable.
@@ -53,9 +49,6 @@ export default function CourseQuiz({ courseId }) {
     [scopeNote, setScopeNote] = useState(""),
     [elapsed, setElapsed] = useState(0);
   const abortRef = useRef(null);
-  const summary = summarizeHistory(history);
-  const visibleHistory = historyFilter === "exam" ? examHistory : filterHistory(history, historyFilter);
-  const hasHistory = history.length > 0 || examHistory.length > 0;
   const consumed = useRef(false), requestEpoch = useRef(0);
   // Topic ideas: what was practised before, then short topics from the sources (headings, subject words).
   // Only when the server has none: the material titles, cut to their subject ("2 Dakikada Java   Java
@@ -147,6 +140,7 @@ export default function CourseQuiz({ courseId }) {
   useEffect(() => {
     if (!course) return;
     const abort = new AbortController();
+    setHistoryLoaded(false);
     Promise.all([
       api.knowledgeMaterials(course, abort.signal),
       api.quizzes(course, abort.signal),
@@ -155,9 +149,12 @@ export default function CourseQuiz({ courseId }) {
         if (abort.signal.aborted) return;
         setMaterials(m.materials);
         setHistory(h);
+        setHistoryLoaded(true);
       })
       .catch((e) => {
-        if (e.name !== "AbortError") setError(videoErrorText(e));
+        if (e.name === "AbortError" || abort.signal.aborted) return;
+        setError(videoErrorText(e));
+        setHistoryLoaded(true);
       });
     // Topic suggestions are optional: without them the material titles are used.
     setSourceTopics(null);
@@ -186,6 +183,36 @@ export default function CourseQuiz({ courseId }) {
       .catch(() => {});
     return () => abort.abort();
   }, [course]);
+  /** Opens a question of the history. A practice set opens as a set, so "Sonraki soru" goes on through it;
+   *  an exam question or a single question opens on its own (also when the set cannot be read). */
+  async function openHistoryQuestion(card, item) {
+    const epoch = ++requestEpoch.current;
+    setError("");
+    try {
+      if (card.setId && !card.exam) {
+        const s = await api.quizSet(course, card.setId).catch(() => null);
+        if (epoch !== requestEpoch.current) return;
+        const questions = (s?.questions ?? []).filter((q) => q.available);
+        const i = questions.findIndex((q) => q.id === item.id);
+        if (i >= 0) {
+          setQuizSet(s);
+          setSetIndex(i);
+          setQuiz(questions[i]);
+          setResult(null);
+          setAnswer("");
+          return;
+        }
+      }
+      const saved = await api.quiz(course, item.id);
+      if (epoch !== requestEpoch.current) return;
+      setQuizSet(null);
+      setQuiz(saved);
+      setResult(null);
+      setAnswer("");
+    } catch (e) {
+      if (epoch === requestEpoch.current) setError(videoErrorText(e));
+    }
+  }
   async function start(e) {
     e?.preventDefault?.();
     const epoch = ++requestEpoch.current;
@@ -467,56 +494,15 @@ export default function CourseQuiz({ courseId }) {
           <div className="section-heading mt-6">
             <h2>Önceki alıştırmalar</h2>
           </div>
-          {history.length > 0 && (
-            <p className="product-note" aria-live="polite">
-              {summary.total} soru · {summary.answered} yanıtlandı · {summary.unanswered} yanıt bekliyor
-            </p>
-          )}
-          {hasHistory && (
-            <div role="group" aria-label="Alıştırma filtresi" className="flex gap-2 flex-wrap mb-3">
-              {HISTORY_FILTERS.map((f) => (
-                <button
-                  key={f.id}
-                  type="button"
-                  aria-pressed={historyFilter === f.id}
-                  className="source-badge"
-                  onClick={() => setHistoryFilter(f.id)}
-                >
-                  {f.label}
-                </button>
-              ))}
-            </div>
-          )}
-          {hasHistory && visibleHistory.length === 0 && (
-            <p className="product-note">
-              {historyFilter === "exam" ? "Bu derste hazırlanmış sınav sorusu yok." : "Bu filtrede alıştırma yok."}
-            </p>
-          )}
-          {visibleHistory.map((q) => (
-            <button
-              key={q.id}
-              className="resume-row"
-              disabled={busy}
-              onClick={async () => {
-                const epoch = ++requestEpoch.current;
-                try {
-                  const saved = await api.quiz(course, q.id);
-                  if (epoch !== requestEpoch.current) return;
-                  setQuizSet(null);
-                  setQuiz(saved);
-                  setResult(null);
-                  setAnswer("");
-                } catch (e) {
-                  if (epoch === requestEpoch.current) setError(videoErrorText(e));
-                }
-              }}
-            >
-              <strong>{q.topic}</strong>
-              <small>
-                {labels[q.kind]} · {historyLabel(q)}
-              </small>
-            </button>
-          ))}
+          <QuizHistory
+            key={course || "none"}
+            course={course}
+            history={history}
+            examHistory={examHistory}
+            loaded={historyLoaded}
+            busy={busy}
+            onOpen={openHistoryQuestion}
+          />
         </aside>
         <section>
           {error && (

@@ -5,7 +5,7 @@ import { LearningService } from '../../src/learning/learning.service';
 const u = { id: 'u', role: 'USER' } as any;
 
 function service() {
-  const prisma = { learningQuiz: { findMany: jest.fn().mockResolvedValue([]) } };
+  const prisma = { learningQuiz: { findMany: jest.fn().mockResolvedValue([]) }, generatedExam: { findMany: jest.fn().mockResolvedValue([]) } };
   const learning = new LearningService(prisma as any, { requireMember: jest.fn() } as any, {} as any, {} as any);
   return { learning, prisma };
 }
@@ -21,6 +21,8 @@ describe('quiz history keeps exam questions apart', () => {
     const { learning, prisma } = service();
     await learning.quizzes(u, 'c', 'EXAM');
     expect(prisma.learningQuiz.findMany.mock.calls[0][0].where).toMatchObject({ purpose: 'EXAM' });
+    // The cards are the generated exams of the same purpose.
+    expect(prisma.generatedExam.findMany.mock.calls[0][0].where).toEqual({ userId: 'u', courseId: 'c', purpose: 'EXAM' });
   });
 
   test('the migration marks the questions of earlier exams and defaults new ones to practice', () => {
