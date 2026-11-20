@@ -34,6 +34,7 @@ export const api = {
   quiz: (course,id) => request('GET',`/courses/${enc(course)}/quizzes/${enc(id)}`),
   answerQuiz: (course,id,response) => request('POST',`/courses/${enc(course)}/quizzes/${enc(id)}/answers`,{body:{response}}),
   knowledgeVisual: (course,id,page,signal) => request('GET',`/courses/${enc(course)}/knowledge/materials/${enc(id)}/visual/${page}`,{as:'blob',signal}),
+  coverage: (courseId, signal) => request('GET', `/courses/${enc(courseId)}/coverage`, { signal }),
   course: (courseId, signal) => request('GET', `/courses/${enc(courseId)}`, { signal }),
   knowledgeMaterials: (courseId, signal) => request('GET', `/courses/${enc(courseId)}/knowledge/materials`, { signal }),
   knowledgePreview: (courseId, id, signal) => request('GET', `/courses/${enc(courseId)}/knowledge/materials/${enc(id)}`, { signal }),

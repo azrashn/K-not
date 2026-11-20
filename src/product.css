@@ -3010,3 +3010,25 @@ nav[aria-label='Ana gezinme'] { z-index: 2; }
 }
 @media (prefers-reduced-motion: reduce) { .material-links-panel { animation: none; } }
 .material-links-basis { grid-column: 1 / -1; font-family: var(--font-mono); font-size: 11px; color: var(--color-ink-3); }
+
+/* Kapsam haritası: yalnızca kayıtlı sayfa dokunuşları; kare başına 1px kenarlık, renk tek başına anlam taşımaz. */
+.coverage { margin-top: 32px; display: grid; gap: 12px; }
+.coverage-title { margin: 0; font-size: 18px; letter-spacing: -0.03em; color: var(--color-ink); }
+.coverage-note, .coverage-legend { margin: 0; font-size: 12.5px; line-height: 1.6; color: var(--color-ink-2); }
+.coverage-count, .coverage-exam { margin: 0; font-size: 13px; color: var(--color-ink-2); }
+.coverage-num { font-family: var(--font-mono); font-weight: 600; color: var(--color-ink); }
+.coverage-material { border: 1px solid var(--color-line); border-radius: 8px; background: var(--color-sheet); padding: 14px 16px; display: grid; gap: 10px; }
+.coverage-material:hover { border-color: var(--color-line-strong); }
+.coverage-name { margin: 0; font-size: 14px; letter-spacing: -0.03em; color: var(--color-ink); overflow-wrap: anywhere; }
+.coverage-grid { display: flex; flex-wrap: wrap; gap: 4px; }
+.coverage-cell { box-sizing: border-box; width: 26px; height: 26px; padding: 0; border: 1px solid var(--color-line); border-radius: 4px; background: transparent; font-family: var(--font-mono); font-size: 9.5px; font-weight: 600; line-height: 1; color: var(--color-sheet); cursor: pointer; }
+.coverage-cell:hover { border-color: var(--color-line-strong); }
+.coverage-cell[data-touched='true'] { background: var(--color-accent); border-color: var(--color-accent-deep); }
+.coverage-cell[data-touched='true'][data-asked='false'] { background: var(--color-accent-tint); border-color: var(--color-accent); color: var(--color-accent-deep); }
+.coverage-key { display: inline-grid; place-items: center; width: 16px; height: 16px; border: 1px solid var(--color-accent-deep); border-radius: 4px; background: var(--color-accent); color: var(--color-sheet); font-family: var(--font-mono); font-size: 9.5px; font-weight: 600; vertical-align: middle; }
+.coverage-key[data-k='A'] { background: var(--color-accent-tint); border-color: var(--color-accent); color: var(--color-accent-deep); }
+.coverage-untouched { margin: 0; font-size: 12.5px; line-height: 1.8; color: var(--color-ink-2); }
+.coverage-page-link { padding: 0 3px; border: 0; border-radius: 4px; background: transparent; font-family: var(--font-mono); font-size: 12.5px; color: var(--color-accent-deep); text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+.coverage-page-link:hover { background: var(--color-accent-tint); }
+.coverage-page-num { font-family: var(--font-mono); }
+@media (max-width: 480px) { .coverage-material { padding: 12px; } }

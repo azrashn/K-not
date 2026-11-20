@@ -10,6 +10,7 @@ import { DOC_TYPES, TYPE_LABEL, guessDocumentType, readiness, toMaterial, valida
 import { PageFrame, Btn, TextLink } from '../components/ui'
 import { MobileBar } from '../components/PageBits'
 import StatusTrack from '../components/StatusTrack'
+import CoverageMap from '../components/CoverageMap'
 import { LoadState } from './Courses'
 import { EASE_OUT } from '../lib/motion'
 
@@ -262,6 +263,7 @@ export default function CourseDetail({ courseId }) {
           </AnimatePresence>
         </ul>
       </section>
+      <CoverageMap courseId={courseId} onOpenPage={(m, page) => navigate(`/dersler/${courseId}/calisma`, { openDoc: { id: m.source_id, page } })} />
     </PageFrame>
   )
 }
