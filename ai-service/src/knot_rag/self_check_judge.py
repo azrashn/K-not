@@ -38,7 +38,7 @@ def judge_enabled() -> bool:
     return os.environ.get("SELF_CHECK_JUDGE", "on").strip().lower() not in ("0", "off", "false", "no") and llm_settings() is not None
 
 
-def judge(pairs: list[tuple[str, str]], complete=None, timeout: float = 60.0) -> list[dict | None]:
+def _judge_once(pairs: list[tuple[str, str]], complete=None, timeout: float = 60.0) -> list[dict | None]:
     """For each (claim, passage): {'verdict', 'quote'} with a verified quote for CONTRADICTS, or None when the
     model failed. A CONTRADICTS without a quote that is literally in the passage becomes UNSURE."""
     pairs = pairs[:MAX_ITEMS]
@@ -84,4 +84,19 @@ def judge(pairs: list[tuple[str, str]], complete=None, timeout: float = 60.0) ->
         else:
             quote = ""
         out[item["index"]] = {"verdict": verdict, "quote": quote}
+    return out
+
+
+def judge(pairs: list[tuple[str, str]], complete=None, timeout: float = 60.0) -> list[dict | None]:
+    """Batch judgement, then every CONTRADICTS is asked again ALONE. A model that is distracted by the other
+    pairs of a batch sometimes cries wolf; only a contradiction that holds up in both rounds (each with a
+    quote that is literally in the passage) is kept, the rest becomes UNSURE."""
+    pairs = pairs[:MAX_ITEMS]
+    first = _judge_once(pairs, complete, timeout)
+    out = list(first)
+    for i, v in enumerate(first):
+        if v and v["verdict"] == "CONTRADICTS":
+            again = _judge_once([pairs[i]], complete, timeout)[0]
+            if not again or again["verdict"] != "CONTRADICTS":
+                out[i] = {"verdict": "UNSURE", "quote": ""}
     return out

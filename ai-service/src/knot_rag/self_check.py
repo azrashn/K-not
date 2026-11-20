@@ -175,22 +175,31 @@ def _numeric_line(claim: str, window: str) -> str:
     return best
 
 
-def _quote(claim: str, window: str) -> str:
-    """The most relevant stretch of the window, at most QUOTE_CHARS, always a literal part of the source
-    (damaged OCR characters included). The stretch is chosen on the repaired text."""
+def _best_at(claim: str, window: str) -> tuple[list[str], int]:
+    """(lines of the window, index of the line that matches the claim best); chosen on the repaired text."""
     lines = _sentences(window)
     if len(lines) <= 1:
-        text = normalize_text(window)
-    else:
-        vocabulary = {w.translate(_FOLD).lower() for w in re.findall(r"[^\W\d_]{3,}", claim)}
-        repaired = _sentences(repair_ocr(window, vocabulary))
-        # repair keeps the line structure, so the index found on the repaired lines is valid for the originals
-        if len(repaired) == len(lines):
-            at = repaired.index(_best_line(claim, chr(10).join(repaired)))
-        else:
-            at = lines.index(_best_line(claim, window))
-        text = normalize_text(" ".join(lines[at:at + 3]))
+        return lines, 0
+    vocabulary = {w.translate(_FOLD).lower() for w in re.findall(r"[^\W\d_]{3,}", claim)}
+    repaired = _sentences(repair_ocr(window, vocabulary))
+    # repair keeps the line structure, so the index found on the repaired lines is valid for the originals
+    if len(repaired) == len(lines):
+        return lines, repaired.index(_best_line(claim, chr(10).join(repaired)))
+    return lines, lines.index(_best_line(claim, window))
+
+
+def _quote(claim: str, window: str) -> str:
+    """The most relevant stretch of the window, at most QUOTE_CHARS, always a literal part of the source
+    (damaged OCR characters included)."""
+    lines, at = _best_at(claim, window)
+    text = normalize_text(window) if len(lines) <= 1 else normalize_text(" ".join(lines[at:at + 3]))
     return text if len(text) <= QUOTE_CHARS else text[: QUOTE_CHARS - 1].rstrip() + "…"
+
+
+def _passage(claim: str, window: str) -> str:
+    """Context for the meaning check: the matching line and its neighbours (not just the start of a page)."""
+    lines, at = _best_at(claim, window)
+    return normalize_text(" ".join(lines[max(0, at - 3):at + 5]))[:700]
 
 
 def _location(evidence: dict) -> dict:
@@ -212,7 +221,7 @@ def _source(evidence: dict, window: str, claim: str) -> dict:
         "kind": evidence.get("kind"),
         "location": _location(evidence),
         "quote": _quote(claim, window),
-        "passage": normalize_text(window)[:700],  # for the meaning check; removed before the answer leaves
+        "passage": _passage(claim, window),  # for the meaning check; removed before the answer leaves
     }
 
 

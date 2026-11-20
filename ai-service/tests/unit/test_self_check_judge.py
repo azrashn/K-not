@@ -31,3 +31,22 @@ def test_supports_and_failures():
         raise ValueError("x")
 
     assert judge(pairs, boom) == [None, None]
+
+
+def test_a_contradiction_must_hold_up_when_asked_alone():
+    pairs = [("Process A waits for process B.", PASSAGE), ("B waits for A.", PASSAGE)]
+    calls = []
+
+    def model(request):
+        calls.append(request.user.count('"index"'))
+        if len(calls) == 1:  # batch: cries wolf on both
+            return json.dumps({"results": [
+                {"index": 0, "verdict": "CONTRADICTS", "quote": "Process B waits for process A"},
+                {"index": 1, "verdict": "CONTRADICTS", "quote": "Process B waits for process A"}]})
+        if len(calls) == 2:  # alone: the first stands, ...
+            return json.dumps({"results": [{"index": 0, "verdict": "CONTRADICTS", "quote": "Process B waits for process A"}]})
+        return json.dumps({"results": [{"index": 0, "verdict": "SUPPORTS", "quote": ""}]})  # ... the second does not
+
+    out = judge(pairs, model)
+    assert out[0]["verdict"] == "CONTRADICTS" and out[1] == {"verdict": "UNSURE", "quote": ""}
+    assert calls == [2, 1, 1]
