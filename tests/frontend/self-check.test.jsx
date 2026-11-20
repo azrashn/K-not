@@ -142,3 +142,27 @@ test("workspace: the button opens the panel with focus in the text box, Escape c
   await user.click(within(first).getByRole("button", { name: /Kaynağa git/ }));
   expect(api.knowledgeSource).toHaveBeenCalledWith("course", material.id, sid);
 });
+
+test("a compound claim lists each half with its own badge, and a conflicting half names the number", async () => {
+  const user = userEvent.setup();
+  const compound = {
+    ...result,
+    claims: [{
+      text: "TCP el sıkışma kullanır ve Ethernet çerçevesi 9000 bayttır.", label: "CONFLICTS", translated: false, matched_terms: [],
+      sources: [source()], missing_terms: [], unmatched_numbers: [], conflict: { kind: "NUMBER", claim: ["9000"], source: ["1500"] },
+      parts: [
+        { text: "TCP el sıkışma kullanır", label: "IN_SOURCE", sources: [source()], missing_terms: [], unmatched_numbers: [], conflict: null, parts: [] },
+        { text: "Ethernet çerçevesi 9000 bayttır", label: "CONFLICTS", sources: [source()], missing_terms: [], unmatched_numbers: [], conflict: { kind: "NUMBER", claim: ["9000"], source: ["1500"] }, parts: [] },
+      ],
+    }],
+    summary: { IN_SOURCE: 0, NOT_IN_SOURCE: 0, CONFLICTS: 1, PARTIAL: 0, UNCHECKED: 0, total: 1 },
+  };
+  api.selfCheck.mockResolvedValue(compound);
+  render(<SelfCheck courseId="course" onOpenSource={vi.fn()} />);
+  await user.type(screen.getByLabelText("Konuyu kendi cümlelerinle yaz"), "x");
+  await user.click(screen.getByRole("button", { name: "Kontrol et" }));
+  const parts = await screen.findByRole("list", { name: "İddianın parçaları" });
+  expect(within(parts).getAllByRole("listitem")).toHaveLength(2);
+  expect(within(parts).getByText("Kaynakta var")).toBeInTheDocument();
+  expect(within(parts).getByText(/Sayı farklı: sen 9000 yazdın, kaynakta 1500 geçiyor/)).toBeInTheDocument();
+});

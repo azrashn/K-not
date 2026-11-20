@@ -253,3 +253,24 @@ def test_ocr_damaged_slide_text_still_supports_a_correct_claim():
     assert c["sources"][0]["quote"].split(" ")[0].lstrip("•§") in "TCP slow start connec8on begins ini$ally cwnd double every RTT increase exponen8ally"
     # repair never makes a missing word appear
     assert only(e.check("TCP slow start initially encrypts cwnd with AES."))["label"] == "NOT_IN_SOURCE"
+
+
+def test_compound_claim_is_judged_per_half():
+    from knot_rag.self_check import split_compound
+
+    e = Env()
+    e.add("pdf_c", [("TCP is a connection-oriented protocol with a three-way handshake.", 3),
+                    ("UDP is a connectionless protocol and it gives no delivery guarantee.", 4),
+                    ("Ethernet frames carry at most 1500 bytes of payload.", 5)])
+    assert split_compound("TCP and UDP are transport protocols") == ["TCP and UDP are transport protocols"]
+    both = "TCP is a connection-oriented protocol with a handshake and UDP is a connectionless protocol with no guarantee"
+    assert len(split_compound(both)) == 2
+    ok = only(e.check("TCP is a connection-oriented protocol with a three-way handshake, and UDP is a connectionless protocol with no delivery guarantee."))
+    assert ok["label"] == "IN_SOURCE" and len(ok["parts"]) == 2
+    # one true half and one half the source contradicts: the contradiction is not hidden
+    bad = only(e.check("TCP is a connection-oriented protocol with a three-way handshake, and Ethernet frames carry at most 9000 bytes of payload."))
+    assert bad["label"] == "CONFLICTS" and bad["conflict"]["claim"] == ["9000"]
+    assert [p["label"] for p in bad["parts"]] == ["IN_SOURCE", "CONFLICTS"]
+    # one true half and one invented half is partly in the sources
+    mixed = only(e.check("TCP is a connection-oriented protocol with a three-way handshake, but UDP encrypts payload using AES keys."))
+    assert mixed["label"] == "PARTIAL" and [p["label"] for p in mixed["parts"]] == ["IN_SOURCE", "NOT_IN_SOURCE"]

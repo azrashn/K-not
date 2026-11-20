@@ -168,6 +168,20 @@ export default function SelfCheck({ courseId, onOpenSource }) {
                     {c.label === "UNCHECKED" && (
                       <p className="self-check-note">Metin ile kaynak farklı dillerde; sözcükler karşılaştırılamadı.</p>
                     )}
+                    {c.parts?.length > 1 && (
+                      <ul className="self-check-parts" aria-label="İddianın parçaları">
+                        {c.parts.map((p, k) => {
+                          const pl = LABELS[p.label] || LABELS.UNCHECKED;
+                          return (
+                            <li key={k}>
+                              <span className="board-badge self-check-badge" data-tone={pl.tone}>{pl.text}</span>
+                              <span>{p.text}</span>
+                              {p.label === "CONFLICTS" && <small> {conflictNote(p.conflict)}</small>}
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    )}
                     {c.sources.map((s) => (
                       <div key={s.source_id} className="self-check-source">
                         <blockquote>“{s.quote}”</blockquote>

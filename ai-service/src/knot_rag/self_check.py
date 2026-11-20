@@ -352,22 +352,101 @@ def classify(claim: str, evidence: list[dict]) -> dict:
     return {"label": "NOT_IN_SOURCE", "sources": [], "missing_terms": [], "unmatched_numbers": [], "conflict": None}
 
 
+# ── compound claims ──────────────────────────────────────────────────────────────────────────
+# "A and B": each half is judged alone, so a contradicted half is not hidden by a supported one.
+# Split only when both halves are real statements: enough content words on each side.
+MAX_PARTS = 4
+PART_MIN_WORDS = 3
+_STRONG_JOIN = re.compile(r"\s*,?\s+(?:but|whereas|while|ama|fakat|ancak|oysa|halbuki|ise)\s+|\s*;\s*", re.IGNORECASE)
+_PLAIN_JOIN = re.compile(r"\s*,\s*(?:and|ve|ayrıca|also)\s+|\s+(?:and|ve)\s+", re.IGNORECASE)
+
+
+def _content_count(text: str) -> int:
+    return len(_claim_words(text))
+
+
+def split_compound(claim: str) -> list[str]:
+    """Halves of a compound claim, or [claim] when it is a single statement."""
+    parts = [claim]
+    for pattern, minimum in ((_STRONG_JOIN, PART_MIN_WORDS), (_PLAIN_JOIN, PART_MIN_WORDS + 1)):
+        nxt: list[str] = []
+        for part in parts:
+            pieces = [x.strip(" ,") for x in pattern.split(part) if x and x.strip(" ,")]
+            if len(pieces) > 1 and all(_content_count(x) >= minimum for x in pieces):
+                nxt.extend(pieces)
+            else:
+                nxt.append(part)
+        parts = nxt
+    return parts[:MAX_PARTS] if len(parts) > 1 else [claim]
+
+
+def _combine(claim: str, subs: list[dict]) -> dict:
+    """One result for a compound claim from the results of its parts."""
+    labels = [x["label"] for x in subs]
+    conflict = next((x for x in subs if x["label"] == "CONFLICTS"), None)
+    if conflict:
+        label = "CONFLICTS"
+    elif all(l == "IN_SOURCE" for l in labels):
+        label = "IN_SOURCE"
+    elif all(l == "NOT_IN_SOURCE" for l in labels):
+        label = "NOT_IN_SOURCE"
+    elif all(l == "UNCHECKED" for l in labels):
+        label = "UNCHECKED"
+    else:
+        label = "PARTIAL"
+    sources, seen = [], set()
+    for x in ([conflict] if conflict else []) + subs:
+        for src in x["sources"]:
+            if src["source_id"] not in seen and len(sources) < MAX_SOURCES:
+                seen.add(src["source_id"])
+                sources.append(src)
+    return {
+        "label": label,
+        "sources": sources,
+        "missing_terms": [t for x in subs for t in x["missing_terms"]][:6],
+        "unmatched_numbers": [t for x in subs for t in x["unmatched_numbers"]][:4],
+        "conflict": conflict["conflict"] if conflict else None,
+        "translated": any(x.get("translated") for x in subs),
+        "matched_terms": [t for x in subs for t in x.get("matched_terms", [])][:6],
+        "parts": [{"text": t, "label": x["label"], "sources": x["sources"][:1], "missing_terms": x["missing_terms"],
+                   "unmatched_numbers": x["unmatched_numbers"], "conflict": x["conflict"]}
+                  for t, x in zip(_part_texts(subs), subs)],
+    }
+
+
+def _part_texts(subs: list[dict]) -> list[str]:
+    return [x["text"] for x in subs]
+
+
 def self_check(index: UnifiedIndex, body: SelfCheck) -> dict:
     claims, skipped = split_claims(body.text)
     truncated = len(claims) > MAX_CLAIMS
     claims = claims[:MAX_CLAIMS]
+    evidence_cache: dict[str, list[dict]] = {}
+
+    def evidence_for(text: str) -> list[dict]:
+        if text not in evidence_cache:
+            found = index.search(
+                Search(
+                    course_id=body.course_id,
+                    materials=body.materials,
+                    question=text[:2000],
+                    strategy="unified",
+                    reference_mode="conversation",
+                )
+            )
+            evidence_cache[text] = found.get("evidence", [])
+        return evidence_cache[text]
+
     results = []
     for claim in claims:
-        found = index.search(
-            Search(
-                course_id=body.course_id,
-                materials=body.materials,
-                question=claim[:2000],
-                strategy="unified",
-                reference_mode="conversation",
-            )
-        )
-        results.append({"text": claim, "translated": False, "matched_terms": [], **classify(claim, found.get("evidence", []))})
+        parts = split_compound(claim)
+        base = {"text": claim, "translated": False, "matched_terms": [], "parts": []}
+        if len(parts) == 1:
+            results.append({**base, **classify(claim, evidence_for(claim))})
+            continue
+        subs = [{"text": p, **classify(p, evidence_for(p))} for p in parts]
+        results.append({**base, **_combine(claim, subs)})
     counts = {label: sum(1 for r in results if r["label"] == label)
               for label in ("IN_SOURCE", "NOT_IN_SOURCE", "CONFLICTS", "PARTIAL", "UNCHECKED")}
     return {

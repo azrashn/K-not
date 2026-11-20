@@ -3093,3 +3093,6 @@ nav[aria-label='Ana gezinme'] { z-index: 2; }
   .self-check-row { flex-direction: column; gap: 6px; }
 }
 @media (prefers-reduced-motion: reduce) { .self-check-list > li { transition: none; } }
+.self-check-parts { display: grid; gap: 6px; margin: 8px 0 0; padding: 0 0 0 4px; list-style: none; }
+.self-check-parts li { display: flex; align-items: flex-start; gap: 8px; font-size: 13px; color: var(--color-ink-2); }
+.self-check-parts small { color: var(--color-ink-3); }

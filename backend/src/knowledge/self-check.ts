@@ -18,49 +18,60 @@ function location(raw: any) {
   return {};
 }
 
-export function cleanSelfCheck(body: any, allowed: Map<string, { title: string; kind: string }>) {
+type Allowed = Map<string, { title: string; kind: string }>;
+
+function cleanOne(c: any, allowed: Allowed, withParts: boolean): any {
+  const one = {
+    text: text(c.text, 600),
+    label: c.label as string,
+    sources: (Array.isArray(c.sources) ? c.sources : [])
+      .filter((s: any) => allowed.has(s?.material_id) && /^[a-f0-9]{64}$/.test(s?.source_id ?? ""))
+      .slice(0, 2)
+      .map((s: any) => {
+        const m = allowed.get(s.material_id)!;
+        return {
+          source_id: s.source_id as string,
+          material_id: s.material_id as string,
+          title: m.title,
+          kind: m.kind,
+          location: location(s.location),
+          quote: text(s.quote, 160),
+        };
+      }),
+    missing_terms: terms(c.missing_terms),
+    // A translated claim was compared by its technical terms only; the student is told so.
+    translated: c.label === "IN_SOURCE" && c.translated === true,
+    matched_terms: c.label === "IN_SOURCE" && c.translated === true ? terms(c.matched_terms) : [],
+    unmatched_numbers: terms(c.unmatched_numbers),
+    conflict:
+      c.label === "CONFLICTS" && c.conflict && ["NUMBER", "NEGATION"].includes(c.conflict.kind)
+        ? {
+            kind: c.conflict.kind as string,
+            claim: terms(c.conflict.claim),
+            source: terms(c.conflict.source),
+            claim_negated: c.conflict.claim_negated === true,
+            source_negated: c.conflict.source_negated === true,
+          }
+        : null,
+    // The halves of a compound claim ("A ve B"), each judged alone.
+    parts: withParts && Array.isArray(c.parts)
+      ? c.parts
+          .filter((p: any) => LABELS.has(p?.label) && typeof p?.text === "string")
+          .slice(0, 4)
+          .map((p: any) => cleanOne(p, allowed, false))
+      : [],
+  };
+  // A claim that ended up without a source cannot be "found" or "conflicting": say only what is known.
+  return !one.sources.length && ["IN_SOURCE", "CONFLICTS", "PARTIAL", "UNCHECKED"].includes(one.label)
+    ? { ...one, label: "NOT_IN_SOURCE", conflict: null, missing_terms: [], unmatched_numbers: [], translated: false, matched_terms: [], parts: one.parts.length > 1 ? one.parts : [] }
+    : one;
+}
+
+export function cleanSelfCheck(body: any, allowed: Allowed) {
   const claims = (Array.isArray(body?.claims) ? body.claims : [])
     .filter((c: any) => LABELS.has(c?.label) && typeof c?.text === "string")
     .slice(0, 25)
-    .map((c: any) => ({
-      text: text(c.text, 600),
-      label: c.label as string,
-      sources: (Array.isArray(c.sources) ? c.sources : [])
-        .filter((s: any) => allowed.has(s?.material_id) && /^[a-f0-9]{64}$/.test(s?.source_id ?? ""))
-        .slice(0, 2)
-        .map((s: any) => {
-          const m = allowed.get(s.material_id)!;
-          return {
-            source_id: s.source_id as string,
-            material_id: s.material_id as string,
-            title: m.title,
-            kind: m.kind,
-            location: location(s.location),
-            quote: text(s.quote, 160),
-          };
-        }),
-      missing_terms: terms(c.missing_terms),
-      // A translated claim was compared by its technical terms only; the student is told so.
-      translated: c.label === "IN_SOURCE" && c.translated === true,
-      matched_terms: c.label === "IN_SOURCE" && c.translated === true ? terms(c.matched_terms) : [],
-      unmatched_numbers: terms(c.unmatched_numbers),
-      conflict:
-        c.label === "CONFLICTS" && c.conflict && ["NUMBER", "NEGATION"].includes(c.conflict.kind)
-          ? {
-              kind: c.conflict.kind as string,
-              claim: terms(c.conflict.claim),
-              source: terms(c.conflict.source),
-              claim_negated: c.conflict.claim_negated === true,
-              source_negated: c.conflict.source_negated === true,
-            }
-          : null,
-    }))
-    // A claim that ended up without a source cannot be "found" or "conflicting": say only what is known.
-    .map((c: any) =>
-      !c.sources.length && ["IN_SOURCE", "CONFLICTS", "PARTIAL", "UNCHECKED"].includes(c.label)
-        ? { ...c, label: "NOT_IN_SOURCE", conflict: null, missing_terms: [], unmatched_numbers: [], translated: false, matched_terms: [] }
-        : c,
-    );
+    .map((c: any) => cleanOne(c, allowed, true));
   const count = (label: string) => claims.filter((c: any) => c.label === label).length;
   return {
     claims,
