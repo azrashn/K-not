@@ -1,5 +1,5 @@
-import { afterEach, beforeEach, expect, test, vi } from 'vitest'
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import CourseQuiz from '../../src/pages/CourseQuiz'
 import { api } from '../../src/api/endpoints'
@@ -123,4 +123,70 @@ test('the next question follows the open one, even if the list order changed mea
   expect(await screen.findByText('3 sorudan 3 tanesi hazırlandı.')).toBeInTheDocument()
   expect(screen.getByText('Soru 3 / 3')).toBeInTheDocument() // the open question's new place
   expect(screen.queryByRole('button', { name: 'Sonraki soru →' })).not.toBeInTheDocument()
+})
+
+describe('going back in a set and keeping it in the address', () => {
+  const qs = [question('q1', 'Nesne nedir?'), question('q2', 'Sınıf nedir?'), question('q3', 'Kalıtım nedir?')]
+  const ready = set({ status: 'READY', produced: 3, questions: qs })
+  afterEach(() => window.history.replaceState(null, '', '#'))
+
+  test('"← Önceki soru" goes back and shows the answer given there; the first question has no way back', async () => {
+    const user = userEvent.setup()
+    api.createQuiz.mockResolvedValue(ready)
+    api.answerQuiz.mockResolvedValue({ score: null, message: 'Yanıtın kaydedildi.', quote: 'Nesne, sınıfın örneğidir.' })
+    render(<CourseQuiz courseId="c" />)
+    await fill(user, { count: 3 })
+    expect(await screen.findByText('Nesne nedir?')).toBeInTheDocument()
+    const nav = screen.getByRole('navigation', { name: 'Setteki sorular arasında gezin' })
+    expect(within(nav).getByRole('button', { name: '← Önceki soru' })).toBeDisabled()
+    await user.type(screen.getByLabelText('Yanıtın'), 'Bir örnek')
+    await user.click(screen.getByRole('button', { name: 'Yanıtı değerlendir' }))
+    await screen.findByText('Yanıtın kaydedildi.')
+    await user.click(screen.getByRole('button', { name: 'Sonraki soru →' }))
+    expect(await screen.findByText('Sınıf nedir?')).toBeInTheDocument()
+    expect(screen.queryByText('Yanıtın kaydedildi.')).toBeNull() // a new question starts unanswered
+    await user.click(screen.getByRole('button', { name: '← Önceki soru' }))
+    expect(await screen.findByText('Nesne nedir?')).toBeInTheDocument()
+    expect(screen.getByText('Soru 1 / 3')).toBeInTheDocument()
+    expect(screen.getByText('Yanıtın kaydedildi.')).toBeInTheDocument()
+  })
+
+  test('the open set and question are written into the address', async () => {
+    const user = userEvent.setup()
+    window.history.replaceState(null, '', '#/dersler/c/quiz')
+    api.createQuiz.mockResolvedValue(ready)
+    render(<CourseQuiz courseId="c" />)
+    await fill(user, { count: 3 })
+    await screen.findByText('Nesne nedir?')
+    await waitFor(() => expect(window.location.hash).toBe('#/dersler/c/quiz?set=s1&q=q1'))
+    await user.click(screen.getByRole('button', { name: 'Sonraki soru →' }))
+    await waitFor(() => expect(window.location.hash).toBe('#/dersler/c/quiz?set=s1&q=q2'))
+  })
+
+  test('coming back to the page opens the same set at the question left', async () => {
+    window.history.replaceState(null, '', '#/dersler/c/quiz?set=s1&q=q2')
+    api.quizSet.mockResolvedValue(ready)
+    render(<CourseQuiz courseId="c" />)
+    expect(await screen.findByText('Sınıf nedir?')).toBeInTheDocument()
+    expect(screen.getByText('Soru 2 / 3')).toBeInTheDocument()
+    expect(api.quizSet).toHaveBeenCalledWith('c', 's1')
+    expect(window.location.hash).toBe('#/dersler/c/quiz?set=s1&q=q2')
+  })
+
+  test('on the general quiz page the course comes back from the address too', async () => {
+    window.history.replaceState(null, '', '#/quiz?course=c&set=s1&q=q3')
+    api.quizSet.mockResolvedValue(ready)
+    render(<CourseQuiz />)
+    expect(await screen.findByText('Kalıtım nedir?')).toBeInTheDocument()
+    expect(screen.getByLabelText('Ders')).toHaveValue('c')
+    expect(screen.queryByRole('button', { name: 'Sonraki soru →' })).toBeNull() // the last question
+  })
+
+  test('a set that no longer exists opens nothing and leaves the address', async () => {
+    window.history.replaceState(null, '', '#/dersler/c/quiz?set=gone&q=q1')
+    api.quizSet.mockRejectedValue(new Error('404'))
+    render(<CourseQuiz courseId="c" />)
+    await waitFor(() => expect(window.location.hash).toBe('#/dersler/c/quiz'))
+    expect(screen.getByText('Öğrendiklerini dene')).toBeInTheDocument()
+  })
 })

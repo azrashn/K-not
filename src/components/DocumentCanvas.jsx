@@ -1,6 +1,16 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "../api/endpoints";
 import { videoErrorText } from "../lib/video";
+import { highlightBoxes } from "../lib/quote-match";
+
+const reducedMotion = () => window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
+
+/**
+ * `highlight` ({ page, quote }): the sentence a question rests on. On that page the page's text layer (word
+ * boxes from the server) is matched with the quote and the words are marked like a highlighter; the view
+ * scrolls to them. When the page image cannot be shown the extracted text is opened instead (onShowText),
+ * where the same sentence is marked.
+ */
 export default function DocumentCanvas({
   onShowText,
   courseId,
@@ -10,6 +20,7 @@ export default function DocumentCanvas({
   onSource,
   onViewportChange,
   marks,
+  highlight = null,
 }) {
   const [page, setPage] = useState(
       () => source?.location.page || source?.location.slide || 1,
@@ -20,7 +31,11 @@ export default function DocumentCanvas({
     [loading, setLoading] = useState(false),
     [region, setRegion] = useState(null),
     [selecting, setSelecting] = useState(false),
-    [drag, setDrag] = useState(null);
+    [drag, setDrag] = useState(null),
+    // The marked quote on the page: { page, boxes, exact } or { page, missing: true }.
+    [hit, setHit] = useState(null);
+  const firstMark = useRef(null);
+  const wantsMark = Boolean(highlight?.quote) && highlight.page === page;
   const count =
       material.page_count ||
       Math.max(
@@ -68,6 +83,31 @@ export default function DocumentCanvas({
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
   }, [courseId, material.id, page]);
+  // The page's text layer, once the image is shown, only on the page the quote is on.
+  useEffect(() => {
+    if (!wantsMark || url?.page !== page) return;
+    const abort = new AbortController();
+    const quote = highlight.quote;
+    Promise.resolve(api.knowledgeVisualText(courseId, material.id, page, abort.signal))
+      .then((layer) => {
+        if (abort.signal.aborted) return;
+        const found = highlightBoxes(layer?.lines, quote);
+        setHit(found ? { page, quote, ...found } : { page, quote, missing: true });
+      })
+      .catch((e) => {
+        if (e?.name !== "AbortError" && !abort.signal.aborted) setHit({ page, quote, missing: true });
+      });
+    return () => abort.abort();
+  }, [wantsMark, url?.page, page, courseId, material.id, highlight?.quote]); // eslint-disable-line react-hooks/exhaustive-deps
+  // A result is shown only for the page and quote it was made for (no reset needed when either changes).
+  const shown = wantsMark && hit?.page === page && hit.quote === highlight.quote ? hit : null;
+  useEffect(() => {
+    if (shown?.boxes) firstMark.current?.scrollIntoView?.({ block: "center", behavior: reducedMotion() ? "auto" : "smooth" });
+  }, [shown]);
+  // No page image: the extracted text shows the marked sentence instead.
+  useEffect(() => {
+    if (error && wantsMark) onShowText?.();
+  }, [error, wantsMark]); // eslint-disable-line react-hooks/exhaustive-deps
   function go(n) {
     setRegion(null);
     setDrag(null);
@@ -160,6 +200,23 @@ export default function DocumentCanvas({
         </div>
       </div>
       <div className="document-canvas">
+        {shown?.boxes && (
+          <p className="viewer-note" role="status">
+            {shown.exact
+              ? "Sorunun dayandığı cümle sayfada işaretlendi."
+              : "Alıntı birebir bulunamadı; en yakın cümle işaretlendi."}
+          </p>
+        )}
+        {shown?.missing && (
+          <p className="viewer-note" role="status">
+            Sorunun dayandığı cümle bu sayfanın görüntüsünde işaretlenemedi.{" "}
+            {onShowText && (
+              <button type="button" className="product-link" onClick={onShowText}>
+                Metinde işaretli göster →
+              </button>
+            )}
+          </p>
+        )}
         {loading && (
           <div role="status" className="render-skeleton">
             {label} görüntüsü hazırlanıyor…
@@ -204,6 +261,24 @@ export default function DocumentCanvas({
               alt={`${material.title} · ${label} ${page}`}
               style={{ width: "100%" }}
             />
+            {shown?.boxes && (
+              <div className="page-text-layer" aria-hidden="true">
+                {shown.boxes.map((b, i) => (
+                  <span
+                    key={i}
+                    ref={i === 0 ? firstMark : undefined}
+                    className="page-highlight"
+                    data-strength={shown.exact ? undefined : "partial"}
+                    style={{
+                      left: `${b.x * 100}%`,
+                      top: `${b.y * 100}%`,
+                      width: `${b.width * 100}%`,
+                      height: `${b.height * 100}%`,
+                    }}
+                  />
+                ))}
+              </div>
+            )}
             {box && (
               <span
                 className="image-region-box"

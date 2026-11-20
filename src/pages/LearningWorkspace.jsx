@@ -17,6 +17,7 @@ import ClaimSupport from "../components/ClaimSupport";
 import MaterialFind from "../components/MaterialFind";
 import WorkspaceStart from "../components/WorkspaceStart";
 import RichText from "../components/RichText";
+import MarkedText from "../components/MarkedText";
 import { lastMaterial, rememberMaterial } from "../lib/last-material";
 import { mb, useLimits } from "../lib/limits";
 import StepBoard from "../components/board/StepBoard";
@@ -266,9 +267,8 @@ export default function LearningWorkspace({ courseId }) {
     chatScroll = useRef(null);
   const initialSeek = useRef(false);
   const [tab, setTab] = useState("sayfa");
-  useEffect(() => {
-    setTab("sayfa");
-  }, [selected?.id]);
+  // The sentence a question rests on, opened from "İlgili kaynağı aç": marked on the page and in the text.
+  const [highlight, setHighlight] = useState(null);
   const input = useRef(null),
     player = useRef(null),
     activeRequest = useRef(null),
@@ -421,12 +421,16 @@ export default function LearningWorkspace({ courseId }) {
     return () => clearInterval(timer);
   }, [materials, refresh]);
   async function select(material, target) {
+    setHighlight(null);
     previewRequest.current?.abort();
     const abort = new AbortController();
     previewRequest.current = abort;
     if (selected?.id !== material.id) {
       setUrl(null);
       initialSeek.current = false;
+      // Set here, not in an effect on the selection: an effect could run after openEvidence switched to
+      // "metin" (when the preview arrives before React renders the selection) and undo it.
+      setTab("sayfa");
     }
     setSelected(material);
     rememberMaterial(courseId, material.id);
@@ -486,6 +490,12 @@ export default function LearningWorkspace({ courseId }) {
       const material = materials.find((m) => m.id === e.material_id);
       if (!material) throw new Error("Material missing");
       await select(material, actual);
+      if (e.quote) {
+        const loc = actual?.location || {};
+        setHighlight({ materialId: material.id, segmentId: actual?.id ?? e.id, quote: e.quote, page: loc.page || loc.slide || null });
+        // A material without a page view (text file, document) shows the marked sentence in its text.
+        if (!["PDF", "PPTX", "VIDEO"].includes(material.kind)) setTab("metin");
+      }
     } catch {
       setError(
         "Bu kaynak kaldırılmış veya güncellenmiş olabilir. Soruyu yeniden gönder.",
@@ -1421,6 +1431,7 @@ export default function LearningWorkspace({ courseId }) {
                 segments={segments}
                 onSource={chooseSegment}
                 onViewportChange={viewportChanged}
+                highlight={highlight?.materialId === selected.id && highlight.page ? { page: highlight.page, quote: highlight.quote } : null}
                 marks={tab === "sayfa" && selected && (() => {
                             const seen = new Set();
                             const marks = turns
@@ -1529,7 +1540,10 @@ export default function LearningWorkspace({ courseId }) {
                   }));
                 }}
               >
-                {source.text}
+                <MarkedText
+                  text={source.text}
+                  quote={highlight?.materialId === selected?.id && highlight.segmentId === source.id ? highlight.quote : null}
+                />
               </p>
               {selected?.kind !== "TXT" && (
                 <p className="viewer-note">

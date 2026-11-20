@@ -619,6 +619,31 @@ export class KnowledgeService {
       throw new ApiError("INTERNAL_ERROR", "Geçersiz sayfa görüntüsü.");
     return { bytes, count: r.page_count };
   }
+  /** The page's text layer: lines of words [text, x0, y0, x1, y1] in page fractions, used only to mark the
+   *  sentence a question rests on. A scanned page has none (empty list). */
+  async visualText(user: AuthUser, course: string, id: string, page: number) {
+    const m = (await this.materials(user, course)).find(
+      (x) => x.id === id && x.status === "READY" && ["PDF", "PPTX"].includes(x.kind),
+    );
+    if (!m?.row.storageKey) throw notFound("Original material");
+    const r = await this.call("POST", "/render/text", {
+      course_id: course,
+      material_id: id,
+      version: m.version,
+      storage_key: m.row.storageKey,
+      page,
+    });
+    if (r.material_id !== id || r.version !== m.version || r.page !== page || !Array.isArray(r.lines))
+      throw new ApiError("INTERNAL_ERROR", "Sayfa metin katmanı doğrulanamadı.");
+    const fraction = (v: unknown) => typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= 1;
+    const lines = (r.lines as unknown[]).slice(0, 2000).map((line) =>
+      (Array.isArray(line) ? line : []).filter(
+        (w): w is [string, number, number, number, number] =>
+          Array.isArray(w) && w.length === 5 && typeof w[0] === "string" && w[0].length <= 200 && w.slice(1).every(fraction),
+      ),
+    ).filter((line) => line.length);
+    return { material_id: id, page, lines };
+  }
   async file(user: AuthUser, course: string, materialId: string) {
     const m = (await this.materials(user, course)).find(
       (m) => m.id === materialId && m.id.startsWith("file_"),

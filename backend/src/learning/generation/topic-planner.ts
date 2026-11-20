@@ -257,10 +257,60 @@ export function rankParts(topic: string, parts: SourcePart[], retrieved: string[
     .map((x) => x.p);
 }
 
+/** A part's heading names the topic: every topic word is in one of its section headings (by root). */
+function headedBy(topicWords: string[], headingList: string[]): boolean {
+  return headingList.some((h) => {
+    const hw = words(h);
+    return topicWords.every((t) => hw.some((w) => sameRoot(t, w)));
+  });
+}
+
+/**
+ * The parts a chosen quiz topic may use, best first. Only parts that are about the topic, never "the rest of
+ * the search": a search always returns its top hits, so for "Veri tipleri" it also brings the inheritance
+ * page and the Java history page.
+ *  1. Parts holding the most topic words (by root), when that is at least half of them; a section whose
+ *     heading names the topic keeps its following parts of the same material up to the next heading.
+ *  2. No part holds enough of the words (a topic in other words or another language): the parts the search
+ *     returned, as before.
+ *  A topic without content words keeps the old ranking (search hits spread over the parts).
+ * Fewer parts than questions is fine: the plan then writes fewer questions and says so (capacityNote).
+ */
+export function quizParts(topic: string, parts: SourcePart[], retrieved: string[] = []): SourcePart[] {
+  const topicWords = contentWords(topic);
+  if (!topicWords.length) return rankParts(topic, parts, retrieved);
+  const scored = parts.map((p) => ({ p, ...score(topicWords, p) }));
+  const best = Math.max(0, ...scored.map((s) => s.found));
+  if (best === 0 || best / topicWords.length < 0.5) {
+    const hits = new Set(retrieved);
+    return rankParts(topic, parts, retrieved).filter((p) => hits.has(p.id));
+  }
+  const direct = scored
+    .filter((s) => s.found === best)
+    .sort((a, b) => b.hits - a.hits || a.p.order - b.p.order)
+    .map((s) => s.p);
+  const taken = new Set(direct.map((p) => p.key));
+  const sectionHeadings = poolHeadings(parts);
+  const byOrder = [...parts].sort((a, b) => a.order - b.order);
+  const followers: SourcePart[] = [];
+  for (const start of direct) {
+    if (!headedBy(topicWords, sectionHeadings.get(start.key) ?? [])) continue;
+    for (const p of byOrder) {
+      if (p.order <= start.order || p.material_id !== start.material_id) continue;
+      if ((sectionHeadings.get(p.key) ?? []).length) break; // the next section starts
+      if (!taken.has(p.key)) {
+        taken.add(p.key);
+        followers.push(p);
+      }
+    }
+  }
+  return [...direct, ...followers];
+}
+
 /** The quiz topic as written, bound to its parts; VALIDATION_ERROR when the pool has nothing on it. */
 export function quizTopic(topic: string, pool: SourcePool, retrieved: string[] = []): PlannedTopic {
   const label = String(topic).trim().slice(0, 200);
-  const parts = rankParts(label, pool.parts, retrieved);
+  const parts = quizParts(label, pool.parts, retrieved);
   if (!parts.length)
     throw new ApiError("VALIDATION_ERROR", pool.transcriptsLeftOut ? TOPIC_NOT_IN_DOCUMENTS : TOPIC_NOT_IN_SOURCES);
   return { label, parts };

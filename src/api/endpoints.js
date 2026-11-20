@@ -36,6 +36,8 @@ export const api = {
   quiz: (course,id) => request('GET',`/courses/${enc(course)}/quizzes/${enc(id)}`),
   answerQuiz: (course,id,response) => request('POST',`/courses/${enc(course)}/quizzes/${enc(id)}/answers`,{body:{response}}),
   knowledgeVisual: (course,id,page,signal) => request('GET',`/courses/${enc(course)}/knowledge/materials/${enc(id)}/visual/${page}`,{as:'blob',signal}),
+  // The rendered page's words with their boxes (lines of [text, x0, y0, x1, y1] in page fractions).
+  knowledgeVisualText: (course,id,page,signal) => request('GET',`/courses/${enc(course)}/knowledge/materials/${enc(id)}/visual/${page}/text`,{signal}),
   course: (courseId, signal) => request('GET', `/courses/${enc(courseId)}`, { signal }),
   knowledgeMaterials: (courseId, signal) => request('GET', `/courses/${enc(courseId)}/knowledge/materials`, { signal }),
   knowledgePreview: (courseId, id, signal) => request('GET', `/courses/${enc(courseId)}/knowledge/materials/${enc(id)}`, { signal }),

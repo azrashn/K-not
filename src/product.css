@@ -1652,6 +1652,64 @@
   align-items: center;
   margin-top: 8px;
 }
+/* Solving the exam on its page: the practice question card, then the way between questions. */
+.exam-solver {
+  margin-top: 20px;
+}
+/* Back / forward between the questions of an exam or a quiz set (QuestionNav). */
+.question-nav {
+  margin-top: 14px;
+  align-items: center;
+}
+.exam-summary {
+  margin-top: 20px;
+  padding: 20px 24px;
+  border: 1px solid var(--color-hair);
+  border-radius: 6px;
+  background: var(--color-sheet);
+  display: grid;
+  gap: 10px;
+}
+.exam-summary h3 {
+  font-family: var(--font-serif);
+  font-size: 22px;
+  letter-spacing: -0.03em;
+}
+.exam-summary h4 {
+  font-weight: 600;
+  margin-top: 6px;
+}
+.exam-summary-wrong {
+  display: grid;
+  gap: 6px;
+  padding-left: 0;
+  list-style: none;
+}
+.exam-summary-wrong .product-link {
+  text-align: left;
+}
+
+/* The sentence a question rests on, marked on the rendered page from its text layer (word boxes). */
+.page-text-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.page-highlight {
+  position: absolute;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--color-mark) 60%, transparent);
+  mix-blend-mode: multiply;
+}
+.page-highlight[data-strength='partial'] {
+  background: color-mix(in srgb, var(--color-mark-weak) 70%, transparent);
+  box-shadow: inset 0 -2px 0 var(--color-mark-line);
+}
+:root[data-theme='dark'] .page-highlight { mix-blend-mode: normal; opacity: 0.55; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .page-highlight { mix-blend-mode: normal; opacity: 0.55; }
+}
+
 .exam-key {
   margin-top: 28px;
   padding-top: 16px;

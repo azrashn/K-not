@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import RichText, { RichInline } from "../components/RichText";
+import QuizQuestionCard from "../components/QuizQuestionCard";
+import QuestionNav from "../components/QuestionNav";
+import { hashParam, rememberInHash } from "../lib/page-query";
 import { api } from "../api/endpoints";
 import { useResource } from "../hooks/useApi";
 import { useApp } from "../app/store";
@@ -36,8 +38,8 @@ export default function CourseQuiz({ courseId }) {
     // Short topics from the course sources (GET /quiz-topics); null until they arrive or when unavailable.
     [sourceTopics, setSourceTopics] = useState(null),
     [quiz, setQuiz] = useState(null),
-    [answer, setAnswer] = useState(""),
-    [result, setResult] = useState(null),
+    // Feedback per question id: going back in a set shows the answer given there.
+    [results, setResults] = useState({}),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
   const [scopeMode, setScopeMode] = useState("course"),
@@ -50,6 +52,12 @@ export default function CourseQuiz({ courseId }) {
     [elapsed, setElapsed] = useState(0);
   const abortRef = useRef(null);
   const consumed = useRef(false), requestEpoch = useRef(0);
+  // The open set lives in the address ("?set=<id>&q=<question id>", plus "course=" on the general /quiz
+  // page), so leaving the page and coming back reopens it at the same question. Not written before the
+  // address has been read, or the first render would erase it.
+  const addressRead = useRef(false);
+  const base = courseId ? `#/dersler/${courseId}/quiz` : "#/quiz";
+  const result = quiz ? results[quiz.id] ?? null : null;
   // Topic ideas: what was practised before, then short topics from the sources (headings, subject words).
   // Only when the server has none: the material titles, cut to their subject ("2 Dakikada Java   Java
   // Nedir, …" → "Java Nedir"). The topic field itself starts empty.
@@ -116,9 +124,14 @@ export default function CourseQuiz({ courseId }) {
   function openSetQuestion(i) {
     setSetIndex(i);
     setQuiz(setQuestions[i]);
-    setResult(null);
-    setAnswer("");
   }
+  useEffect(() => {
+    if (!addressRead.current) return;
+    rememberInHash(
+      base,
+      quizSet?.id ? { ...(courseId ? {} : { course }), set: quizSet.id, q: quiz?.id } : {},
+    );
+  }, [base, courseId, course, quizSet?.id, quiz?.id]);
   useEffect(() => {
     if (consumed.current) return;
     consumed.current = true;
@@ -131,12 +144,39 @@ export default function CourseQuiz({ courseId }) {
       setAdvancedOpen(true);
       setScopeNote(`Çalışma ekranındaki materyalden başlatıldı${intent.materialTitle ? `: ${intent.materialTitle}` : ""}. Kapsamı “Gelişmiş ayarlar” içinden değiştirebilirsin.`);
     }
-    if (intent?.quizId && courseId)
+    if (intent?.quizId && courseId) {
+      addressRead.current = true;
       api
         .quiz(courseId, intent.quizId)
         .then(setQuiz)
         .catch((e) => setError(videoErrorText(e)));
-  }, [takeIntent, courseId]);
+      return;
+    }
+    // Back on the page (or reloaded) with an open set in the address: the same set, at the same question.
+    const hash = window.location.hash;
+    const setId = hashParam(hash, "set");
+    const setCourseId = courseId || hashParam(hash, "course");
+    if (!setId || !setCourseId) {
+      addressRead.current = true;
+      return;
+    }
+    if (!courseId) setCourse(setCourseId);
+    const epoch = ++requestEpoch.current;
+    Promise.resolve(api.quizSet(setCourseId, setId))
+      .then((s) => {
+        addressRead.current = true;
+        if (epoch !== requestEpoch.current) return;
+        const questions = (s?.questions ?? []).filter((q) => q.available);
+        const i = Math.max(0, questions.findIndex((q) => q.id === hashParam(hash, "q")));
+        setQuizSet(s);
+        setSetIndex(i);
+        if (questions[i]) setQuiz(questions[i]);
+      })
+      .catch(() => {
+        addressRead.current = true;
+        rememberInHash(base, {}); // removed meanwhile: the page opens without it
+      });
+  }, [takeIntent, courseId]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!course) return;
     const abort = new AbortController();
@@ -198,8 +238,7 @@ export default function CourseQuiz({ courseId }) {
           setQuizSet(s);
           setSetIndex(i);
           setQuiz(questions[i]);
-          setResult(null);
-          setAnswer("");
+          setResults({});
           return;
         }
       }
@@ -207,8 +246,7 @@ export default function CourseQuiz({ courseId }) {
       if (epoch !== requestEpoch.current) return;
       setQuizSet(null);
       setQuiz(saved);
-      setResult(null);
-      setAnswer("");
+      setResults({});
     } catch (e) {
       if (epoch === requestEpoch.current) setError(videoErrorText(e));
     }
@@ -221,8 +259,7 @@ export default function CourseQuiz({ courseId }) {
     setQuizSet(null);
     setSetIndex(0);
     setError("");
-    setResult(null);
-    setAnswer("");
+    setResults({});
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
@@ -291,14 +328,13 @@ export default function CourseQuiz({ courseId }) {
                   requestEpoch.current += 1;
                   setCourse(e.target.value);
                   setBusy(false);
-                  setAnswer("");
                   setMaterials([]);
                   setHistory([]);
                   setExamHistory([]);
                   setSelectedMaterials([]);
                   setQuiz(null);
                   setQuizSet(null);
-                  setResult(null);
+                  setResults({});
                   setMaterial("");
                 }}
               >
@@ -546,139 +582,52 @@ export default function CourseQuiz({ courseId }) {
               alıştırman burada açılır.
             </EmptyState>
           ) : (
-            <article className="quiz-question product-panel">
-              {quizSet && setQuestions.length > 0 && (
-                <span className="source-badge">
-                  Soru {setIndex + 1} / {setRunning ? quizSet.requested : setQuestions.length}
-                </span>
-              )}{" "}
-              <span className="source-badge">{labels[quiz.kind]}</span>
-              {quiz.question_style === "SOURCE_COMPLETION" && <p className="product-note">Kaynakta geçen kavramı hatırlama sorusu</p>}
-              {quiz.objective && (
-                <p className="product-note">Öğrenme hedefi: {quiz.objective}</p>
-              )}
-              {quiz.quality_state === "LEGACY_NOT_REVIEWED" && (
-                <p className="product-note">
-                  Bu eski alıştırma yeni kalite kontrolünden geçmemiştir.
-                </p>
-              )}
-              <h2><RichInline text={quiz.question} /></h2>
-              {quiz.note && <p className="product-note mb-5">{quiz.note}</p>}
-              <form
-                className="product-form"
-                onSubmit={async (e) => {
-                  e.preventDefault();
-                  const epoch = ++requestEpoch.current;
-                  setBusy(true);
-                  try {
-                    const result = await api.answerQuiz(course, quiz.id, answer);
-                    if (epoch !== requestEpoch.current) return;
-                    setResult(result);
-                    const history = await api.quizzes(course);
-                    if (epoch === requestEpoch.current) setHistory(history);
-                  } catch (err) {
-                    if (epoch === requestEpoch.current) setError(videoErrorText(err));
-                  } finally {
-                    if (epoch === requestEpoch.current) setBusy(false);
-                  }
-                }}
-              >
-                {quiz.options?.length ? (
-                  <fieldset>
-                    <legend className="sr-only">Yanıt seçenekleri</legend>
-                    {quiz.options.map((option, i) => (
-                      <label
-                        key={i}
-                        className={`quiz-option ${answer === String(i) ? "selected" : ""}`}
-                      >
-                        <input
-                          type="radio"
-                          name="quiz-answer"
-                          value={i}
-                          checked={answer === String(i)}
-                          onChange={() => setAnswer(String(i))}
-                        />
-                        <span><RichInline text={option} /></span>
-                      </label>
-                    ))}
-                  </fieldset>
-                ) : (
-                  <label>
-                    Yanıtın
-                    <textarea
-                      value={answer}
-                      onChange={(e) => setAnswer(e.target.value)}
-                      maxLength={2000}
-                      rows={5}
-                    />
-                  </label>
-                )}
-                <Btn type="submit" disabled={busy || !answer.trim()}>
-                  {busy ? "Yanıt kaydediliyor…" : "Yanıtı değerlendir"}
-                </Btn>
-              </form>
-              {result && (
-                <section
-                  className="quiz-feedback"
-                  aria-label="Alıştırma geri bildirimi"
-                >
+            <>
+            <QuizQuestionCard
+              key={quiz.id}
+              courseId={course}
+              quiz={quiz}
+              result={result}
+              disabled={busy}
+              onResult={async (saved) => {
+                const epoch = requestEpoch.current;
+                const id = quiz.id;
+                setResults((rs) => ({ ...rs, [id]: saved }));
+                try {
+                  const next = await api.quizzes(course);
+                  if (epoch === requestEpoch.current) setHistory(next);
+                } catch {
+                  /* the history is refreshed again after the next answer */
+                }
+              }}
+              onRetry={() =>
+                setResults((rs) => {
+                  const next = { ...rs };
+                  delete next[quiz.id];
+                  return next;
+                })
+              }
+              onError={(err) => setError(videoErrorText(err))}
+              badge={
+                quizSet && setQuestions.length > 0 ? (
                   <span className="source-badge">
-                    {result.score === 1
-                      ? "Cevap anahtarıyla eşleşti"
-                      : result.score === 0
-                        ? "Kaynağı tekrar incele"
-                        : "Yanıtın kaydedildi"}
+                    Soru {setIndex + 1} / {setRunning ? quizSet.requested : setQuestions.length}
                   </span>
-                  <p>{result.message}</p>
-                  {result.objective && <p>Öğrenme hedefi: {result.objective}</p>}
-                  {result.explanation && result.explanation !== result.quote && <RichText text={result.explanation} />}
-                  {result.selected_option_feedback && (
-                    <p>Seçtiğin yanıt: {result.selected_option_feedback}</p>
-                  )}
-                  {result.expected && (
-                    <p>
-                      <strong>Kaynakla eşleştirilen yanıt:</strong>{" "}
-                      {result.expected}
-                    </p>
-                  )}
-                  <blockquote>{result.quote}</blockquote>
-                  <div className="product-actions">
-                    {quizSet && setIndex + 1 < setQuestions.length && (
-                      <Btn onClick={() => openSetQuestion(setIndex + 1)}>
-                        Sonraki soru →
-                      </Btn>
-                    )}
-                    {quizSet && setIndex + 1 >= setQuestions.length && setRunning && (
-                      <span className="product-note" role="status">Sonraki soru hazırlanıyor…</span>
-                    )}
-                    <Btn
-                      onClick={() =>
-                        navigate(`/dersler/${course}/ogrenme`, {
-                          openSource: result.source,
-                        })
-                      }
-                    >
-                      İlgili kaynağı aç →
-                    </Btn>
-                    <button
-                      className="product-link"
-                      onClick={() => {
-                        setResult(null);
-                        setAnswer("");
-                      }}
-                    >
-                      Tekrar dene
-                    </button>
-                    <button
-                      className="product-link"
-                      onClick={() => navigate("/analitik")}
-                    >
-                      Çalışmalarımı incele
-                    </button>
-                  </div>
-                </section>
-              )}
-            </article>
+                ) : null
+              }
+            />
+            {quizSet && setQuestions.length > 0 && (
+              <QuestionNav
+                at={setIndex}
+                total={setQuestions.length}
+                onGo={openSetQuestion}
+                prevLabel="← Önceki soru"
+                nextLabel="Sonraki soru →"
+                label="Setteki sorular arasında gezin"
+                last={setRunning ? <span className="product-note" role="status">Sonraki soru hazırlanıyor…</span> : null}
+              />
+            )}
+            </>
           )}
         </section>
       </div>
