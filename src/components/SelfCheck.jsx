@@ -180,7 +180,15 @@ export default function SelfCheck({ courseId, onOpenSource }) {
                       </span>
                       <span className="self-check-claim">{c.text}</span>
                     </div>
-                    {c.translated && (
+                    {c.translation?.method === "model" && c.translation.text && (
+                      <p className="self-check-note">
+                        Çeviri üzerinden karşılaştırıldı ({c.translation.to === "en" ? "İngilizce" : "Türkçe"}): “{c.translation.text}”
+                      </p>
+                    )}
+                    {c.translation?.method === "dictionary" && (
+                      <p className="self-check-note">Kaynak başka dilde; terimler sözlükle eşlenerek karşılaştırıldı.</p>
+                    )}
+                    {c.translated && !c.translation && (
                       <p className="self-check-note">
                         Metin ile kaynak farklı dillerde; yalnızca teknik terimler ({c.matched_terms.join(", ")}) karşılaştırıldı.
                       </p>

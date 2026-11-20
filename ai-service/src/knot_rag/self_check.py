@@ -21,6 +21,7 @@ from pydantic import Field
 from knot_rag.claim_check import LIGHT_WORDS, MIN_TERMS, _sentences, check_claim
 from knot_rag.text import NEGATION_WORDS, STOPWORDS, content_tokens, fold, has_negation, normalize_text, numbers, stem, stem_in, stem_set
 from knot_rag.self_check_norm import canon, repair_ocr
+from knot_rag.self_check_translate import dictionary_translate, language_of, model_translate
 from knot_rag.unified import Manifest, Search, UnifiedIndex
 
 METHOD = "self-check-lexical-v1"
@@ -449,7 +450,38 @@ def _remember(key: tuple, value: dict) -> None:
             _cache.popitem(last=False)
 
 
-def self_check(index: UnifiedIndex, body: SelfCheck) -> dict:
+_RANK = {"IN_SOURCE": 4, "PARTIAL": 3, "CONFLICTS": 2, "UNCHECKED": 1, "NOT_IN_SOURCE": 0}
+_materials_language_cache: dict[tuple, str | None] = {}
+
+
+def materials_language(index: UnifiedIndex, body: SelfCheck) -> str | None:
+    """'tr' or 'en': the language most of the selected materials' text is written in (None when unknown).
+    Sampled from the index, so it also holds when a claim shares no word with the sources."""
+    key = (body.course_id, tuple(sorted((m.id, m.version) for m in body.materials)))
+    if key in _materials_language_cache:
+        return _materials_language_cache[key]
+    language = None
+    try:
+        with index.lock:
+            rows = index.collection().get(
+                where={"$and": [{"course_id": body.course_id},
+                                {"material_id": {"$in": [m.id for m in body.materials]}},
+                                {"marker": False}]},
+                limit=60,
+            )
+        texts = [t for t in rows.get("documents", []) if isinstance(t, str) and len(t) > 80]
+        if texts:
+            turkish = sum(1 for t in texts if language_of(t) == "tr")
+            language = "tr" if turkish * 2 > len(texts) else "en"
+    except Exception:  # the sample only decides whether to translate; no sample means no translation
+        language = None
+    if len(_materials_language_cache) > 200:
+        _materials_language_cache.clear()
+    _materials_language_cache[key] = language
+    return language
+
+
+def self_check(index: UnifiedIndex, body: SelfCheck, translate=model_translate) -> dict:
     claims, skipped = split_claims(body.text)
     window = claims[body.offset:body.offset + MAX_CLAIMS]
     remaining = max(0, len(claims) - body.offset - len(window))
@@ -472,6 +504,40 @@ def self_check(index: UnifiedIndex, body: SelfCheck) -> dict:
             evidence_cache[text] = found.get("evidence", [])
         return evidence_cache[text]
 
+    pending = [(c, split_compound(c)) for c in claims if _cached(_cache_key(body, c)) is None]
+    source_language = materials_language(index, body) if pending else None
+    # Statements written in another language than the materials are compared through a translation.
+    cross = sorted({p for _, parts in pending for p in parts if source_language and language_of(p) != source_language})
+    model_translations: dict[str, str] = {}
+    if cross:
+        for text, translated in zip(cross, translate(cross, source_language)):
+            if translated:
+                model_translations[text] = translated
+
+    def check_statement(text: str) -> dict:
+        first = {"text": text, "translated": False, "matched_terms": [], "translation": None, **classify(text, evidence_for(text))}
+        if not source_language or language_of(text) == source_language:
+            return first
+        best, best_key = first, (_RANK[first["label"]], 0)  # ties: model translation > dictionary > as written
+        variants = []
+        dictionary = dictionary_translate(text, source_language)
+        if dictionary:
+            variants.append((dictionary, "dictionary"))
+        if text in model_translations:
+            variants.append((model_translations[text], "model"))
+        for variant, method in variants:
+            result = classify(variant, evidence_for(variant))
+            conflict = result.get("conflict")
+            if result["label"] == "CONFLICTS" and method == "dictionary" and (not conflict or conflict["kind"] != "NUMBER"):
+                # a word-by-word translation can lose a negation: only a number difference is trusted
+                continue
+            candidate = {**first, **result, "text": text, "translated": True, "matched_terms": [],
+                         "translation": {"text": variant if method == "model" else None, "method": method, "to": source_language}}
+            key = (_RANK[candidate["label"]], 2 if method == "model" else 1)
+            if key > best_key:
+                best, best_key = candidate, key
+        return best
+
     results = []
     for claim in claims:
         key = _cache_key(body, claim)
@@ -480,12 +546,16 @@ def self_check(index: UnifiedIndex, body: SelfCheck) -> dict:
             results.append(hit)
             continue
         parts = split_compound(claim)
-        base = {"text": claim, "translated": False, "matched_terms": [], "parts": []}
+        base = {"text": claim, "translated": False, "matched_terms": [], "translation": None, "parts": []}
         if len(parts) == 1:
-            result = {**base, **classify(claim, evidence_for(claim))}
+            result = {**base, **check_statement(claim)}
         else:
-            subs = [{"text": p, **classify(p, evidence_for(p))} for p in parts]
+            subs = [check_statement(p) for p in parts]
             result = {**base, **_combine(claim, subs)}
+            used = [x["translation"] for x in subs if x.get("translation")]
+            result["translation"] = ({"text": "; ".join(t["text"] for t in used if t["text"]) or None,
+                                      "method": "model" if any(t["method"] == "model" for t in used) else "dictionary",
+                                      "to": used[0]["to"]} if used else None)
         _remember(key, result)
         results.append(result)
     counts = {label: sum(1 for r in results if r["label"] == label)

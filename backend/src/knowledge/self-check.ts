@@ -43,6 +43,11 @@ function cleanOne(c: any, allowed: Allowed, withParts: boolean): any {
     translated: c.label === "IN_SOURCE" && c.translated === true,
     matched_terms: c.label === "IN_SOURCE" && c.translated === true ? terms(c.matched_terms) : [],
     unmatched_numbers: terms(c.unmatched_numbers),
+    // How a claim written in another language than the materials was compared (shown to the student).
+    translation:
+      c.translation && ["model", "dictionary"].includes(c.translation.method) && ["tr", "en"].includes(c.translation.to)
+        ? { text: typeof c.translation.text === "string" ? c.translation.text.slice(0, 400) : null, method: c.translation.method as string, to: c.translation.to as string }
+        : null,
     conflict:
       c.label === "CONFLICTS" && c.conflict && ["NUMBER", "NEGATION"].includes(c.conflict.kind)
         ? {
@@ -63,7 +68,7 @@ function cleanOne(c: any, allowed: Allowed, withParts: boolean): any {
   };
   // A claim that ended up without a source cannot be "found" or "conflicting": say only what is known.
   return !one.sources.length && ["IN_SOURCE", "CONFLICTS", "PARTIAL", "UNCHECKED"].includes(one.label)
-    ? { ...one, label: "NOT_IN_SOURCE", conflict: null, missing_terms: [], unmatched_numbers: [], translated: false, matched_terms: [], parts: one.parts.length > 1 ? one.parts : [] }
+    ? { ...one, label: "NOT_IN_SOURCE", conflict: null, missing_terms: [], unmatched_numbers: [], translated: false, matched_terms: [], translation: null, parts: one.parts.length > 1 ? one.parts : [] }
     : one;
 }
 

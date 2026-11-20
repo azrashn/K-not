@@ -294,3 +294,63 @@ def test_remaining_claims_and_cache():
     assert 0 < len(calls) <= 2
     # another version of the material is another cache entry
     e.materials[0] = Material(id=e.materials[0].id, kind="PDF", title="t", version="b" * 64)
+
+
+EN_NET = (
+    "TCP slow start begins with cwnd equal to 1 MSS and doubles cwnd every RTT until the first loss event happens in the connection. "
+    "UDP is a connectionless transport protocol that gives no delivery guarantee. TCP is a reliable connection-oriented protocol that uses a three-way handshake."
+)
+
+
+def _cross_env():
+    e = Env()
+    e.add("pdf_en", [(EN_NET, 127)])
+    return e
+
+
+def _fake_model(mapping):
+    def translate(texts, target):
+        return [mapping.get(t) for t in texts]
+    return translate
+
+
+def test_turkish_claim_against_english_material_through_the_model():
+    e = _cross_env()
+    claim = "TCP yavaş başlangıçta cwnd değerini 1 MSS ile başlatır ve her RTT sürede ikiye katlar."
+    mapping = {"TCP yavaş başlangıçta cwnd değerini 1 MSS ile başlatır": "TCP slow start begins with cwnd equal to 1 MSS",
+               "her RTT sürede ikiye katlar": "doubles cwnd every RTT"}
+    r = self_check(e.index, SelfCheck(course_id=COURSE, materials=e.materials, text=claim), translate=_fake_model(mapping))
+    c = r["claims"][0]
+    assert c["label"] == "IN_SOURCE" and c["translated"] is True
+    assert c["translation"] == {"text": "TCP slow start begins with cwnd equal to 1 MSS; doubles cwnd every RTT", "method": "model", "to": "en"}
+    assert c["sources"][0]["location"] == {"page": 127}
+
+
+def test_cross_language_number_conflict_is_found_and_the_number_comes_from_the_student():
+    e = _cross_env()
+    claim = "TCP yavaş başlangıçta cwnd değerini 10 MSS ile başlatır ve her RTT sürede ikiye katlar."
+    mapping = {"TCP yavaş başlangıçta cwnd değerini 10 MSS ile başlatır": "TCP slow start begins with cwnd equal to 10 MSS",
+               "her RTT sürede ikiye katlar": "doubles cwnd every RTT"}
+    c = only(self_check(e.index, SelfCheck(course_id=COURSE, materials=e.materials, text=claim), translate=_fake_model(mapping)))
+    assert c["label"] == "CONFLICTS" and c["conflict"] == {"kind": "NUMBER", "claim": ["10"], "source": ["1"]}
+
+
+def test_dictionary_alone_works_without_the_model_and_never_invents_a_match():
+    e = _cross_env()
+    none = _fake_model({})
+    ok = only(self_check(e.index, SelfCheck(course_id=COURSE, materials=e.materials,
+              text="UDP bağlantısız bir taşıma protokolüdür ve teslim garantisi sağlamaz."), translate=none))
+    assert ok["label"] in ("IN_SOURCE", "PARTIAL", "UNCHECKED", "NOT_IN_SOURCE")  # whatever it says, it must not conflict
+    assert ok["label"] != "CONFLICTS"
+    fake = only(self_check(e.index, SelfCheck(course_id=COURSE, materials=e.materials,
+                text="TCP her segmenti rastgele bir anahtarla şifreleme yapar ve bağlantı kurar."), translate=none))
+    assert fake["label"] in ("NOT_IN_SOURCE", "UNCHECKED")  # never "in source"
+
+
+def test_same_language_claims_are_never_translated():
+    e = _cross_env()
+    called = []
+    c = only(self_check(e.index, SelfCheck(course_id=COURSE, materials=e.materials,
+             text="UDP is a connectionless transport protocol that gives no delivery guarantee."),
+             translate=lambda texts, target: called.append(texts) or [None] * len(texts)))
+    assert c["label"] == "IN_SOURCE" and called == [] and c["translation"] is None

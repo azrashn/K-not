@@ -184,3 +184,18 @@ test("the rest of a long text is checked on request and the earlier results stay
   expect(screen.getByText(/2 iddia:/).closest("p")).toHaveTextContent("2 iddia: 1 kaynakta var, 1 kaynakta yok");
   expect(screen.queryByRole("button", { name: /Kalan/ })).toBeNull();
 });
+
+test("a claim compared through a translation shows the translation, a dictionary match says so", async () => {
+  const user = userEvent.setup();
+  const row = (translation) => ({ text: "TCP el sıkışma kullanır", label: "IN_SOURCE", translated: true, matched_terms: [], translation, sources: [source()], missing_terms: [], unmatched_numbers: [], conflict: null, parts: [] });
+  api.selfCheck.mockResolvedValue({
+    ...result,
+    claims: [row({ text: "TCP uses a handshake", method: "model", to: "en" }), row({ text: null, method: "dictionary", to: "en" })],
+    summary: { IN_SOURCE: 2, NOT_IN_SOURCE: 0, CONFLICTS: 0, PARTIAL: 0, UNCHECKED: 0, total: 2 },
+  });
+  render(<SelfCheck courseId="course" onOpenSource={vi.fn()} />);
+  await user.type(screen.getByLabelText("Konuyu kendi cümlelerinle yaz"), "x");
+  await user.click(screen.getByRole("button", { name: "Kontrol et" }));
+  expect(await screen.findByText("Çeviri üzerinden karşılaştırıldı (İngilizce): “TCP uses a handshake”")).toBeInTheDocument();
+  expect(screen.getByText("Kaynak başka dilde; terimler sözlükle eşlenerek karşılaştırıldı.")).toBeInTheDocument();
+});
