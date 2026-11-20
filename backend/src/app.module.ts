@@ -29,6 +29,8 @@ import { CourseLifecycleService } from './courses/course-lifecycle.service';
 import { LearningService } from './learning/learning.service';
 import { LearningController } from './learning/learning.controller';
 import { ExamsController } from './learning/exams.controller';
+import { CoverageController } from './kapsam/coverage.controller';
+import { CoverageService } from './kapsam/coverage.service';
 import { LimitsController } from './common/limits.controller';
 import { ExamsService } from './learning/exams.service';
 import { QuizGenerator } from './learning/quiz-generator';
@@ -65,7 +67,7 @@ export class AppModule implements NestModule {
     return {
       module: AppModule,
       imports: [CoreModule.forRoot(config), DocumentsModule, VideosModule, TtsModule],
-      controllers: [HealthController, AuthController, CoursesController, AnswersController, InternalCallbacksController, KnowledgeController,LearningController,ExamsController,LimitsController],
+      controllers: [HealthController, AuthController, CoursesController, AnswersController, InternalCallbacksController, KnowledgeController,LearningController,ExamsController,LimitsController,CoverageController],
       providers: [
         RagService,
         KnowledgeService,
@@ -73,6 +75,7 @@ export class AppModule implements NestModule {
         QuizGenerator,
         LearningService,
         ExamsService,
+        CoverageService,
         UploadAccessGuard,
         SchedulerService,
         { provide: APP_GUARD, useClass: JwtAuthGuard },
