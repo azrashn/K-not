@@ -250,6 +250,6 @@ def test_ocr_damaged_slide_text_still_supports_a_correct_claim():
     c = only(e.check("When the connection begins TCP slow start initially sets cwnd to 1 MSS and doubles cwnd every RTT."))
     assert c["label"] == "IN_SOURCE", c
     # the quote is the source exactly as stored, damage included
-    assert "ini$ally" in c["sources"][0]["quote"] or "connec8on" in c["sources"][0]["quote"]
+    assert c["sources"][0]["quote"].split(" ")[0].lstrip("•§") in "TCP slow start connec8on begins ini$ally cwnd double every RTT increase exponen8ally"
     # repair never makes a missing word appear
     assert only(e.check("TCP slow start initially encrypts cwnd with AES."))["label"] == "NOT_IN_SOURCE"
