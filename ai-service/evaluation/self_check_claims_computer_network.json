@@ -31,6 +31,8 @@
   {"kind": "conflict", "text": "TCP yavaş başlangıçta cwnd değerini 10 MSS ile başlatır."},
   {"kind": "conflict", "text": "TCP is connectionless."},
   {"kind": "conflict", "text": "TCP bağlantısızdır."},
+  {"kind": "conflict", "text": "TCP baglantisizdir ve UDP baglanti odaklidir."},
+  {"kind": "conflict", "text": "TCP bağlantısızdır ve UDP bağlantı odaklıdır."},
   {"kind": "conflict", "text": "The server sends a SYN to the client to open the connection."},
   {"kind": "conflict", "text": "Hızlı yeniden iletim beş tekrarlı ACK sonrasında yapılır."},
   {"kind": "conflict", "text": "Sunucu istemciye SYN gönderir, istemci SYNACK ile yanıt verir."}

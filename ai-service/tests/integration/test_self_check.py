@@ -508,3 +508,20 @@ def test_direction_is_also_read_from_a_video_transcript():
     assert only(e.check("The client sends a SYN segment to the server."))["label"] == "IN_SOURCE"
     swapped = only(e.check("The server sends a SYN segment to the client."))
     assert swapped["label"] in ("PARTIAL", "CONFLICTS") and swapped["label"] != "IN_SOURCE"
+
+
+def test_short_halves_of_a_turkish_sentence_are_translated_like_the_whole():
+    e = Env()
+    e.add("pdf_ct", [("Chapter 3: roadmap\n§Connectionless transport: UDP\n§Connection-oriented transport: TCP", 81)])
+    claim = "TCP baglantisizdir ve UDP baglanti odaklidir."
+    seen = []
+
+    def translate(texts, target):
+        seen.extend(texts)
+        table = {"TCP baglantisizdir ve UDP baglanti odaklidir": "TCP is connectionless and UDP is connection-oriented",
+                 "TCP baglantisizdir": "TCP is connectionless", "UDP baglanti odaklidir": "UDP is connection-oriented"}
+        return [table.get(t) for t in texts]
+
+    c = only(self_check(e.index, SelfCheck(course_id=COURSE, materials=e.materials, text=claim), translate=translate))
+    assert "TCP baglantisizdir" in seen and "UDP baglanti odaklidir" in seen  # the halves are sent for translation too
+    assert c["label"] == "CONFLICTS", c

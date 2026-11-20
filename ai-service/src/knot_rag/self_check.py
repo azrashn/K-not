@@ -694,9 +694,19 @@ def self_check(index: UnifiedIndex, body: SelfCheck, translate=model_translate, 
     trace: list[dict] = []
     pending = [(c, [c] + [x for x in split_compound(c) + split_compound(c, loose=True) if x != c])
                for c in claims if _cached(_cache_key(body, c)) is None]
+    # A half of a sentence takes the language of the whole sentence: "TCP baglantisizdir" alone looks English.
+    statement_language: dict[str, str] = {}
+    for c, group in pending:
+        whole_language = language_of(c)
+        for x in group:
+            statement_language.setdefault(x, whole_language)
+
+    def lang(text: str) -> str:
+        return statement_language.get(text) or language_of(text)
+
     source_language = materials_language(index, body) if pending else None
     # Statements written in another language than the materials are compared through a translation.
-    cross = sorted({p for _, parts in pending for p in parts if source_language and language_of(p) != source_language})
+    cross = sorted({p for _, parts in pending for p in parts if source_language and lang(p) != source_language})
     course_pairs = glossary.course_pairs(body.course_id, [m.id for m in body.materials]) if cross else []
     model_translations: dict[str, str] = {}
     if cross:
@@ -705,10 +715,10 @@ def self_check(index: UnifiedIndex, body: SelfCheck, translate=model_translate, 
                 model_translations[text] = translated
 
     def check_statement(text: str, short_ok: bool = False, context: str = "") -> dict:
-        first = {"text": text, "translated": False, "matched_terms": [], "translation": None, **classify(text, evidence_for(text, context), short_ok, same_language=bool(source_language) and language_of(text) == source_language)}
+        first = {"text": text, "translated": False, "matched_terms": [], "translation": None, **classify(text, evidence_for(text, context), short_ok, same_language=bool(source_language) and lang(text) == source_language)}
         step = {"statement": text, "source_language": source_language, "as_written": _brief(first), "variants": []}
         trace.append(step)
-        if not source_language or language_of(text) == source_language:
+        if not source_language or lang(text) == source_language:
             return first
         best, best_key = first, (_RANK[first["label"]], 0)  # ties: model translation > dictionary > as written
         variants = []
