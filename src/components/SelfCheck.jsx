@@ -266,7 +266,10 @@ export default function SelfCheck({ courseId, onOpenSource }) {
                       </p>
                     )}
                     {c.label === "UNCHECKED" && (
-                      <p className="self-check-note">Metin ile kaynak farklı dillerde; sözcükler karşılaştırılamadı.</p>
+                      <>
+                        <p className="self-check-note">Bu cümle materyallerinle karşılaştırılamadı (kaynak başka dilde ya da çeviri yapılamadı). Yanlış demek değil.</p>
+                        <WebCheck courseId={courseId} claim={c.text} />
+                      </>
                     )}
                     {c.partly_unchecked && (
                       <p className="self-check-note">Karşılaştırılabilen kısımlar kaynakta var; bir kısmı karşılaştırılamadı.</p>

@@ -60,3 +60,18 @@ test("web search failure keeps the button so it can be tried again", async () =>
   expect(await screen.findByRole("alert")).toHaveTextContent("Web araması şu anda yapılamadı.");
   expect(screen.getByRole("button", { name: "Web'de ara" })).toBeInTheDocument();
 });
+
+test("the web button is also offered on a row that could not be compared, but not on found or conflicting rows", async () => {
+  const user = userEvent.setup();
+  api.selfCheck.mockResolvedValue({
+    ...result,
+    claims: [row("Karşılaştırılamayan cümle burada", "UNCHECKED"), row("Bulunan cümle burada", "IN_SOURCE"), row("Kısmen cümle burada", "PARTIAL"), row("Çelişen cümle burada", "CONFLICTS")],
+    summary: { IN_SOURCE: 1, NOT_IN_SOURCE: 0, CONFLICTS: 1, PARTIAL: 1, UNCHECKED: 1, total: 4 },
+  });
+  render(<SelfCheck courseId="course" onOpenSource={vi.fn()} />);
+  await user.type(screen.getByLabelText("Konuyu kendi cümlelerinle yaz"), "x");
+  await user.click(screen.getByRole("button", { name: "Kontrol et" }));
+  const buttons = await screen.findAllByRole("button", { name: "Web'de ara" });
+  expect(buttons).toHaveLength(1);
+  expect(screen.getByText(/Yanlış demek değil\./)).toBeInTheDocument();
+});
