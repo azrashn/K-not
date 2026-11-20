@@ -100,14 +100,32 @@ def _en_to_tr() -> list[tuple[re.Pattern, str]]:
 
 
 _RULES = {"en": _tr_to_en(), "tr": _en_to_tr()}
+_extra_cache: dict[tuple, dict[str, list]] = {}
 
 
-def dictionary_translate(text: str, target: str) -> str | None:
+def _extra_rules(pairs: tuple[tuple[str, str], ...]) -> dict[str, list]:
+    """Rules of the course glossary ((tr, en) pairs): tried before the built-in ones."""
+    if pairs not in _extra_cache:
+        if len(_extra_cache) > 50:
+            _extra_cache.clear()
+        to_en, to_tr = [], []
+        for tr, en in sorted(pairs, key=lambda p: -len(p[0])):
+            tw, ew = _fold(tr).split(), en.lower().split()
+            if not tw or not ew:
+                continue
+            to_en.append((re.compile(r"(?<![a-z0-9])" + r"\s+".join(re.escape(w) + r"[a-z]*" for w in tw)), en.lower()))
+            to_tr.append((re.compile(r"(?<![a-z0-9])" + r"\s+".join(re.escape(w) + r"(?:s|es|ed|ing)?" for w in ew) + r"(?![a-z0-9])"), tr.lower()))
+        _extra_cache[pairs] = {"en": to_en, "tr": to_tr}
+    return _extra_cache[pairs]
+
+
+def dictionary_translate(text: str, target: str, extra_pairs=()) -> str | None:
     """Glossary terms of `text` replaced by the other language; unknown words stay. None when no term was
-    found (there is nothing to compare differently)."""
+    found (there is nothing to compare differently). `extra_pairs`: the course glossary, tried first."""
     out = _fold(text) if target == "en" else text.lower()
     hits = 0
-    for pattern, replacement in _RULES[target]:
+    rules = (_extra_rules(tuple(extra_pairs))[target] if extra_pairs else []) + _RULES[target]
+    for pattern, replacement in rules:
         out, n = pattern.subn(" " + replacement + " ", out)
         hits += n
     return re.sub(r"\s+", " ", out).strip() if hits else None

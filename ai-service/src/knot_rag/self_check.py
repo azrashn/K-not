@@ -20,6 +20,7 @@ from pydantic import Field
 
 from knot_rag.claim_check import LIGHT_WORDS, MIN_TERMS, _sentences, check_claim
 from knot_rag.text import NEGATION_WORDS, STOPWORDS, content_tokens, fold, has_negation, normalize_text, numbers, stem, stem_in, stem_set
+from knot_rag import self_check_glossary as glossary
 from knot_rag.self_check_judge import judge, judge_enabled
 from knot_rag.self_check_rules import RULE_KINDS, rule_conflict
 from knot_rag.self_check_norm import canon, repair_ocr
@@ -579,6 +580,7 @@ def self_check(index: UnifiedIndex, body: SelfCheck, translate=model_translate, 
     source_language = materials_language(index, body) if pending else None
     # Statements written in another language than the materials are compared through a translation.
     cross = sorted({p for _, parts in pending for p in parts if source_language and language_of(p) != source_language})
+    course_pairs = glossary.course_pairs(body.course_id, [m.id for m in body.materials]) if cross else []
     model_translations: dict[str, str] = {}
     if cross:
         for text, translated in zip(cross, translate(cross, source_language)):
@@ -591,7 +593,7 @@ def self_check(index: UnifiedIndex, body: SelfCheck, translate=model_translate, 
             return first
         best, best_key = first, (_RANK[first["label"]], 0)  # ties: model translation > dictionary > as written
         variants = []
-        dictionary = dictionary_translate(text, source_language)
+        dictionary = dictionary_translate(text, source_language, course_pairs)
         if dictionary:
             variants.append((dictionary, "dictionary"))
         if text in model_translations:

@@ -389,10 +389,33 @@ class UnifiedIndex:
                     }
                 ],
             )
+            self._learn_glossary(body)
             return {"indexed": len(entries), "version": body.material.version}
+
+    def _learn_glossary(self, body: Projection) -> None:
+        """Self-check glossary of the course follows its materials. Best-effort: never fails indexing."""
+        if not os.environ.get("STORAGE_ROOT"):
+            return
+        try:
+            from knot_rag import self_check_glossary as glossary
+
+            if glossary.update_material(
+                body.course_id, body.material.id, body.material.version, [s.text for s in body.segments]
+            ):
+                glossary.fill_in_background(body.course_id, body.material.id)
+        except Exception:
+            pass
 
     def delete(self, course_id: str, material_id: str):
         from knot_rag.visuals import purge
+
+        if os.environ.get("STORAGE_ROOT"):
+            try:
+                from knot_rag.self_check_glossary import remove_material
+
+                remove_material(course_id, material_id)
+            except Exception:
+                pass
 
         if os.environ.get("STORAGE_ROOT"):
             purge(course_id, material_id)

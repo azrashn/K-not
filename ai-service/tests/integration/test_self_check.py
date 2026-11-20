@@ -411,3 +411,15 @@ def test_meaning_warning_never_changes_the_label():
     assert seen and "passage" not in str(c["sources"])  # the passage was only for the model
     r2 = self_check(e.index, SelfCheck(course_id=COURSE, materials=e.materials, text=text + " "), judge_fn=faker)
     assert only(r2)["meaning_warning"] is not None  # served from cache: same claim, same result
+
+
+def test_glossary_follows_indexing_and_deletion(tmp_path, monkeypatch):
+    from knot_rag import self_check_glossary as g
+
+    monkeypatch.setenv("STORAGE_ROOT", str(tmp_path))
+    monkeypatch.setenv("SELF_CHECK_TRANSLATE", "off")  # no model in tests
+    e = Env()
+    e.add("pdf_g", [("Ağ geçidi (gateway) iki ağı birbirine bağlayan cihazdır. Çerçeve (frame) veri bağı katmanının birimidir.", 2)])
+    assert any(p[1] == "gateway" for p in g.course_pairs(COURSE))
+    e.index.delete(COURSE, "pdf_g")
+    assert g.course_pairs(COURSE) == []
