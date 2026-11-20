@@ -16,7 +16,7 @@ import httpx
 
 from knot_rag.self_check import classify
 from knot_rag.self_check_translate import language_of
-from knot_rag.text import STOPWORDS, content_tokens, fold
+from knot_rag.text import STOPWORDS, content_tokens, fold, stem
 
 TIMEOUT = 8.0
 MAX_HITS = 3
@@ -48,6 +48,26 @@ def _page_url(lang: str, title: str) -> str:
     return f"https://{lang}.wikipedia.org/wiki/" + title.replace(" ", "_")
 
 
+CHUNK_CHARS = 1500
+CHUNKS_PER_PAGE = 5
+
+
+def _best_chunks(text: str, wanted: set[str]) -> list[str]:
+    """The article is split into ~1500 character chunks (at paragraph ends) and the few that share the most
+    words with the claim are kept: a whole article is far too long to compare, and only the part about the
+    claim matters."""
+    chunks, current = [], ""
+    for paragraph in text.splitlines():
+        if len(current) + len(paragraph) > CHUNK_CHARS and current:
+            chunks.append(current)
+            current = ""
+        current += paragraph + chr(10)
+    if current.strip():
+        chunks.append(current)
+    scored = sorted(chunks, key=lambda c: -len(wanted & {stem(t) for t in content_tokens(c)}))
+    return scored[:CHUNKS_PER_PAGE]
+
+
 def web_check(claim: str, fetch=None) -> dict:
     """{'status': FOUND | NOT_FOUND | UNAVAILABLE, 'sources': [{title, url, quote, site}]}"""
     if not web_enabled():
@@ -63,22 +83,25 @@ def web_check(claim: str, fetch=None) -> dict:
         titles = [h["title"] for h in found.get("query", {}).get("search", []) if isinstance(h.get("title"), str)][:MAX_HITS]
         if not titles:
             return {"status": "NOT_FOUND", "sources": []}
-        # One request per page: the API caps extracts at ~1200 characters when several pages are asked at once.
+        # One request per page, WITHOUT exchars: the API caps `exchars` at 1200 (the lead paragraph only),
+        # the full article comes when it is left out.
         pages = {}
         for n, title in enumerate(titles[:2]):
             reply = get(f"https://{lang}.wikipedia.org/w/api.php",
-                        {"action": "query", "prop": "extracts", "explaintext": 1, "exchars": 12000,
+                        {"action": "query", "prop": "extracts", "explaintext": 1,
                          "titles": title, "format": "json", "redirects": 1})
             for key, page in (reply.get("query", {}).get("pages", {}) or {}).items():
                 pages[f"{n}-{key}"] = page
     except (httpx.HTTPError, ValueError, KeyError, TypeError):
         return {"status": "UNAVAILABLE", "sources": []}
     evidence = []
+    wanted = {stem(t) for t in content_tokens(claim)}
     for page in pages.values():
         text, title = page.get("extract"), page.get("title")
         if isinstance(text, str) and isinstance(title, str) and text.strip():
-            evidence.append({"id": hashlib.sha256((lang + title).encode()).hexdigest(), "material_id": "web", "title": title,
-                             "kind": "WEB", "location": {"page": 1}, "text": text})
+            for n, chunk in enumerate(_best_chunks(text, wanted)):
+                evidence.append({"id": hashlib.sha256((lang + title + str(n)).encode()).hexdigest(), "material_id": "web",
+                                 "title": title, "kind": "WEB", "location": {"page": 1}, "text": chunk})
     if not evidence:
         return {"status": "NOT_FOUND", "sources": []}
     result = classify(claim, evidence)

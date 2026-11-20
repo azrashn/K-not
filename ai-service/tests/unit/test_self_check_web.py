@@ -58,3 +58,17 @@ def test_the_client_identifies_itself_as_a_bot_without_personal_data():
 
     assert "compatible" in USER_AGENT and "Knot" in USER_AGENT
     assert "@" not in USER_AGENT  # no e-mail, no names
+
+
+def test_the_relevant_part_of_a_long_article_is_found_not_only_its_lead():
+    lead = "Transport Layer Security is a cryptographic protocol. " * 30
+    filler = ("The history of the protocol covers many versions and many working groups over the years. " * 20 + "\n") * 8
+    deep = "After the handshake both sides encrypt the connection using a symmetric session key derived from the shared secret.\n"
+    long_text = lead + "\n" + filler + deep + filler
+    assert len(long_text) > 6000 and long_text.index("symmetric session key") > 1200
+    fetch = fake([{"query": {"search": [{"title": "Transport Layer Security"}]}},
+                  {"query": {"pages": {"1": {"title": "Transport Layer Security", "extract": long_text}}}}])
+    r = web_check("TLS encrypts the connection using a symmetric session key.", fetch)
+    assert r["status"] == "FOUND" and "symmetric session key" in r["sources"][0]["quote"]
+    # the page request asks for the whole article: `exchars` would cap it at 1200 characters
+    assert "exchars" not in fetch.calls[1][1]
