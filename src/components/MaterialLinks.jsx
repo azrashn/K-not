@@ -47,7 +47,7 @@ export default function MaterialLinks({ mode, courseId, materialId, page, getTim
     api
       .materialLinks(courseId, materialId, position, abort.signal)
       .then((r) => {
-        if (key === requestKey.current) setState({ status: "ready", links: (r?.links || []).slice(0, 3) });
+        if (key === requestKey.current) setState({ status: "ready", links: (r?.links || []).slice(0, 3), preparing: Boolean(r?.preparing) });
       })
       .catch((e) => {
         if (key === requestKey.current && e?.name !== "AbortError") setState({ status: "error", message: videoErrorText(e) });
@@ -121,9 +121,17 @@ export default function MaterialLinks({ mode, courseId, materialId, page, getTim
               </button>
             </p>
           )}
-          {state.status === "ready" && state.links.length === 0 && (
+          {state.status === "ready" && state.links.length === 0 && !state.preparing && (
             <p role="status" className="material-links-note">
               {copy.empty}
+            </p>
+          )}
+          {state.status === "ready" && state.preparing && (
+            <p role="status" className="material-links-note">
+              Videodaki ekran yazısı ilk kez okunuyor; bu birkaç dakika sürebilir.{" "}
+              <button type="button" className="product-link" onClick={load}>
+                Yeniden dene
+              </button>
             </p>
           )}
           {state.status === "ready" && state.links.length > 0 && (
@@ -142,6 +150,9 @@ export default function MaterialLinks({ mode, courseId, materialId, page, getTim
                       {l.title}
                     </span>
                     <span className="material-links-place">{place(l.location)}</span>
+                    <span className="material-links-basis">
+                      {l.basis === "screen" ? "Ekranda benzer yazı" : "Benzer konuşma"}
+                    </span>
                     {(l.shared_terms || []).length > 0 && (
                       <span className="material-links-terms" aria-label="Ortak terimler">
                         {l.shared_terms.map((t) => (

@@ -57,7 +57,10 @@ export class KnowledgeService {
   private readonly receipts = new Map<string, Receipt>();
   private readonly limiter = new RateLimiter(15);
   private readonly synchronizing = new Map<string, Promise<void>>();
-  private readonly linkCache = new TtlLru<{ material_id: string; links: any[] }>(200, 10 * 60_000);
+  private readonly linkCache = new TtlLru<{ material_id: string; links: any[]; preparing: boolean }>(200, 10 * 60_000);
+  // Scene frames of a video are read (OCR) once, in the background; a failure is remembered 10 minutes.
+  private readonly frameJobs = new Map<string, Promise<void>>();
+  private readonly frameFailed = new TtlLru<true>(100, 10 * 60_000);
   private readonly practices = new Map<
     string,
     {
@@ -522,6 +525,47 @@ export class KnowledgeService {
       segments_searched: preview.segments.length,
     };
   }
+  /** Starts reading the video's scene frames, unless that is already running or failed lately.
+   *  Returns true while frames are expected to become available. */
+  private prepareFrames(user: AuthUser, course: string, m: Material): boolean {
+    const key = `${course}:${m.id}:${m.version}`;
+    if (this.frameJobs.has(key)) return true;
+    if (this.frameFailed.get(key)) return false;
+    const job = (async () => {
+      const { frames } = await this.videos.frames(user, course, m.source_id);
+      if (!frames.length) throw new Error("no frames");
+      const batch = 6;
+      for (let i = 0; i < frames.length; i += batch) {
+        const out: any[] = [];
+        for (let j = i; j < Math.min(i + batch, frames.length); j++) {
+          const f = frames[j];
+          const next = frames[j + 1];
+          const res = await this.videos.media(user, course, m.source_id, f.index);
+          out.push({
+            start_ms: f.timestamp_ms,
+            end_ms: next ? Math.max(next.timestamp_ms, f.timestamp_ms + 1) : f.timestamp_ms + 60_000,
+            image_base64: Buffer.from(await res.arrayBuffer()).toString("base64"),
+          });
+        }
+        await this.call("POST", "/frame-text", {
+          course_id: course,
+          material_id: m.id,
+          version: m.version,
+          first: i === 0,
+          final: i + batch >= frames.length,
+          frames: out,
+        });
+      }
+    })()
+      .catch(() => {
+        this.frameFailed.set(key, true);
+      })
+      .finally(() => {
+        this.frameJobs.delete(key);
+      });
+    this.frameJobs.set(key, job);
+    return true;
+  }
   /** Pages/slides <-> video moments that look like the same explanation. An estimate from text
    *  similarity, returned as-is; an empty list is a valid, honest answer. */
   async links(
@@ -561,11 +605,18 @@ export class KnowledgeService {
       version: m.version,
       ...(q.page !== undefined ? { page: q.page } : { time_ms: at }),
     });
+    // Videos whose on-screen text has not been read yet: read it in the background and say so.
+    let preparing = false;
+    for (const id of Array.isArray(found?.frames_missing) ? found.frames_missing : []) {
+      const video = ready.find((x) => x.id === id && x.kind === "VIDEO");
+      if (video && this.prepareFrames(user, course, video)) preparing = true;
+    }
     const result = {
       material_id: m.id,
       links: (Array.isArray(found?.links) ? found.links : []).slice(0, 3),
+      preparing,
     };
-    this.linkCache.set(key, result);
+    if (!preparing) this.linkCache.set(key, result);
     return result;
   }
   async summarize(

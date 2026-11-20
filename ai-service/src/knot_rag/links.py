@@ -41,6 +41,9 @@ LINK_MIN_SIMILARITY = _min_similarity()
 # Screen match: share of the SMALLER key-term set that also appears in the other text.
 SCREEN_MIN_OVERLAP = 0.5
 SCREEN_MIN_TERMS = 5
+# ... and that share must also cover this much of the LARGER set, so a tiny page that happens to sit
+# inside a busy frame (or the reverse) is not a match.
+SCREEN_MIN_COVERAGE = 0.25
 SCREEN_WINDOW_MS = 5_000
 # Ordinary vocabulary overlap alone is weak: without a technical term, this many shared
 # key terms are required for a speech match.
@@ -76,11 +79,13 @@ def _display_terms(source_text: str, candidate_text: str, shared: set[str]) -> l
 
 
 def overlap(a: set[str], b: set[str]) -> float:
-    """Shared key terms / the smaller set; 0 when either side is too short to judge."""
-    small = min(len(a), len(b))
+    """Shared key terms / the smaller set; 0 when either side is too short to judge or the shared
+    terms cover too little of the larger set."""
+    small, big = min(len(a), len(b)), max(len(a), len(b))
     if small < SCREEN_MIN_TERMS:
         return 0.0
-    return len(a & b) / small
+    shared = len(a & b)
+    return shared / small if shared / big >= SCREEN_MIN_COVERAGE else 0.0
 
 
 def _merge_video(items: list[dict]) -> list[dict]:

@@ -94,6 +94,9 @@ FRAMES = [
 def test_overlap_is_share_of_the_smaller_set_and_needs_enough_terms():
     assert overlap({"a", "b", "c", "d", "e", "f"}, {"a", "b", "c", "x", "y"}) == pytest.approx(0.6)
     assert overlap({"a", "b"}, {"a", "b"}) == 0.0  # too short to judge
+    # a small page fully inside a busy frame covers too little of it
+    busy = {str(i) for i in range(40)}
+    assert overlap(busy, {"1", "2", "3", "4", "5"}) == 0.0
 
 
 def test_page_finds_the_moment_its_slide_is_on_screen(env):

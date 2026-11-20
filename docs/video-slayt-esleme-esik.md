@@ -62,3 +62,30 @@ deneme sayfasından alındı; gerçek ders verisi değildir.
 çekildi. Not: videonun ilk ~3 dakikasının transkripti yanlış dilde (Türkçe) çözülmüş, anlamsız; bu bölüm
 için hiçbir eşikle doğru sonuç çıkmaz ve boş dönmesi doğrudur. Asıl iyileştirme transkripsiyon dilinin
 doğru seçilmesidir.
+
+## Ekran (OCR) eşleşmesi
+
+Konuşma transkripti bozuk ya da slayt yalnızca ekranda gösteriliyorsa, videonun sahne karelerinden
+(video motorunun çıkardığı ms damgalı JPG'ler) OCR ile yazı okunur (RapidOCR, internetsiz) ve sayfa metniyle
+karşılaştırılır. Okunan metin soru-cevap indeksine **girmez**; `STORAGE_ROOT/frame-text/` altında ayrı
+tutulur. İlk istekte backend kareleri arka planda okur (13 dk'lık videoda 39 kare, birkaç dakika);
+bu sırada panel "ilk kez okunuyor" der, boş sonuç iddia etmez.
+
+Kural: ortak anahtar terimler küçük kümenin **≥ %50**'si ve aynı zamanda büyük kümenin **≥ %25**'i
+(`SCREEN_MIN_OVERLAP`, `SCREEN_MIN_COVERAGE`, en az 5 terim). Panelde yüzde gösterilmez.
+
+Gerçek veriyle ölçüm (Chapter_1 PDF'i, "1.1 Introduction" videosunun 39 sahne karesi):
+
+| Kare(ler) | Ekrandaki slayt | Bulunan sayfa | Yargı |
+|---|---|---|---|
+| 3–8 | Chapter 1: introduction | 5 | doğru |
+| 15, 20, 21 | Internet: nuts and bolts | 6 | doğru |
+| 16–19 | "Fun" Internet-connected devices | 7 | doğru |
+| 22, 23 | nuts and bolts (network of networks) | 8 | doğru |
+| 25, 26 | Internet: a services view | 9 | doğru |
+| 32–36 | What's a protocol? | 10 / 11 | doğru |
+| 1, 2, 9–11, 14, 24, 27–31, 37 | boş / altyazı bandı / 5 terimden az | (eşleşme yok) | doğru (boş) |
+
+Gözlenen zayıflık: yalnızca küçük kümeye göre oran, kısa metinli sayfalarla sahte 1.0 üretiyordu
+(kare 8 ↔ sayfa 69/81); kapsama koşulu bunu eler. Bilinen sınır: OCR varsayılan modeli Çince+İngilizce'dir,
+Türkçe diyakritikli slaytlarda bazı harfler yanlış okunabilir.

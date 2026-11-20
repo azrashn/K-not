@@ -7,7 +7,7 @@ import { api } from '../../src/api/endpoints'
 vi.mock('../../src/api/endpoints')
 const videoLink = {
   source_id: 'a'.repeat(64), material_id: 'video_v', title: 'Hafta 3 dersi', kind: 'VIDEO',
-  location: { kind: 'video', start_ms: 312000, end_ms: 340000 }, shared_terms: ['TCP', 'SYN'], estimated: true,
+  location: { kind: 'video', start_ms: 312000, end_ms: 340000 }, shared_terms: ['TCP', 'SYN'], estimated: true, basis: 'screen',
 }
 const pageLink = {
   source_id: 'b'.repeat(64), material_id: 'pdf_c', title: 'Chapter_3', kind: 'PDF',
@@ -98,4 +98,24 @@ test('clock pads minutes and seconds', () => {
   expect(clock(0)).toBe('00:00')
   expect(clock(312000)).toBe('05:12')
   expect(clock(3_725_000)).toBe('62:05')
+})
+
+test('the basis of a match is stated: text on screen or similar speech', async () => {
+  const user = userEvent.setup()
+  api.materialLinks.mockResolvedValue({ links: [videoLink, { ...pageLink, basis: 'speech' }] })
+  videoPanel()
+  await user.click(screen.getByRole('button', { name: 'Videoda anlatılışı' }))
+  expect(await screen.findByText('Ekranda benzer yazı')).toBeInTheDocument()
+  expect(screen.getByText('Benzer konuşma')).toBeInTheDocument()
+})
+
+test('while the video screen text is still being read it says so instead of claiming no match', async () => {
+  const user = userEvent.setup()
+  api.materialLinks.mockResolvedValueOnce({ links: [], preparing: true }).mockResolvedValueOnce({ links: [videoLink], preparing: false })
+  videoPanel()
+  await user.click(screen.getByRole('button', { name: 'Videoda anlatılışı' }))
+  expect(await screen.findByText(/ilk kez okunuyor/)).toBeInTheDocument()
+  expect(screen.queryByText(/belirgin bir benzer anlatım bulunamadı/)).toBeNull()
+  await user.click(screen.getByRole('button', { name: 'Yeniden dene' }))
+  expect(await screen.findByText('Hafta 3 dersi')).toBeInTheDocument()
 })

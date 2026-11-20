@@ -3009,3 +3009,4 @@ nav[aria-label='Ana gezinme'] { z-index: 2; }
   .document-toolbar .material-links-panel { left: 8px; right: 8px; width: auto; top: 100%; }
 }
 @media (prefers-reduced-motion: reduce) { .material-links-panel { animation: none; } }
+.material-links-basis { grid-column: 1 / -1; font-family: var(--font-mono); font-size: 11px; color: var(--color-ink-3); }

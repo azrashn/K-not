@@ -1124,6 +1124,7 @@ describe("links: page <-> video moments", () => {
     const first = await h.http().get(url(id, "?page=1")).set(await h.as("ayse")).expect(200);
     expect(first.body.links).toHaveLength(3);
     expect(first.body.links[0].estimated).toBe(true);
+    expect(first.body.preparing).toBe(false);
     const sent = h.ai.calls("POST", "/api/v1/knowledge/links");
     expect(sent[0].body).toMatchObject({ material_id: id, page: 1, course_id: h.world.courses.vy });
     await h.http().get(url(id, "?page=1")).set(await h.as("ayse")).expect(200);
