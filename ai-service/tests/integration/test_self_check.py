@@ -241,3 +241,15 @@ def test_several_numbers_are_judged_per_unit():
     # a number the source gives only as an EXAMPLE is no statement of fact
     c = only(e.check("The tableSize of the hash table has 53 slots."))
     assert c["label"] != "CONFLICTS"
+
+
+def test_ocr_damaged_slide_text_still_supports_a_correct_claim():
+    e = Env()
+    e.add("pdf_ocr", [("TCP slow start\n§when connec8on begins,\n•ini$ally cwnd = 1 MSS\n•double cwnd every RTT\n"
+                       "§increase rate exponen8ally un8l ﬁrst loss event", 127)])
+    c = only(e.check("When the connection begins TCP slow start initially sets cwnd to 1 MSS and doubles cwnd every RTT."))
+    assert c["label"] == "IN_SOURCE", c
+    # the quote is the source exactly as stored, damage included
+    assert "ini$ally" in c["sources"][0]["quote"] or "connec8on" in c["sources"][0]["quote"]
+    # repair never makes a missing word appear
+    assert only(e.check("TCP slow start initially encrypts cwnd with AES."))["label"] == "NOT_IN_SOURCE"

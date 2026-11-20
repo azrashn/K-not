@@ -18,7 +18,7 @@ from pydantic import Field
 
 from knot_rag.claim_check import LIGHT_WORDS, MIN_TERMS, _sentences, check_claim
 from knot_rag.text import NEGATION_WORDS, STOPWORDS, content_tokens, fold, has_negation, normalize_text, numbers, stem, stem_in, stem_set
-from knot_rag.self_check_norm import canon
+from knot_rag.self_check_norm import canon, repair_ocr
 from knot_rag.unified import Manifest, Search, UnifiedIndex
 
 METHOD = "self-check-lexical-v1"
@@ -41,6 +41,7 @@ PARTIAL_MIN_COVERAGE = 0.6
 PARTIAL_MAX_MISSING = 2
 
 _GOOD = ("SUPPORTED", "ANCHORED")
+_FOLD = str.maketrans("çğıöşüâîûÇĞİÖŞÜ", "cgiosuaiuCGIOSU")
 _BULLET = re.compile(r"^\s*(?:[-–—•*▪●◦·]|\d{1,2}[.)])\s+")
 _BOUNDARY = re.compile(r"(?<=[.!?…])\s+|[\n;]+")
 _ABBREVIATIONS = ("örn.", "vb.", "vs.", "yak.", "bkz.", "e.g.", "i.e.", "etc.", "fig.", "yy.")
@@ -166,13 +167,19 @@ def _numeric_line(claim: str, window: str) -> str:
 
 
 def _quote(claim: str, window: str) -> str:
-    """The most relevant stretch of the window, at most QUOTE_CHARS, always a literal part of the source."""
+    """The most relevant stretch of the window, at most QUOTE_CHARS, always a literal part of the source
+    (damaged OCR characters included). The stretch is chosen on the repaired text."""
     lines = _sentences(window)
     if len(lines) <= 1:
         text = normalize_text(window)
     else:
-        best = _best_line(claim, window)
-        at = lines.index(best)
+        vocabulary = {w.translate(_FOLD).lower() for w in re.findall(r"[^\W\d_]{3,}", claim)}
+        repaired = _sentences(repair_ocr(window, vocabulary))
+        # repair keeps the line structure, so the index found on the repaired lines is valid for the originals
+        if len(repaired) == len(lines):
+            at = repaired.index(_best_line(claim, chr(10).join(repaired)))
+        else:
+            at = lines.index(_best_line(claim, window))
         text = normalize_text(" ".join(lines[at:at + 3]))
     return text if len(text) <= QUOTE_CHARS else text[: QUOTE_CHARS - 1].rstrip() + "…"
 
@@ -265,6 +272,7 @@ def classify(claim: str, evidence: list[dict]) -> dict:
     if not evidence:
         return {"label": "NOT_IN_SOURCE", "sources": [], "missing_terms": [], "unmatched_numbers": [], "conflict": None}
     claim = canon(claim)  # compared in the same form as the source: number words become digits
+    vocabulary = {w.translate(_FOLD).lower() for w in re.findall(r"[^\W\d_]{3,}", claim)}
     all_numbers: set[str] = set()
     for e in evidence:
         all_numbers |= _quantities(canon(e["text"]))
@@ -278,7 +286,7 @@ def classify(claim: str, evidence: list[dict]) -> dict:
     claim_negated = has_negation(claim)
     for n, e in enumerate(evidence):
         for window, size in _windows(e["text"]):
-            raw_window, window = window, canon(window)
+            raw_window, window = window, repair_ocr(canon(window), vocabulary)
             support = check_claim(claim, [window])
             if support.get("reason") == "TOO_SHORT_TO_CHECK":
                 continue

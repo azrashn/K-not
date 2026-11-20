@@ -86,3 +86,46 @@ def number_words_to_digits(text: str) -> str:
 def canon(text: str) -> str:
     """The form in which claim and source are compared."""
     return number_words_to_digits(text)
+
+
+# ── OCR repair ──────────────────────────────────────────────────────────────────────────────
+# Slide PDFs often lose the ligatures ti / tt / ft / fi / fl / ff: the text layer holds one odd
+# character instead ("ini$ally", "connec8on", "le@ers", "ajer", "/meout"). A source token is repaired
+# ONLY when putting a ligature in place of one suspect character gives a word that the claim itself
+# contains, so nothing is invented: the student's own word has to be there.
+_LIGATURES = ("ti", "tt", "ft", "fi", "fl", "ff")
+_TOKEN = re.compile(r"[^\s,.;:()\[\]{}\"'<>•▪●◦·§–—]{3,}")
+
+
+def _suspect(token: str, i: int) -> bool:
+    ch = token[i]
+    if not ch.isalpha():
+        return True
+    return ch == "j" or (ch.isupper() and i > 0 and not token.isupper())
+
+
+def _fold_word(word: str) -> str:
+    return word.translate(_ASCII).lower()
+
+
+def repair_ocr(text: str, vocabulary: set[str]) -> str:
+    """`vocabulary`: folded words of the claim. Returns `text` with damaged ligatures put back."""
+    if not vocabulary:
+        return text
+
+    def fix(match: re.Match) -> str:
+        token = match.group(0)
+        if not any(c.isalpha() for c in token) or token.isdigit():
+            return token
+        if _fold_word(token) in vocabulary:
+            return token
+        for i in range(len(token)):
+            if not _suspect(token, i):
+                continue
+            for lig in _LIGATURES:
+                candidate = token[:i] + lig + token[i + 1:]
+                if _fold_word(candidate) in vocabulary:
+                    return candidate
+        return token
+
+    return _TOKEN.sub(fix, text)
