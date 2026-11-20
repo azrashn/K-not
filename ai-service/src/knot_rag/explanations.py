@@ -52,22 +52,39 @@ def board_steps(client, url, model, body, rendered):
 from knot_rag.text import fold, question_key_terms, stem
 
 _TR_CHARS = re.compile(r"[çğıöşüÇĞİÖŞÜ]")
-_TR_STRONG = frozenset("turkce nedir nasil nasildir neden acikla aciklar aciklayin misin musun anlat anlatir ornek burayi bunu sunu kisaca".split())
-_TR_WEAK = frozenset("bu bir ve icin ile gibi mi mu mi daha".split())
+_TR_STRONG = frozenset("""turkce nedir nelerdir nasil nasildir neden acikla aciklar aciklayin aciklar misin musun anlat anlatir
+ornek burayi bunu sunu kisaca ne hangi hangisi kac fark farki farklari yarar arasindaki arasinda midir mudur olarak
+gerekir calisir kullanilir demek denir yapar eder anlami ornegin sunlar bunlar hakkinda hocam lutfen goster nelerdir""".split())
+_TR_WEAK = frozenset("bu bir ve icin ile gibi mi mu mi daha ise".split())
+# Endings that are Turkish and almost never end an English word (not -ler/-lar: handler, controller).
+_TR_SUFFIX = ("daki", "deki", "ndaki", "ndeki", "lari", "leri", "sizdir", "sizdur", "dir", "dur")
+_EN_FUNCTION = frozenset("the is are what how why does do of between difference explain about which when where can you with for and to in on it that this as by an be vs versus".split())
+_ASCII_FOLD = str.maketrans("çğıöşüâîû", "cgiosuaiu")
 
 
-def question_language(question):
-    """'tr' or 'en'. An explicit request wins ("Türkçe açıkla", "in English"); otherwise Turkish letters
-    or words decide. Unknown text is treated as English (the source language of most course material)."""
+def question_language(question, context=""):
+    """'tr' or 'en'. An explicit request wins ("Türkçe açıkla", "in English"); otherwise Turkish letters,
+    Turkish question words and endings decide (also when typed without Turkish letters: "AIMD ne ise yarar").
+    A text with no clear sign takes the language of the conversation so far, else English (the source
+    language of most course material)."""
     text = fold(question or "")
-    tokens = re.findall(r"\w+", text)
+    tokens = [t.translate(_ASCII_FOLD) for t in re.findall(r"\w+", text)]
     if "ingilizce" in tokens or "english" in tokens:
         return "en"
     if "turkce" in tokens or _TR_CHARS.search(question or ""):
         return "tr"
-    if any(t in _TR_STRONG for t in tokens):
+    tr = 2 * sum(t in _TR_STRONG for t in tokens) + sum(t in _TR_WEAK for t in tokens) + sum(
+        1 for t in tokens if len(t) >= 6 and t.endswith(_TR_SUFFIX)
+    )
+    en = 2 * sum(t in _EN_FUNCTION for t in tokens)
+    if tr >= 2 and tr > en:
         return "tr"
-    return "tr" if sum(t in _TR_WEAK for t in tokens) >= 2 else "en"
+    if en >= 2 and en >= tr:
+        return "en"
+    if context:
+        return question_language(context)
+    return "en"
+
 
 STYLES = {
     "default": (
@@ -219,6 +236,28 @@ def plain_claims(provider, body, excerpts, mode, style, limit, lang, timeout):
     return parse_cited_text(result.text, min(len(excerpts), 5), limit)
 
 
+MIN_WORDS_TO_JUDGE_LANGUAGE = 6
+
+
+def ensure_answer_language(claims, lang, complete=None):
+    """The answer must be in the language of the question. A small local model sometimes answers in the
+    language of the sources; such claims are translated (sources stay attached). A translation that does not
+    keep numbers, acronyms and negation is refused and the original claim stays: wrong language is better
+    than a changed meaning."""
+    from knot_rag.self_check_translate import language_of, model_translate
+
+    wrong = [i for i, c in enumerate(claims)
+             if len(c["text"].split()) >= MIN_WORDS_TO_JUDGE_LANGUAGE and language_of(c["text"]) != lang]
+    if not wrong:
+        return claims
+    done = model_translate([claims[i]["text"] for i in wrong], lang, complete)
+    out = list(claims)
+    for i, text in zip(wrong, done):
+        if text:
+            out[i] = {**claims[i], "text": text}
+    return out
+
+
 def language_rule(lang):
     if lang == "tr":
         return (
@@ -282,12 +321,17 @@ def explain(body):
         }
     style, limit, word_limit = STYLES[mode]
     started = time.monotonic()
-    lang = question_language(body.question)
+    lang = question_language(body.question, body.conversation_context)
     def steps_for(rendered):
         with httpx.Client() as steps_client:
             return board_steps(steps_client, url, model, body, rendered)
 
     def finalize(claims, path):
+        def translate_with_model(request):
+            with httpx.Client() as translation_client:
+                return OpenAICompatibleProvider(url, model, client=translation_client).complete(request).text
+
+        claims = ensure_answer_language(claims, lang, translate_with_model)
         if mode == "short" and len(claims[0]["text"].split()) > 55:
             sentences = re.split(r"(?<=[.!?])\s+", claims[0]["text"])
             chosen = []
@@ -365,7 +409,7 @@ def explain(body):
     with httpx.Client() as client:
         try:
             request = LLMRequest(
-                system=language_rule(question_language(body.question))
+                system=language_rule(lang)
                 + " Answer using ONLY the numbered source excerpts and the attached ORIGINAL source image, if any. "
                 "Return a JSON object with claims (array of objects with actual text and sources: an integer array), and clarification (an actual question, or empty string). Never copy schema descriptions into your answer. "
                 f"{style} At most {word_limit} words total. Every claim must cite actual source numbers. Never embed citation numbers in claim text; use the sources field. "
@@ -378,7 +422,7 @@ def explain(body):
                 user=json.dumps(
                     {
                         "question": body.question,
-                        "answer_language": "Turkish" if question_language(body.question) == "tr" else "same as the question",
+                        "answer_language": "Turkish" if lang == "tr" else "same as the question",
                         "response_mode": mode,
                         # Keep saved context for repetition checks below, but
                         # don't invite a small model to critique its old answer
