@@ -62,3 +62,26 @@ test('a server refusal is shown and the editor stays open for another try', asyn
   expect(await screen.findByRole('alert')).toHaveTextContent('1-3000 karakter')
   expect(screen.getByLabelText('Düzeltilmiş metin')).toBeInTheDocument()
 })
+
+test('a line mixed with characters of other alphabets is replaced by a notice, the raw text is one click away and the line still seeks', async () => {
+  const user = userEvent.setup(), p = props()
+  const garbledChunk = { ...chunk, text: 'Hocada bu実 retaliту. Pakat kastanın 只有一 haklı' }
+  render(<TranscriptChunk {...p} chunk={garbledChunk} />)
+  expect(screen.queryByText(/只有一/)).toBeNull()
+  expect(screen.getByText(/otomatik metni güvenilir görünmüyor/)).toBeInTheDocument()
+  await user.click(screen.getByText(/otomatik metni güvenilir görünmüyor/))
+  expect(p.onSeek).toHaveBeenCalledTimes(1)
+  await user.click(screen.getByRole('button', { name: 'Yine de göster' }))
+  expect(screen.getByText(/只有一/)).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Düzelt' })).toBeInTheDocument()
+})
+
+test('ordinary Turkish and English lines, and corrected lines, are shown as they are', () => {
+  const p = props()
+  const { rerender } = render(<TranscriptChunk {...p} chunk={{ ...chunk, text: 'Çok güzel bir ağaç şeması: öğrenci şöyle yazdı' }} />)
+  expect(screen.getByText(/Çok güzel bir ağaç/)).toBeInTheDocument()
+  rerender(<TranscriptChunk {...p} chunk={{ ...chunk, text: 'routers, switches and end devices' }} />)
+  expect(screen.getByText(/routers, switches/)).toBeInTheDocument()
+  rerender(<TranscriptChunk {...p} chunk={{ ...chunk, text: 'düzeltilmiş 只有 метин', original_text: 'x', corrected: true }} />)
+  expect(screen.getByText(/düzeltilmiş/)).toBeInTheDocument()
+})
