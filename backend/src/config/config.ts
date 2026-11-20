@@ -1,0 +1,127 @@
+/**
+ * Environment configuration, read and validated once at startup. Secrets are never logged.
+ * Variable names follow docs/architecture/api-contracts.md §10.
+ */
+
+export interface AppConfig {
+  port: number;
+  databaseUrl: string;
+  jwtSecret: string;
+  jwtTtlSeconds: number;
+  corsOrigin: string | null;
+  storageRoot: string;
+  aiServiceUrl: string;
+  videoServiceUrl?: string;
+  ragInternalApiToken: string;
+  ingestCallbackToken: string;
+  uploadMaxBytes: number;
+  ingestStallTimeoutSeconds: number;
+  ingestMaxAutoAttempts: number;
+  schedulerEnabled: boolean;
+  dispatchIntervalMs: number;
+  sweepIntervalMs: number;
+  purgeRetryMs: number;
+  readyCheckIntervalMs: number;
+  answerRateLimitPerMinute: number;
+  loginRateLimitPerMinute: number;
+  answerTimeoutMs: number;
+  retrieveTimeoutMs: number;
+  ingestionTimeoutMs: number;
+  /** Signs board teacher audio URLs; null = TTS off (POST /api/tts answers 503). */
+  ttsUrlSecret: string | null;
+  /** Path the browser reaches this API under (the audio URL is built with it). */
+  ttsPublicPrefix: string;
+  /** Quiz question engine: "v2" (one model call, code checks; default) or "legacy" (quiz_quality.py). */
+  quizEngine: QuizEngine;
+  /** Whether quiz/exam questions may come from a video's automatic transcript (QUIZ_TRANSCRIPT_POLICY). */
+  quizTranscriptPolicy: QuizTranscriptPolicy;
+}
+
+export type QuizEngine = 'v2' | 'legacy';
+/** documents_first (default): documents only when the scope has one; a transcript only for a video the
+ *  student chose or a course without documents, with a warning. never: transcripts are not used at all. */
+export type QuizTranscriptPolicy = 'documents_first' | 'never';
+
+export class ConfigError extends Error {}
+
+function int(env: Record<string, string | undefined>, name: string, def: number, min = 0): number {
+  const raw = env[name];
+  if (raw === undefined || raw === '') return def;
+  const v = Number(raw);
+  if (!Number.isInteger(v) || v < min) throw new ConfigError(`${name} must be an integer >= ${min}`);
+  return v;
+}
+
+function bool(env: Record<string, string | undefined>, name: string, def: boolean): boolean {
+  const raw = env[name];
+  if (raw === undefined || raw === '') return def;
+  return ['1', 'true', 'yes', 'on'].includes(raw.trim().toLowerCase());
+}
+
+function required(env: Record<string, string | undefined>, name: string, minLength = 1): string {
+  const v = env[name];
+  if (!v || v.length < minLength) throw new ConfigError(`${name} is required${minLength > 1 ? ` (>= ${minLength} characters)` : ''}`);
+  return v;
+}
+
+function quizEngine(raw: string | undefined): QuizEngine {
+  const v = (raw ?? '').trim().toLowerCase();
+  if (v === '' || v === 'v2') return 'v2';
+  if (v === 'legacy') return 'legacy';
+  throw new ConfigError('QUIZ_ENGINE must be v2 or legacy');
+}
+
+function quizTranscriptPolicy(raw: string | undefined): QuizTranscriptPolicy {
+  const v = (raw ?? '').trim().toLowerCase();
+  if (v === '' || v === 'documents_first') return 'documents_first';
+  if (v === 'never') return 'never';
+  throw new ConfigError('QUIZ_TRANSCRIPT_POLICY must be documents_first or never');
+}
+
+export function loadConfig(env: Record<string, string | undefined> = process.env): AppConfig {
+  const aiServiceUrl = required(env, 'AI_SERVICE_URL').replace(/\/+$/, '');
+  if (!/^https?:\/\//.test(aiServiceUrl)) throw new ConfigError('AI_SERVICE_URL must be an http(s) URL');
+  const llmTimeoutSeconds = int(env, 'LLM_TIMEOUT_SECONDS', 30, 1);
+  const cfg: AppConfig = {
+    port: int(env, 'PORT', 3000, 1),
+    databaseUrl: required(env, 'DATABASE_URL'),
+    jwtSecret: required(env, 'JWT_SECRET', 32),
+    jwtTtlSeconds: int(env, 'JWT_TTL_SECONDS', 3600, 60),
+    corsOrigin: env.CORS_ORIGIN || null,
+    storageRoot: required(env, 'STORAGE_ROOT'),
+    aiServiceUrl,
+    videoServiceUrl: env.VIDEO_SERVICE_URL || 'http://127.0.0.1:7862',
+    ragInternalApiToken: required(env, 'RAG_INTERNAL_API_TOKEN', 16),
+    ingestCallbackToken: required(env, 'INGEST_CALLBACK_TOKEN', 16),
+    uploadMaxBytes: int(env, 'UPLOAD_MAX_BYTES', 30 * 1024 * 1024, 1),
+    ingestStallTimeoutSeconds: int(env, 'INGEST_STALL_TIMEOUT_SECONDS', 300, 1),
+    ingestMaxAutoAttempts: int(env, 'INGEST_MAX_AUTO_ATTEMPTS', 3, 1),
+    schedulerEnabled: bool(env, 'SCHEDULER_ENABLED', true),
+    dispatchIntervalMs: int(env, 'INGEST_DISPATCH_INTERVAL_MS', 10_000, 100),
+    sweepIntervalMs: int(env, 'INGEST_SWEEP_INTERVAL_MS', 30_000, 100),
+    purgeRetryMs: int(env, 'PURGE_RETRY_INTERVAL_MS', 300_000, 100),
+    readyCheckIntervalMs: int(env, 'AI_READY_CHECK_INTERVAL_MS', 60_000, 100),
+    answerRateLimitPerMinute: int(env, 'ANSWER_RATE_LIMIT_PER_MINUTE', 20, 1),
+    loginRateLimitPerMinute: int(env, 'LOGIN_RATE_LIMIT_PER_MINUTE', 10, 1),
+    answerTimeoutMs: (llmTimeoutSeconds + 5) * 1000,
+    retrieveTimeoutMs: int(env, 'RAG_RETRIEVE_TIMEOUT_MS', 10_000, 100),
+    ingestionTimeoutMs: int(env, 'INGESTION_TIMEOUT_MS', 10_000, 100),
+    ttsUrlSecret: env.TTS_URL_SECRET || null,
+    ttsPublicPrefix: (env.TTS_PUBLIC_PREFIX || '/api').replace(/\/+$/, ''),
+    quizEngine: quizEngine(env.QUIZ_ENGINE),
+    quizTranscriptPolicy: quizTranscriptPolicy(env.QUIZ_TRANSCRIPT_POLICY),
+  };
+  if (cfg.ttsUrlSecret !== null) {
+    if (cfg.ttsUrlSecret.length < 32) throw new ConfigError('TTS_URL_SECRET must be at least 32 characters');
+    if ([cfg.jwtSecret, cfg.ragInternalApiToken, cfg.ingestCallbackToken].includes(cfg.ttsUrlSecret)) {
+      throw new ConfigError('TTS_URL_SECRET must differ from the other secrets');
+    }
+  }
+  if (!/^(\/[A-Za-z0-9._~-]+)*$/.test(cfg.ttsPublicPrefix)) throw new ConfigError('TTS_PUBLIC_PREFIX must be a path like /api');
+  if (cfg.ingestCallbackToken === cfg.ragInternalApiToken) {
+    throw new ConfigError('INGEST_CALLBACK_TOKEN must differ from RAG_INTERNAL_API_TOKEN');
+  }
+  return cfg;
+}
+
+export const APP_CONFIG = Symbol('APP_CONFIG');

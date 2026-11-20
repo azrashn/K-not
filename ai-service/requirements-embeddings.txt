@@ -1,0 +1,4 @@
+# Real multilingual embedding model (ADR-010: intfloat/multilingual-e5-small).
+# Heavy: pulls PyTorch (~1-2 GB) and downloads the model (~470 MB) on first run.
+# The seeded IndexVersion expects this model; the offline `hashing` backend is for tests only.
+sentence-transformers==6.1.0

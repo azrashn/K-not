@@ -1,0 +1,69 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+.playwright-mcp
+
+# ── Secrets and local configuration (never commit; templates are *.example) ──
+.env
+.env.*
+!.env.example
+!.env.*.example
+**/.env
+**/.env.*
+!**/.env.example
+!**/.env.*.example
+
+# ── Credential / seed output ──
+seed_output*
+*password*.txt
+*passwords*.json
+*credentials*.txt
+*.pem
+*.key
+*.p12
+*.pfx
+
+# ── Runtime data and uploaded documents (may contain third-party or student material) ──
+/data/*
+!/data/.gitkeep
+**/storage/documents/
+/*.pdf
+
+# Browser QA artifacts can contain private course/session data.
+.playwright-cli/
+/output/playwright/
+
+# ── Python (ai-service/.gitignore ile aynı; kökten çalıştırılan araçlar için) ──
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.egg-info/
+.chroma/
+
+
+# Tema yedekleri (yerel)
+_yedek-tema/

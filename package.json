@@ -1,0 +1,58 @@
+{
+  "name": "k-not",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "setup": "node scripts/setup.mjs",
+    "start:all": "node scripts/dev.mjs start",
+    "stop:all": "node scripts/dev.mjs stop",
+    "status:all": "node scripts/dev.mjs status",
+    "doctor": "node scripts/doctor.mjs",
+    "demo:users": "npm --prefix backend run demo:users --",
+    "tts:install": "node scripts/install-tts.mjs",
+    "dev:all": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev.ps1",
+    "dev:stop": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev.ps1 -Stop",
+    "dev:status": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev.ps1 -Status",
+    "build": "vite build",
+    "lint": "oxlint",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "node tests/e2e/run-e2e.mjs",
+    "test:e2e:exam": "node tests/e2e/exam-flow.mjs",
+    "test:e2e:exam:legacy": "node tests/e2e/exam-flow.mjs --quiz-engine=legacy",
+    "test:e2e:outbox": "node tests/e2e/outbox-browser.mjs",
+    "test:e2e:spiral": "node tests/e2e/course-card-spiral.mjs",
+    "unused:modules": "node scripts/unused-modules.mjs"
+  },
+  "dependencies": {
+    "@phosphor-icons/react": "^2.1.10",
+    "@tailwindcss/vite": "^4.3.3",
+    "framer-motion": "^14.0.0",
+    "katex": "^0.19.1",
+    "lucide-react": "^1.52.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "recharts": "^3.10.1",
+    "tailwindcss": "^4.3.3"
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.3",
+    "@testing-library/user-event": "^14.6.7",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.7",
+    "@vitejs/plugin-react": "^6.1.1",
+    "axe-core": "^4.10.2",
+    "jsdom": "^26.1.0",
+    "oxlint": "^1.81.0",
+    "playwright-core": "^1.56.1",
+    "vite": "^8.3.0",
+    "vitest": "^3.2.7"
+  },
+  "engines": {
+    "node": ">=20.19"
+  }
+}

@@ -1,0 +1,1 @@
+ALTER TABLE `StudyMaterial` ADD COLUMN `storageKey` VARCHAR(255) NULL;

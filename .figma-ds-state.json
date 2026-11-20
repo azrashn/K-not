@@ -1,0 +1,53 @@
+{
+  "runId": "knot-ds-2026-1005",
+  "fileKey": "Wl7bah8HSbwl1qP7aApqgg",
+  "fileUrl": "https://www.figma.com/design/Wl7bah8HSbwl1qP7aApqgg",
+  "phase": "phase4",
+  "step": "ai-workspace-done-dashboard-blocked-by-rate-limit",
+  "completedSteps": ["phase0", "phase1", "phase2-partial", "phase3-core-atoms", "phase4-ai-workspace"],
+  "constraints": {
+    "pages": "Starter max 3 pages — consolidated into System / Product / Mobile & Prototype",
+    "variableModes": "Starter max 1 mode — Color is Light-only (matches light-first brief)",
+    "mcpRateLimit": "Hit Starter MCP tool call limit during Dashboard build"
+  },
+  "entities": {
+    "collections": {
+      "Primitives": "VariableCollectionId:1:2",
+      "Color": "VariableCollectionId:1:38",
+      "Spacing": "VariableCollectionId:1:70",
+      "Radius": "VariableCollectionId:1:78"
+    },
+    "pages": {
+      "01 — System": "0:1",
+      "02 — Product": "1:100",
+      "03 — Mobile & Prototype": "1:101"
+    },
+    "components": {
+      "Button": "3:26",
+      "Citation Pill": "3:37",
+      "Knot Indicator": "3:56",
+      "Claim Row": "3:87",
+      "Ask Box": "4:2",
+      "Sidebar Rail": "4:9",
+      "Course Card": "4:20",
+      "Quiz Option": "4:43"
+    },
+    "screens": {
+      "Cover": "1:102",
+      "Foundations": "2:2",
+      "AI Workspace": "4:47"
+    }
+  },
+  "remaining": [
+    "Dashboard",
+    "Course detail",
+    "Quiz",
+    "Evaluation",
+    "Materials",
+    "Analytics Knowledge Thread",
+    "Admin Trust (dark)",
+    "Mobile + bottom sheet",
+    "Prototype links for core journey",
+    "Upload Row / Feedback Card / Source Viewer / Knowledge Thread / Progress Thread / Alert / Course Tabs components"
+  ]
+}

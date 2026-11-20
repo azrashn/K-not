@@ -1,0 +1,6 @@
+-r requirements.txt
+pytest==9.2.0
+# Real OOXML viewer fixture generation (MIT); no production renderer dependency.
+python-pptx==1.0.2
+# Optional: only for regenerating tests/ingest/fixtures/*.pdf (python tests/ingest/fixtures/make_pdfs.py)
+# reportlab
