@@ -341,6 +341,10 @@ export default function LearningWorkspace({ courseId }) {
     const next = intent.current;
     intent.current = null;
     if (next.openSource) void openEvidence(next.openSource);
+    else if (next.openPage?.materialId) {
+      const m = materials.find((m) => m.id === next.openPage.materialId);
+      if (m) void select(m, { page: next.openPage.page });
+    }
     else if (next.resume?.materialId) {
       const m = materials.find((m) => m.id === next.resume.materialId);
       if (m) void select(m);
@@ -468,8 +472,11 @@ export default function LearningWorkspace({ courseId }) {
       );
       if (abort.signal.aborted) return;
       setSegments(result.segments);
+      // `target.page`: Kapsam haritasından gelen sayfa (segment kimliği yok); o sayfanın ilk parçası açılır.
       const actual = target
-        ? result.segments.find((s) => s.id === target.id)
+        ? target.id
+          ? result.segments.find((s) => s.id === target.id)
+          : result.segments.find((s) => (s.location?.page ?? s.location?.slide) === target.page)
         : result.segments[0];
       if (target && !actual) {
         setError(

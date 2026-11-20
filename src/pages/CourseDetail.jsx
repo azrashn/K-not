@@ -263,7 +263,7 @@ export default function CourseDetail({ courseId }) {
           </AnimatePresence>
         </ul>
       </section>
-      <CoverageMap courseId={courseId} onOpenPage={(m, page) => navigate(`/dersler/${courseId}/calisma`, { openDoc: { id: m.source_id, page } })} />
+      <CoverageMap courseId={courseId} onOpenPage={(m, page) => navigate(`/dersler/${courseId}/ogrenme`, { openPage: { materialId: m.material_id, page } })} />
     </PageFrame>
   )
 }

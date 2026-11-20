@@ -13,7 +13,10 @@ import LearningWorkspace from "../../src/pages/LearningWorkspace";
 import { api } from "../../src/api/endpoints";
 vi.mock("../../src/api/endpoints");
 const nav = vi.hoisted(() => vi.fn());
-vi.mock("../../src/app/store", () => ({ useApp: () => ({ navigate: nav }) }));
+const pendingIntent = vi.hoisted(() => ({ value: null }));
+vi.mock("../../src/app/store", () => ({
+  useApp: () => ({ navigate: nav, takeIntent: () => { const v = pendingIntent.value; pendingIntent.value = null; return v; } }),
+}));
 vi.mock("../../src/hooks/useVideoProgress", () => ({
   useVideoProgress: () => ({
     flushForQuestion: vi.fn().mockResolvedValue(true),
@@ -437,4 +440,12 @@ test("çalışma alanından Kapsam haritasına gidilir", async () => {
   await screen.findByRole("heading", { name: "Physics" });
   await user.click(screen.getByRole("button", { name: /Kapsam haritası/ }));
   expect(nav).toHaveBeenCalledWith("/dersler/course");
+});
+test("Kapsam haritasından gelen sayfa çalışma masasında doğrudan açılır", async () => {
+  pendingIntent.value = { openPage: { materialId: m.id, page: 2 } };
+  render(<LearningWorkspace courseId="course" />);
+  await waitFor(() =>
+    expect(api.activity).toHaveBeenCalledWith("course", { material_id: m.id, segment_id: evidence.id }),
+  );
+  expect(screen.queryByText(/Kaynak güncellenmiş/)).not.toBeInTheDocument();
 });

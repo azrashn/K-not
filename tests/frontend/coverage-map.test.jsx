@@ -118,7 +118,7 @@ describe('Kapsam bölümü', () => {
     expect(document.querySelectorAll('.coverage-cell')).toHaveLength(300)
   })
 
-  test('ders ekranında Kapsam bölümü açılır; sayfa numarası çalışma alanına götürür', async () => {
+  test('ders ekranında Kapsam bölümü açılır; sayfa numarası çalışma masasında o sayfayı açar', async () => {
     signIn()
     setExam(5)
     fakeApi({
@@ -130,6 +130,6 @@ describe('Kapsam bölümü', () => {
     render(<App />)
     const link = await screen.findByRole('button', { name: /sayfa 5 aç/ })
     await userEvent.click(link)
-    await waitFor(() => expect(window.location.hash).toBe(`#/dersler/${C}/calisma`))
+    await waitFor(() => expect(window.location.hash).toBe(`#/dersler/${C}/ogrenme`))
   })
 })
