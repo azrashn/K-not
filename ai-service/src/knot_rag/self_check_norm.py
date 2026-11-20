@@ -197,3 +197,35 @@ def polar_words(words: list[str]) -> list[str]:
         elif len(ascii_w) >= 8 and any(ascii_w.endswith(x.translate(_ASCII)) for x in _TR_SUFFIXES):
             out.append(w)
     return out
+
+
+# ── slide text: bullet items ────────────────────────────────────────────────────────────────────
+# Extracted slide text breaks a sentence over several lines (one line "to send HTTP request,", the next
+# "client first opens TCP", then "socket to web server") and starts every bullet with a marker. The unit of
+# comparison is the bullet item: a line with a marker opens an item, a line without one continues the item
+# before it.
+_MARKER = re.compile(r"^\s*(?:[§•▪●◦·‣–—-]|\d{1,2}[.)])\s*")
+_SENTENCE_END = re.compile(r"(?<=[.!?])\s+")
+
+
+def slide_units(text: str) -> list[str]:
+    """Items of the text, split further at sentence ends. Lines without a marker are joined to the bullet
+    before them; a text without markers keeps its lines (each its own unit)."""
+    items: list[str] = []
+    open_bullet = False
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line:
+            open_bullet = False
+            continue
+        if _MARKER.match(line):
+            items.append(_MARKER.sub("", line, count=1).strip())
+            open_bullet = True
+        elif open_bullet and items and line[0].islower():  # a wrapped line continues in lower case; a new statement starts upper case
+            items[-1] = (items[-1] + " " + line).strip()
+        else:
+            items.append(line)
+    units: list[str] = []
+    for item in items:
+        units.extend(x.strip() for x in _SENTENCE_END.split(item) if x.strip())
+    return units

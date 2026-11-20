@@ -296,6 +296,11 @@ export default function SelfCheck({ courseId, onOpenSource }) {
                         <WebCheck courseId={courseId} claim={c.text} />
                       </>
                     )}
+                    {c.note === "DIRECTION_UNCONFIRMED" && (
+                      <p className="self-check-note">
+                        Sözcükler kaynakta var, ama kimden kime olduğu (yön) kaynakta açıkça yazmıyor. Kaynağa bak.
+                      </p>
+                    )}
                     {c.partly_unchecked && (
                       <p className="self-check-note">Karşılaştırılabilen kısımlar kaynakta var; bir kısmı karşılaştırılamadı.</p>
                     )}

@@ -472,3 +472,18 @@ def test_connection_is_not_connectionless():
     e2 = Env()
     e2.add("pdf_cl2", [("Ethernet: unreliable, connec)onless\nLink Layer: 6-59", 57)])
     assert only(e2.check("Ethernet is connectionless."))["label"] == "IN_SOURCE"
+
+
+def test_a_direction_the_source_does_not_state_is_not_confirmed():
+    e = Env()
+    e.add("pdf_dir", [("A day in the life\n§to send HTTP request,\nclient first opens TCP\nsocket to web server\n§TCP SYN segment (step 1 in\nthree way handshake) sent to server", 102),
+                      ("TCP 3-way handshake\nsend TCP SYN msg\nsend TCP SYNACK\nmsg, acking SYN", 106)])
+    # the source says the CLIENT sends: confirmed
+    ok = only(e.check("The client sends a SYN segment to the server."))
+    assert ok["label"] == "IN_SOURCE", ok
+    # the SERVER sending the SYN: the words are all there, but no unit gives that direction
+    c = only(e.check("The server sends a SYN segment to the client."))
+    assert c["label"] in ("PARTIAL", "CONFLICTS"), c
+    assert c["label"] != "IN_SOURCE"
+    # no direction in the claim: nothing changes
+    assert only(e.check("TCP SYN segment is part of the three way handshake."))["label"] == "IN_SOURCE"

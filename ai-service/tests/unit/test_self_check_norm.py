@@ -52,3 +52,12 @@ def test_words_with_a_reversing_affix_are_found():
     assert polar_words(["unreliable", "baglantisiz", "nonpreemptive", "connection", "union", "network"]) == ["unreliable", "baglantisiz", "nonpreemptive"]
     assert polar_words(["wireless"]) == ["wireless"]
     assert polar_words(["unit", "uniform", "internet", "input"]) == []
+
+
+def test_slide_units_join_wrapped_bullets_but_not_new_statements():
+    from knot_rag.self_check_norm import slide_units
+
+    text = "A day in the life\n§to send HTTP request,\nclient first opens TCP\nsocket to web server\n§TCP SYN segment (step 1)\nEthernet frames carry 1500 bytes.\nLink Layer: 6-104"
+    assert slide_units(text) == ["A day in the life", "to send HTTP request, client first opens TCP socket to web server",
+                                 "TCP SYN segment (step 1)", "Ethernet frames carry 1500 bytes.", "Link Layer: 6-104"]
+    assert slide_units("Plain line one\nplain line two") == ["Plain line one", "plain line two"]

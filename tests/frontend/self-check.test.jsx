@@ -271,3 +271,17 @@ test("preparation starts when the panel is shown, and a waiting check tells how 
     vi.useRealTimers();
   }
 });
+
+test("a direction the source does not state is explained, not shown as found", async () => {
+  const user = userEvent.setup();
+  api.selfCheck.mockResolvedValue({
+    ...result,
+    claims: [{ text: "Sunucu istemciye SYN gönderir", label: "PARTIAL", note: "DIRECTION_UNCONFIRMED", partly_unchecked: false, translated: false, matched_terms: [], translation: null, meaning_warning: null, sources: [source()], missing_terms: [], unmatched_numbers: [], conflict: null, parts: [] }],
+    summary: { IN_SOURCE: 0, NOT_IN_SOURCE: 0, CONFLICTS: 0, PARTIAL: 1, UNCHECKED: 0, total: 1 },
+  });
+  render(<SelfCheck courseId="course" onOpenSource={vi.fn()} />);
+  await user.type(screen.getByLabelText("Konuyu kendi cümlelerinle yaz"), "x");
+  await user.click(screen.getByRole("button", { name: "Kontrol et" }));
+  expect(await screen.findByText(/kimden kime olduğu \(yön\) kaynakta açıkça yazmıyor/)).toBeInTheDocument();
+  expect(screen.getByText("Kısmen", { selector: ".board-badge" })).toBeInTheDocument();
+});

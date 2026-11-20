@@ -214,6 +214,22 @@ def comparison_conflict(claim: str, window: str) -> dict | None:
     return None
 
 
+def direction_confirmed(claim: str, units: list[str]) -> bool:
+    """Does any source unit state the claim's direction? Same giver and receiver as the claim, and at
+    least one more word of the claim in that unit (the verb or the thing sent)."""
+    wanted = roles(claim)
+    if not wanted:
+        return True  # the claim states no direction
+    words = [t for t in dict.fromkeys(_w(claim)) if len(t) >= 3 and not _entity(t) and t not in {"the", "and", "that", "with", "from"}]
+    stems = {stem(t) for t in words}
+    for unit in units:
+        if roles(unit) == wanted:
+            unit_stems = {stem(t) for t in _w(unit)}
+            if any(stem_in(x, unit_stems) for x in stems):
+                return True
+    return False
+
+
 def rule_conflict(claim: str, window: str, size: int) -> dict | None:
     """First clear rule-based contradiction of the claim with this source window, or None."""
     if size == 1:

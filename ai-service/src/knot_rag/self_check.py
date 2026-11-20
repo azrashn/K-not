@@ -19,12 +19,12 @@ from collections import OrderedDict
 
 from pydantic import Field
 
-from knot_rag.claim_check import LIGHT_WORDS, MIN_TERMS, _sentences, check_claim
+from knot_rag.claim_check import LIGHT_WORDS, MIN_TERMS, check_claim
 from knot_rag.text import NEGATION_WORDS, STOPWORDS, content_tokens, fold, has_negation, normalize_text, numbers, stem, stem_in, stem_set
 from knot_rag import self_check_glossary as glossary
 from knot_rag.self_check_judge import judge, judge_enabled
-from knot_rag.self_check_rules import RULE_KINDS, rule_conflict
-from knot_rag.self_check_norm import canon, is_readable, polar_words, repair_ocr
+from knot_rag.self_check_rules import RULE_KINDS, direction_confirmed, roles as claim_roles, rule_conflict
+from knot_rag.self_check_norm import canon, is_readable, polar_words, repair_ocr, slide_units as _sentences
 from knot_rag.self_check_translate import dictionary_translate, language_of, model_translate
 from knot_rag.unified import Manifest, Search, UnifiedIndex
 
@@ -429,6 +429,14 @@ def classify(claim: str, evidence: list[dict], short_ok: bool = False, same_lang
         c, window, e = conflicts[0]
         return {"label": "CONFLICTS", "sources": [_source(e, window, claim)], "missing_terms": [],
                 "unmatched_numbers": [], "conflict": c}
+    if label_rank >= rank["ANCHORED"] and claim_roles(claim):
+        # The claim says WHO sends to WHOM. Matching words do not show the direction; a source unit with the
+        # same giver and receiver does. Without one the claim is only partly confirmed, never "in source".
+        units = [u for e in evidence for u in _sentences(repair_ocr(canon(e["text"]), vocabulary))]
+        if not direction_confirmed(claim, units):
+            good = [s for s in scored if s[0] >= rank["ANCHORED"]]
+            return {"label": "PARTIAL", "sources": pick(good), "missing_terms": [], "unmatched_numbers": [], "conflict": None,
+                    "note": "DIRECTION_UNCONFIRMED"}
     if label_rank >= rank["ANCHORED"]:
         good = [s for s in scored if s[0] >= rank["ANCHORED"]]
         translated = best[4].get("reason") == "TERMS_FOUND_TRANSLATED"
@@ -523,6 +531,7 @@ def _combine(claim: str, subs: list[dict]) -> dict:
         "unmatched_numbers": [t for x in subs for t in x["unmatched_numbers"]][:4],
         "conflict": conflict["conflict"] if conflict else None,
         "partly_unchecked": partly_unchecked,
+        "note": next((x.get("note") for x in subs if x.get("note")), None),
         "translated": any(x.get("translated") for x in subs),
         "matched_terms": [t for x in subs for t in x.get("matched_terms", [])][:6],
         "parts": [{"text": t, "label": x["label"], "sources": x["sources"][:1], "missing_terms": x["missing_terms"], "meaning_warning": None,
@@ -720,7 +729,7 @@ def self_check(index: UnifiedIndex, body: SelfCheck, translate=model_translate, 
             results.append(hit)
             continue
         base = {"text": claim, "translated": False, "matched_terms": [], "translation": None, "parts": [],
-                "meaning_warning": None, "partly_unchecked": False}
+                "meaning_warning": None, "partly_unchecked": False, "note": None}
         # The WHOLE claim is judged first. Only when it is not found as written (and not contradicted) is it
         # split, so a good claim is never made worse by splitting it.
         result = {**base, **check_statement(claim)}

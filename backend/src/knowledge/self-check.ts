@@ -39,6 +39,8 @@ function cleanOne(c: any, allowed: Allowed, withParts: boolean): any {
         };
       }),
     missing_terms: terms(c.missing_terms),
+    // Why a partial result is partial, when it is not about words: "DIRECTION_UNCONFIRMED".
+    note: c.note === "DIRECTION_UNCONFIRMED" ? "DIRECTION_UNCONFIRMED" : null,
     // Found, but a part of the claim could not be compared at all (shown as a note).
     partly_unchecked: c.label === "IN_SOURCE" && c.partly_unchecked === true,
     // A translated claim was compared by its technical terms only; the student is told so.
@@ -75,7 +77,7 @@ function cleanOne(c: any, allowed: Allowed, withParts: boolean): any {
   };
   // A claim that ended up without a source cannot be "found" or "conflicting": say only what is known.
   return !one.sources.length && ["IN_SOURCE", "CONFLICTS", "PARTIAL", "UNCHECKED"].includes(one.label)
-    ? { ...one, label: "NOT_IN_SOURCE", conflict: null, missing_terms: [], unmatched_numbers: [], translated: false, matched_terms: [], translation: null, meaning_warning: null, partly_unchecked: false, parts: one.parts.length > 1 ? one.parts : [] }
+    ? { ...one, label: "NOT_IN_SOURCE", conflict: null, missing_terms: [], unmatched_numbers: [], translated: false, matched_terms: [], translation: null, meaning_warning: null, partly_unchecked: false, note: null, parts: one.parts.length > 1 ? one.parts : [] }
     : one;
 }
 
