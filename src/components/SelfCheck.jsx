@@ -1,0 +1,200 @@
+import { useEffect, useId, useRef, useState } from "react";
+import { api } from "../api/endpoints";
+import { videoErrorText } from "../lib/video";
+
+const MAX_CHARS = 4000;
+// Etiket yalnızca kayıtlı kaynakla karşılaştırmanın sonucudur; not ya da puan değildir.
+const LABELS = {
+  IN_SOURCE: { text: "Kaynakta var", tone: "ok", count: "kaynakta var" },
+  PARTIAL: { text: "Kısmen", tone: "warn", count: "kısmen" },
+  NOT_IN_SOURCE: { text: "Kaynakta yok", tone: "none", count: "kaynakta yok" },
+  CONFLICTS: { text: "Kaynakla çelişiyor", tone: "no", count: "çelişiyor" },
+  UNCHECKED: { text: "Karşılaştırılamadı", tone: "none", count: "karşılaştırılamadı" },
+};
+const ORDER = ["IN_SOURCE", "PARTIAL", "NOT_IN_SOURCE", "CONFLICTS", "UNCHECKED"];
+const SKIP_REASONS = { QUESTION: "soru", OPINION: "görüş", TOO_SHORT: "çok kısa" };
+
+const clock = (ms) => {
+  const s = Math.max(0, Math.floor((Number(ms) || 0) / 1000));
+  return `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
+};
+const place = (l = {}) =>
+  l.page != null ? `Sayfa ${l.page}` : l.slide != null ? `Slayt ${l.slide}` : l.start_ms != null ? clock(l.start_ms) : "";
+
+function conflictNote(c) {
+  if (!c) return "";
+  if (c.kind === "NUMBER") return `Sayı farklı: sen ${c.claim.join(", ")} yazdın, kaynakta ${c.source.join(", ")} geçiyor.`;
+  return c.claim_negated
+    ? "Senin cümlen olumsuz, kaynaktaki cümle olumlu."
+    : "Senin cümlen olumlu, kaynaktaki cümle olumsuz.";
+}
+
+// "Beni kontrol et": öğrencinin kendi cümleleri iddialara bölünür ve her biri ders materyalleriyle
+// karşılaştırılır. Sonuç bir not değil, kayıtlı kaynakla sözcük/sayı karşılaştırmasıdır; doğruluk kanıtı sayılmaz.
+export default function SelfCheck({ courseId, onOpenSource }) {
+  const [text, setText] = useState("");
+  const [state, setState] = useState({ status: "idle" });
+  const area = useRef(null);
+  const abort = useRef(null);
+  const areaId = useId();
+  const hintId = useId();
+
+  useEffect(() => () => abort.current?.abort(), []);
+  // Başka bir derse geçilirse önceki dersin sonucu gösterilmez.
+  useEffect(() => {
+    abort.current?.abort();
+    setState({ status: "idle" });
+  }, [courseId]);
+
+  const empty = !text.trim();
+  const loading = state.status === "loading";
+
+  async function run() {
+    if (empty || loading) return;
+    abort.current?.abort();
+    const controller = new AbortController();
+    abort.current = controller;
+    const sent = text;
+    setState({ status: "loading" });
+    try {
+      const result = await api.selfCheck(courseId, { text: sent }, controller.signal);
+      if (!controller.signal.aborted) setState({ status: "ready", result, sent });
+    } catch (e) {
+      if (e?.name !== "AbortError" && !controller.signal.aborted) {
+        setState({ status: "error", message: videoErrorText(e) });
+        area.current?.focus();
+      }
+    }
+  }
+
+  const result = state.status === "ready" ? state.result : null;
+  const summary = result?.summary;
+  const parts = summary ? ORDER.filter((k) => summary[k] > 0) : [];
+  return (
+    <div className="self-check">
+      <label htmlFor={areaId} className="self-check-label">
+        Konuyu kendi cümlelerinle yaz
+      </label>
+      <textarea
+        id={areaId}
+        ref={area}
+        className="self-check-area"
+        rows={7}
+        maxLength={MAX_CHARS}
+        value={text}
+        aria-describedby={hintId}
+        placeholder="Örn. TCP bağlantı kurulumunda üç yollu el sıkışma kullanılır…"
+        onChange={(e) => setText(e.target.value)}
+        onKeyDown={(e) => {
+          if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+            e.preventDefault();
+            void run();
+          }
+        }}
+      />
+      <div className="self-check-bar">
+        <span id={hintId} className="self-check-count">
+          {text.length}/{MAX_CHARS}
+        </span>
+        <button type="button" className="board-control" onClick={run} disabled={empty || loading} aria-busy={loading}>
+          {loading ? "Kontrol ediliyor…" : "Kontrol et"}
+        </button>
+      </div>
+
+      {state.status === "error" && (
+        <p role="alert" className="product-error">
+          {state.message} Yazdığın metin korundu.
+        </p>
+      )}
+      {loading && (
+        <p role="status" className="product-note">
+          Cümlelerin ders materyalleriyle karşılaştırılıyor…
+        </p>
+      )}
+
+      {result && (
+        <section className="self-check-result" aria-label="Kontrol sonucu">
+          {summary.total === 0 ? (
+            <p role="status" className="product-note">
+              Kontrol edilecek bir iddia bulunamadı. Bilgi veren, tam cümleler yaz; soru ve görüş cümleleri kontrol edilmez.
+            </p>
+          ) : (
+            <p role="status" className="self-check-summary">
+              <span>{summary.total} iddia: </span>
+              {parts.map((k, i) => (
+                <span key={k}>
+                  {i > 0 && ", "}
+                  <b>{summary[k]}</b> {LABELS[k].count}
+                </span>
+              ))}
+            </p>
+          )}
+          {state.sent !== text && (
+            <p className="product-note">Metni değiştirdin; bu sonuç önceki metne aittir. Yeniden kontrol et.</p>
+          )}
+          {summary.total > 0 && (
+            <p className="product-note">
+              Bu bir not değildir. Sözcük, sayı ve olumsuzluk karşılaştırmasıdır; iddianın doğru olduğunu kanıtlamaz.
+            </p>
+          )}
+          {result.truncated && <p className="product-note">Yalnızca ilk 25 iddia kontrol edildi.</p>}
+          {summary.total > 0 && (
+            <ol className="self-check-list">
+              {result.claims.map((c, i) => {
+                const label = LABELS[c.label] || LABELS.UNCHECKED;
+                return (
+                  <li key={i} data-label={c.label}>
+                    <div className="self-check-row">
+                      <span className="board-badge self-check-badge" data-tone={label.tone}>
+                        {label.text}
+                      </span>
+                      <span className="self-check-claim">{c.text}</span>
+                    </div>
+                    {c.label === "NOT_IN_SOURCE" && (
+                      <p className="self-check-note">Bu iddia için materyallerinde kanıt bulunamadı. Yanlış demek değil.</p>
+                    )}
+                    {c.label === "CONFLICTS" && <p className="self-check-note">{conflictNote(c.conflict)}</p>}
+                    {c.label === "PARTIAL" && (c.missing_terms.length > 0 || c.unmatched_numbers.length > 0) && (
+                      <p className="self-check-note">
+                        {c.missing_terms.length > 0 && `Kaynakta bulunamayan: ${c.missing_terms.join(", ")}. `}
+                        {c.unmatched_numbers.length > 0 && `Kaynakta olmayan sayı: ${c.unmatched_numbers.join(", ")}.`}
+                      </p>
+                    )}
+                    {c.label === "UNCHECKED" && (
+                      <p className="self-check-note">Metin ile kaynak farklı dillerde; sözcükler karşılaştırılamadı.</p>
+                    )}
+                    {c.sources.map((s) => (
+                      <div key={s.source_id} className="self-check-source">
+                        <blockquote>“{s.quote}”</blockquote>
+                        <button
+                          type="button"
+                          className="product-link"
+                          onClick={() => onOpenSource({ material_id: s.material_id, id: s.source_id })}
+                        >
+                          Kaynağa git · {s.title}
+                          {place(s.location) ? ` · ${place(s.location)}` : ""}
+                        </button>
+                      </div>
+                    ))}
+                  </li>
+                );
+              })}
+            </ol>
+          )}
+          {result.skipped.length > 0 && (
+            <details className="self-check-skipped">
+              <summary>Kontrol edilmeyen {result.skipped.length} cümle</summary>
+              <ul>
+                {result.skipped.map((s, i) => (
+                  <li key={i}>
+                    {s.text} <span className="board-badge">{SKIP_REASONS[s.reason] || s.reason}</span>
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
+        </section>
+      )}
+    </div>
+  );
+}

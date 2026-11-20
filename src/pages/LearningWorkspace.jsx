@@ -16,6 +16,8 @@ import MaterialSummary from "../components/MaterialSummary";
 import ClaimSupport from "../components/ClaimSupport";
 import MaterialFind from "../components/MaterialFind";
 import MaterialLinks from "../components/MaterialLinks";
+import SelfCheck from "../components/SelfCheck";
+import { ClipboardText } from "@phosphor-icons/react";
 import WorkspaceStart from "../components/WorkspaceStart";
 import RichText from "../components/RichText";
 import { lastMaterial, rememberMaterial } from "../lib/last-material";
@@ -122,7 +124,12 @@ export default function LearningWorkspace({ courseId }) {
     [chatId, setChatId] = useState(null),
     [chatLoading, setChatLoading] = useState(false),
     [assistantOpen, setAssistantOpen] = useState(true),
+    [selfCheckOpen, setSelfCheckOpen] = useState(false),
     [materialFilter, setMaterialFilter] = useState("");
+  const selfCheckButton = useRef(null);
+  useEffect(() => {
+    if (selfCheckOpen) document.querySelector("#self-check-panel textarea")?.focus();
+  }, [selfCheckOpen]);
   const [uploadMode, setUploadMode] = useState("document"),
     [link, setLink] = useState(""),
     [linkBusy, setLinkBusy] = useState(false);
@@ -843,6 +850,17 @@ export default function LearningWorkspace({ courseId }) {
             Kapsam haritası ↗
           </button>
           <button
+            type="button"
+            className="board-control self-check-open"
+            aria-expanded={selfCheckOpen}
+            aria-controls="self-check-panel"
+            ref={selfCheckButton}
+            onClick={() => setSelfCheckOpen((v) => !v)}
+          >
+            <ClipboardText size={14} weight="bold" aria-hidden="true" />
+            Beni kontrol et
+          </button>
+          <button
             className="workspace-toggle"
             aria-expanded={assistantOpen}
             onClick={() => setAssistantOpen((v) => !v)}
@@ -851,6 +869,37 @@ export default function LearningWorkspace({ courseId }) {
           </button>
         </div>
       </header>
+      {/* Metin, panel kapalıyken de korunur (bileşen takılı kalır, yalnızca gizlenir). */}
+      <section
+        id="self-check-panel"
+        className="self-check-panel"
+        aria-label="Beni kontrol et"
+        hidden={!selfCheckOpen}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") {
+            setSelfCheckOpen(false);
+            selfCheckButton.current?.focus();
+          }
+        }}
+      >
+        <div className="self-check-head">
+          <h2>Beni kontrol et</h2>
+          <button type="button" className="product-link" onClick={() => { setSelfCheckOpen(false); selfCheckButton.current?.focus(); }}>
+            Kapat
+          </button>
+        </div>
+        <p className="product-note">
+          Konuyu kendi cümlelerinle yaz. Her iddia ders materyallerinle karşılaştırılır; puan verilmez.
+        </p>
+        <SelfCheck
+          courseId={courseId}
+          onOpenSource={(e) => {
+            // Metin ve sonuç korunur; panel kapanır ki açılan kaynak görünsün.
+            setSelfCheckOpen(false);
+            return openEvidence(e);
+          }}
+        />
+      </section>
       {error && (
         <p role="alert" className="product-error workspace-error">
           {error}
