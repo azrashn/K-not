@@ -150,6 +150,11 @@ export default function SelfCheck({ courseId, onOpenSource }) {
                       </span>
                       <span className="self-check-claim">{c.text}</span>
                     </div>
+                    {c.translated && (
+                      <p className="self-check-note">
+                        Metin ile kaynak farklı dillerde; yalnızca teknik terimler ({c.matched_terms.join(", ")}) karşılaştırıldı.
+                      </p>
+                    )}
                     {c.label === "NOT_IN_SOURCE" && (
                       <p className="self-check-note">Bu iddia için materyallerinde kanıt bulunamadı. Yanlış demek değil.</p>
                     )}

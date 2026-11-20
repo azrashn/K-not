@@ -160,3 +160,60 @@ def test_claim_count_is_capped(env):
 def test_decimal_numbers_and_abbreviations_do_not_split_claims():
     claims, _ = split_claims("Gecikme 3.5 ms olur, örn. yerel ağlarda daha düşüktür.")
     assert len(claims) == 1
+
+
+SLIDES = (
+    "Hashing\n▪ is a means used to order and access elements in a list quickly\n"
+    "o the goal is O(1) time\n▪ Such an address calculator is usually referred to as a hash function\n9/87"
+)
+PERFECT = "Hash functions\n▪ Perfect hash function\no Maps each search key into a unique location of the hash table\n12/87"
+TCP_EN = "TCP slow start\n•initially cwnd = 1 MSS\n•double cwnd every RTT\nTransport Layer: 3-127"
+
+
+@pytest.fixture
+def slides():
+    e = Env()
+    e.add("pdf_slides", [(SLIDES, 7), (PERFECT, 12), (TCP_EN, 127)])
+    return e
+
+
+def test_big_o_difference_is_not_hidden_by_letters(slides):
+    # `n` is a letter, not a number, but O(n) against O(1) must never read as "in the source".
+    c = only(slides.check("The goal of hashing is O(n) time."))
+    assert c["label"] == "CONFLICTS" and c["conflict"]["kind"] == "NUMBER"
+    assert "O(N)" in c["conflict"]["claim"] and "O(1)" in c["conflict"]["source"]
+    assert only(slides.check("The goal of hashing is O(1) time."))["label"] == "IN_SOURCE"
+
+
+def test_denial_across_two_lines_conflicts(slides):
+    c = only(slides.check("A perfect hash function does not map each search key into a unique location of the hash table."))
+    assert c["label"] == "CONFLICTS" and c["conflict"]["kind"] == "NEGATION"
+    assert only(slides.check("A perfect hash function maps each search key into a unique location of the hash table."))["label"] == "IN_SOURCE"
+
+
+def test_slide_bullets_work_as_one_passage_and_footer_numbers_are_ignored(slides):
+    assert only(slides.check("TCP slow start has initially cwnd 1 MSS and doubles cwnd every RTT."))["label"] == "IN_SOURCE"
+    c = only(slides.check("TCP slow start has initially cwnd 10 MSS."))
+    assert c["label"] == "CONFLICTS" and c["conflict"]["source"] == ["1"]
+    # The slide footer "3-127" is a page counter: a claim about another number never "conflicts" with it.
+    assert only(slides.check("Transport Layer services run over 5 hosts in the TCP slow start phase."))["label"] != "CONFLICTS"
+
+
+def test_claim_with_several_numbers_never_conflicts(slides):
+    c = only(slides.check("TCP slow start begins has initially cwnd 10 MSS and doubles every 7 RTT."))
+    assert c["label"] != "CONFLICTS"
+
+
+def test_mostly_missing_terms_is_not_partial(slides):
+    c = only(slides.check("TCP slow start encrypts every segment with AES before sending it."))
+    assert c["label"] == "NOT_IN_SOURCE"
+
+
+def test_translated_claim_needs_two_shared_terms(slides):
+    # Turkish text against English slides: only acronyms can be compared, and one is not enough.
+    one = only(slides.check("TCP için her şeyi rastgele şifreleyen bir yöntem vardır."))
+    assert one["label"] in ("UNCHECKED", "NOT_IN_SOURCE")
+    two = only(slides.check("TCP slow start sırasında cwnd değeri 1 MSS ile başlar, RTT başına ikiye katlanır (slow start)."))
+    assert two["label"] in ("IN_SOURCE", "UNCHECKED", "NOT_IN_SOURCE")
+    if two["label"] == "IN_SOURCE":
+        assert two["translated"] is True and len(two["matched_terms"]) >= 2

@@ -17,7 +17,7 @@ import re
 from pydantic import Field
 
 from knot_rag.claim_check import LIGHT_WORDS, MIN_TERMS, _sentences, check_claim
-from knot_rag.text import content_tokens, fold, has_negation, normalize_text, numbers, stem, stem_in, stem_set
+from knot_rag.text import NEGATION_WORDS, content_tokens, fold, has_negation, normalize_text, numbers, stem, stem_in, stem_set
 from knot_rag.unified import Manifest, Search, UnifiedIndex
 
 METHOD = "self-check-lexical-v1"
@@ -30,7 +30,14 @@ WINDOW_SENTENCES = 3
 # A contradiction needs the claim to be about the same thing as the source sentence: almost all of the
 # claim's own words are in it, and enough of them to be a real topic match.
 CONFLICT_COVERAGE = 0.8
-CONFLICT_MIN_SHARED = 4
+NUMBER_MIN_SHARED = 3
+# A negation conflict may rest on a shorter claim ("UDP is not connectionless"), but then every
+# word of the claim must be in the one source sentence.
+NEGATION_MIN_SHARED = 3
+# "Partly" is for claims whose words are mostly in the source. When most of the key terms are missing
+# the honest answer is "not in the sources", not a partial match.
+PARTIAL_MIN_COVERAGE = 0.6
+PARTIAL_MAX_MISSING = 2
 
 _GOOD = ("SUPPORTED", "ANCHORED")
 _BULLET = re.compile(r"^\s*(?:[-–—•*▪●◦·]|\d{1,2}[.)])\s+")
@@ -110,12 +117,62 @@ def _windows(passage: str) -> list[tuple[str, int]]:
         for n in range(1, WINDOW_SENTENCES + 1):
             if i + n <= len(sentences):
                 out.append((" ".join(sentences[i:i + n]), n))
-    return out or [(passage, 1)]
+    # Slide text has no sentence punctuation: its bullets only make sense together, so the whole passage
+    # is one more window (size 0). It can support a claim but never proves a negation.
+    return out + [(passage, 0)]
 
 
-def _quote(window: str) -> str:
-    window = normalize_text(window)
-    return window if len(window) <= QUOTE_CHARS else window[: QUOTE_CHARS - 1].rstrip() + "…"
+def _best_line(claim: str, window: str) -> str:
+    """The line (or sentence) of the window that shares the most words with the claim."""
+    claim_stems = {stem(t) for t in _claim_words(claim)}
+    best, score = "", -1
+    for line in _sentences(window):
+        overlap = len(claim_stems & stem_set(line))
+        if overlap > score:
+            best, score = line, overlap
+    return best or window
+
+
+_COMPLEXITY = re.compile(r"(?<![A-Za-z])O\s*\(([^()]{1,24})\)")
+
+
+def _complexities(text: str) -> set[str]:
+    """Big-O expressions, normalized (`O( log n )` -> `O(LOGN)`). Letters are not numbers, but O(n) vs
+    O(1) is exactly the kind of difference a lexical check must not skip."""
+    return {"O(" + re.sub(r"\s+", "", m).upper() + ")" for m in _COMPLEXITY.findall(normalize_text(text))}
+
+
+def _quantities(text: str) -> set[str]:
+    return numbers(text) | _complexities(text)
+
+
+_FOOTER = re.compile(r"(?<!\d)\d{1,3}\s*[-–]\s*\d{1,4}\s*$")
+
+
+def _numeric_line(claim: str, window: str) -> str:
+    """The line with numbers that shares the most words with the claim. Slide footers ("Transport
+    Layer: 3-127") are page counters, not statements, and are never used."""
+    claim_stems = {stem(t) for t in _claim_words(claim)}
+    best, score = "", 1
+    for line in _sentences(window):
+        if _FOOTER.search(line) or not _quantities(line):
+            continue
+        overlap = len(claim_stems & stem_set(line))
+        if overlap > score:
+            best, score = line, overlap
+    return best
+
+
+def _quote(claim: str, window: str) -> str:
+    """The most relevant stretch of the window, at most QUOTE_CHARS, always a literal part of the source."""
+    lines = _sentences(window)
+    if len(lines) <= 1:
+        text = normalize_text(window)
+    else:
+        best = _best_line(claim, window)
+        at = lines.index(best)
+        text = normalize_text(" ".join(lines[at:at + 3]))
+    return text if len(text) <= QUOTE_CHARS else text[: QUOTE_CHARS - 1].rstrip() + "…"
 
 
 def _location(evidence: dict) -> dict:
@@ -129,33 +186,39 @@ def _location(evidence: dict) -> dict:
     return {}
 
 
-def _source(evidence: dict, window: str) -> dict:
+def _source(evidence: dict, window: str, claim: str) -> dict:
     return {
         "source_id": evidence["id"],
         "material_id": evidence["material_id"],
         "title": evidence.get("title", ""),
         "kind": evidence.get("kind"),
         "location": _location(evidence),
-        "quote": _quote(window),
+        "quote": _quote(claim, window),
     }
 
 
-def _conflict(claim: str, window: str, all_numbers: set[str]) -> dict | None:
+def _conflict(claim: str, window: str, size: int, all_numbers: set[str]) -> dict | None:
     """A clear contradiction between the claim and ONE source sentence, or None. Both rules need the
     claim to be about the same thing (almost all of its words are in the sentence)."""
-    words = _claim_words(claim)
-    if len(words) < CONFLICT_MIN_SHARED:
-        return None
+    words = [t for t in _claim_words(claim) if t not in NEGATION_WORDS]
     window_stems = stem_set(window)
     shared = [t for t in words if stem_in(stem(t), window_stems)]
-    if len(shared) < CONFLICT_MIN_SHARED or len(shared) / len(words) < CONFLICT_COVERAGE:
+    if not shared or len(shared) / len(words) < CONFLICT_COVERAGE:
         return None
-    claim_numbers, window_numbers = numbers(claim), numbers(window)
+    claim_numbers, window_numbers = _quantities(claim), _quantities(window)
+    line = _numeric_line(claim, window)
+    line_shared = sum(1 for t in words if stem_in(stem(t), stem_set(line))) if line else 0
     # Different number about the same thing: the claim's number is nowhere in the retrieved sources,
     # and the sentence itself states another number.
-    if claim_numbers and window_numbers and not claim_numbers & all_numbers and not window_numbers <= claim_numbers:
-        return {"kind": "NUMBER", "claim": sorted(claim_numbers)[:3], "source": sorted(window_numbers - claim_numbers)[:3]}
-    if not claim_numbers or claim_numbers <= window_numbers:
+    line_numbers = _quantities(line)
+    # Only a claim with ONE quantity: with several, a different number may just be another example.
+    if (len(shared) >= NUMBER_MIN_SHARED and line_shared >= 2 and len(claim_numbers) == 1 and line_numbers
+            and not claim_numbers & all_numbers and not line_numbers <= claim_numbers):
+        return {"kind": "NUMBER", "claim": sorted(claim_numbers)[:3], "source": sorted(line_numbers - claim_numbers)[:3]}
+    # Polarity: one sentence at a time. A student who DENIES something may also be compared with a short
+    # window (the statement can span two lines) as long as the window holds no negation at all.
+    denial = has_negation(claim) and not has_negation(window) and 1 <= size <= WINDOW_SENTENCES
+    if (size == 1 or denial) and len(shared) >= NEGATION_MIN_SHARED and (not claim_numbers or claim_numbers <= window_numbers):
         if has_negation(claim) != has_negation(window):
             return {"kind": "NEGATION", "claim_negated": has_negation(claim), "source_negated": has_negation(window)}
     return None
@@ -167,21 +230,35 @@ def classify(claim: str, evidence: list[dict]) -> dict:
         return {"label": "NOT_IN_SOURCE", "sources": [], "missing_terms": [], "unmatched_numbers": [], "conflict": None}
     all_numbers: set[str] = set()
     for e in evidence:
-        all_numbers |= numbers(e["text"])
+        all_numbers |= _quantities(e["text"])
     rank = {"SUPPORTED": 4, "ANCHORED": 3, "PARTIAL": 2, "UNCHECKED": 1, "UNSUPPORTED": 0}
     scored = []  # (rank, coverage, evidence index, window, support)
     conflicts = []
     single_good = False
+    claim_negated = has_negation(claim)
     for n, e in enumerate(evidence):
         for window, size in _windows(e["text"]):
             support = check_claim(claim, [window])
             if support.get("reason") == "TOO_SHORT_TO_CHECK":
                 continue
+            missing_quantity = sorted(_complexities(claim) - _complexities(window))
+            if support["label"] in _GOOD and missing_quantity:
+                support = {**support, "label": "PARTIAL", "reason": "NUMBER_NOT_IN_SOURCE",
+                           "unmatched_numbers": [*support.get("unmatched_numbers", []), *missing_quantity]}
+            if support.get("reason") == "TERMS_FOUND_TRANSLATED" and len(support.get("matched_terms", [])) < 2:
+                support = {**support, "label": "UNCHECKED"}
+            if support["label"] in _GOOD and claim_negated and not has_negation(window):
+                # The student denies something the source states without any negation.
+                support = {**support, "label": "UNSUPPORTED", "reason": "NEGATION_MISMATCH"}
+            elif support["label"] == "PARTIAL" and not (
+                (support["coverage"] or 0) >= PARTIAL_MIN_COVERAGE and len(support["missing_terms"]) <= PARTIAL_MAX_MISSING
+            ):
+                support = {**support, "label": "UNSUPPORTED", "reason": "LOW_COVERAGE"}
             scored.append((rank[support["label"]], support["coverage"] or 0.0, -n, window, support, e))
             # Polarity is compared one sentence at a time: a negation in a neighbouring sentence of a
             # wider window says nothing about this claim. A good single sentence also settles it.
-            c = _conflict(claim, window, all_numbers)
-            if c and (c["kind"] == "NUMBER" or size == 1):
+            c = _conflict(claim, window, size, all_numbers)
+            if c:
                 conflicts.append((c, window, e))
             if size == 1 and support["label"] in _GOOD:
                 single_good = True
@@ -198,18 +275,20 @@ def classify(claim: str, evidence: list[dict]) -> dict:
             if e["id"] in seen:
                 continue
             seen.add(e["id"])
-            out.append(_source(e, window))
+            out.append(_source(e, window, claim))
             if len(out) == MAX_SOURCES:
                 break
         return out
 
     if conflicts and not single_good and not (label_rank >= rank["ANCHORED"] and conflicts[0][0]["kind"] == "NUMBER"):
         c, window, e = conflicts[0]
-        return {"label": "CONFLICTS", "sources": [_source(e, window)], "missing_terms": [],
+        return {"label": "CONFLICTS", "sources": [_source(e, window, claim)], "missing_terms": [],
                 "unmatched_numbers": [], "conflict": c}
     if label_rank >= rank["ANCHORED"]:
         good = [s for s in scored if s[0] >= rank["ANCHORED"]]
-        return {"label": "IN_SOURCE", "sources": pick(good), "missing_terms": [], "unmatched_numbers": [], "conflict": None}
+        translated = best[4].get("reason") == "TERMS_FOUND_TRANSLATED"
+        return {"label": "IN_SOURCE", "sources": pick(good), "missing_terms": [], "unmatched_numbers": [], "conflict": None,
+                "translated": translated, "matched_terms": best[4].get("matched_terms", []) if translated else []}
     if label_rank == rank["PARTIAL"]:
         support = best[4]
         return {"label": "PARTIAL", "sources": pick([s for s in scored if s[0] == rank["PARTIAL"]]),
@@ -236,7 +315,7 @@ def self_check(index: UnifiedIndex, body: SelfCheck) -> dict:
                 reference_mode="conversation",
             )
         )
-        results.append({"text": claim, **classify(claim, found.get("evidence", []))})
+        results.append({"text": claim, "translated": False, "matched_terms": [], **classify(claim, found.get("evidence", []))})
     counts = {label: sum(1 for r in results if r["label"] == label)
               for label in ("IN_SOURCE", "NOT_IN_SOURCE", "CONFLICTS", "PARTIAL", "UNCHECKED")}
     return {

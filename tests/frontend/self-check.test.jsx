@@ -25,7 +25,7 @@ const source = (over = {}) => ({
 });
 const result = {
   claims: [
-    { text: "TCP üç yollu el sıkışma kullanır.", label: "IN_SOURCE", sources: [source()], missing_terms: [], unmatched_numbers: [], conflict: null },
+    { text: "TCP üç yollu el sıkışma kullanır.", label: "IN_SOURCE", translated: true, matched_terms: ["TCP", "SYN"], sources: [source()], missing_terms: [], unmatched_numbers: [], conflict: null },
     { text: "Ethernet çerçevesi en az 128 bayttır.", label: "CONFLICTS", sources: [source({ quote: "En küçük boyut 64 bayttır." })], missing_terms: [], unmatched_numbers: [], conflict: { kind: "NUMBER", claim: ["128"], source: ["64"] } },
     { text: "Kuantum ağlar fotonla çalışır.", label: "NOT_IN_SOURCE", sources: [], missing_terms: [], unmatched_numbers: [], conflict: null },
     { text: "TCP şifreleme anahtarı değişimi sağlar.", label: "PARTIAL", sources: [source()], missing_terms: ["şifreleme"], unmatched_numbers: [], conflict: null },
@@ -75,6 +75,7 @@ test("each label has its own wording; not-in-source says it does not mean wrong;
   expect(screen.getByText("Bu iddia için materyallerinde kanıt bulunamadı. Yanlış demek değil.")).toBeInTheDocument();
   expect(screen.getByText("Sayı farklı: sen 128 yazdın, kaynakta 64 geçiyor.")).toBeInTheDocument();
   expect(screen.getByText("Kaynakta bulunamayan: şifreleme.")).toBeInTheDocument();
+  expect(screen.getByText("Metin ile kaynak farklı dillerde; yalnızca teknik terimler (TCP, SYN) karşılaştırıldı.")).toBeInTheDocument();
   for (const name of ["Kaynakta var", "Kaynakta yok", "Kaynakla çelişiyor", "Kısmen"])
     expect(screen.getAllByText(name, { selector: ".board-badge" }).length).toBe(1);
   expect(screen.getByText("Kontrol edilmeyen 1 cümle")).toBeInTheDocument();

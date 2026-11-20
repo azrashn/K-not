@@ -1240,7 +1240,7 @@ describe("self-check: the student's own text against the course materials", () =
   };
   const answer = (materialId: string) => ({
     claims: [
-      { text: "TCP üç yollu el sıkışma kullanır", label: "IN_SOURCE", missing_terms: [], unmatched_numbers: [], conflict: null,
+      { text: "TCP üç yollu el sıkışma kullanır", label: "IN_SOURCE", translated: true, matched_terms: ["TCP", "SYN"], missing_terms: [], unmatched_numbers: [], conflict: null,
         sources: [{ source_id: sid, material_id: materialId, title: "x", kind: "PDF", location: { page: 4 }, quote: "q".repeat(300) },
                   { source_id: sid, material_id: "pdf_someone-elses", title: "leak", kind: "PDF", location: { page: 1 }, quote: "no" }] },
       // a conflict whose only source belongs to a material the student cannot read must not survive
@@ -1266,6 +1266,7 @@ describe("self-check: the student's own text against the course materials", () =
     expect(res.body.claims[0].sources).toHaveLength(1);
     expect(res.body.claims[0].sources[0]).toMatchObject({ material_id: id, location: { page: 4 } });
     expect(res.body.claims[0].sources[0].quote).toHaveLength(160);
+    expect(res.body.claims[0]).toMatchObject({ translated: true, matched_terms: ["TCP", "SYN"] });
     // the conflicting claim lost its only source: it is reported as not found, never as a conflict
     expect(res.body.claims[1]).toMatchObject({ label: "NOT_IN_SOURCE", conflict: null, sources: [] });
     // counts come from the cleaned claims, not from the service's own numbers

@@ -40,6 +40,9 @@ export function cleanSelfCheck(body: any, allowed: Map<string, { title: string; 
           };
         }),
       missing_terms: terms(c.missing_terms),
+      // A translated claim was compared by its technical terms only; the student is told so.
+      translated: c.label === "IN_SOURCE" && c.translated === true,
+      matched_terms: c.label === "IN_SOURCE" && c.translated === true ? terms(c.matched_terms) : [],
       unmatched_numbers: terms(c.unmatched_numbers),
       conflict:
         c.label === "CONFLICTS" && c.conflict && ["NUMBER", "NEGATION"].includes(c.conflict.kind)
@@ -55,7 +58,7 @@ export function cleanSelfCheck(body: any, allowed: Map<string, { title: string; 
     // A claim that ended up without a source cannot be "found" or "conflicting": say only what is known.
     .map((c: any) =>
       !c.sources.length && ["IN_SOURCE", "CONFLICTS", "PARTIAL", "UNCHECKED"].includes(c.label)
-        ? { ...c, label: "NOT_IN_SOURCE", conflict: null, missing_terms: [], unmatched_numbers: [] }
+        ? { ...c, label: "NOT_IN_SOURCE", conflict: null, missing_terms: [], unmatched_numbers: [], translated: false, matched_terms: [] }
         : c,
     );
   const count = (label: string) => claims.filter((c: any) => c.label === label).length;
