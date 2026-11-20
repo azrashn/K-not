@@ -825,6 +825,18 @@ def install(app, components, auth):
             raise RequestValidationError(exc.errors(include_url=False)) from exc
         return find_links(index, request)
 
+    @router.post("/self-check")
+    def self_check_route(body: dict = Body(...)):
+        from pydantic import ValidationError
+        from fastapi.exceptions import RequestValidationError
+        from knot_rag.self_check import SelfCheck, self_check
+
+        try:
+            request = SelfCheck.model_validate(body)
+        except ValidationError as exc:
+            raise RequestValidationError(exc.errors(include_url=False)) from exc
+        return self_check(index, request)
+
     @router.post("/frame-text")
     def frame_texts(body: dict = Body(...)):
         from pydantic import ValidationError
