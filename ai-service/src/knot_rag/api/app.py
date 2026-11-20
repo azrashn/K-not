@@ -111,6 +111,8 @@ def create_app(components: Components) -> FastAPI:
         except RagError as exc:
             ok = False
             checks["index"] = exc.code.value
+            # The concrete cause (e.g. "chroma_http_unreachable localhost:8000 — ..."); the code above stays stable.
+            checks["index_reason"] = str((exc.details or {}).get("reason") or exc.message)
         except Exception:  # pragma: no cover - defensive
             ok = False
             checks["index"] = "error"
@@ -122,7 +124,8 @@ def create_app(components: Components) -> FastAPI:
     def _index_identity(info) -> dict:
         """C-1 consistency-guard fields (api-contracts.md §6). The fingerprint is the
         service's configured one; when the collection carries a fingerprint, `info()` has
-        already verified that the two are equal."""
+        already verified that the two are equal. Without `info` (index unreachable or not built)
+        the collection's stamp could not be read: `stamp` is "unknown", never a guessed value."""
         fingerprint = None
         if components.embedding_configuration is not None:
             try:
@@ -133,7 +136,7 @@ def create_app(components: Components) -> FastAPI:
             "collection": info.collection if info is not None else settings.chroma_collection,
             "embedding_fingerprint": fingerprint,
             "index_version_id": info.index_version_id if info is not None else None,
-            "stamp": None if info is None else ("full" if info.embedding_fingerprint else "legacy"),
+            "stamp": "unknown" if info is None else ("full" if info.embedding_fingerprint else "legacy"),
         }
 
     auth = [Depends(require_internal_auth)]

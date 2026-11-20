@@ -36,7 +36,8 @@ function Fail($m) { Write-Host "HATA: $m" -ForegroundColor Red; exit 1 }
 # ── .env yardımcıları ──────────────────────────────────────────────────────────
 function Get-EnvValue([string]$File, [string]$Key) {
   if (-not (Test-Path $File)) { return $null }
-  foreach ($line in Get-Content $File) {
+  # .env dosyaları BOM'suz UTF-8: Windows PowerShell 5.1'de -Encoding olmadan ANSI (cp1254) okunur.
+  foreach ($line in Get-Content -LiteralPath $File -Encoding UTF8) {
     if ($line -match "^\s*$Key=(.*)$") {
       $v = $Matches[1] -replace '\s+#.*$', ''
       return $v.Trim().Trim('"')
@@ -47,7 +48,8 @@ function Get-EnvValue([string]$File, [string]$Key) {
 
 function Set-EnvValue([string]$File, [string]$Key, [string]$Value) {
   $lines = @()
-  if (Test-Path $File) { $lines = @(Get-Content $File) }
+  # UTF8 ile oku: ANSI okunup UTF-8 yazılırsa Türkçe karakterler her çalıştırmada bir kez daha bozulup dosya şişer.
+  if (Test-Path $File) { $lines = @(Get-Content -LiteralPath $File -Encoding UTF8) }
   $found = $false
   $out = foreach ($line in $lines) {
     if ($line -match "^\s*$Key=") { $found = $true; "$Key=$Value" } else { $line }

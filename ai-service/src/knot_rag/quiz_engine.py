@@ -17,7 +17,7 @@ import logging
 import os
 import re
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Callable, Literal
 from urllib.parse import urlsplit, urlunsplit
 
@@ -642,11 +642,46 @@ def generate(req: QuizRequest, provider, *, speed: Speed | None = None,
             "failures": failures, "timing": timing}
 
 
+QUIZ_MODEL_NOT_CONFIGURED = "ai-service/.env içinde LLM_PROVIDER=openai_compatible ve model ayarı gerekli"
+
+
+@dataclass(frozen=True)
+class QuizModel:
+    """Which model quiz questions use, and where that choice came from (for the startup log)."""
+
+    url: str
+    model: str
+    api_key: str = field(default="", repr=False)
+    source: str = "NONE"  # QUIZ_LLM | UNIFIED_LLM | LLM | NONE
+    note: str = ""  # why it is not configured, shown in the log and the 503 message
+
+    @property
+    def configured(self) -> bool:
+        return bool(self.url and self.model)
+
+
+def quiz_model() -> QuizModel:
+    """QUIZ_LLM_* first, then UNIFIED_LLM_*. When both are empty, the main answer model
+    (LLM_BASE_URL / LLM_MODEL / LLM_API_KEY) is used, but only with LLM_PROVIDER=openai_compatible:
+    `extractive` / `mock` have no model that can write questions."""
+    env = os.environ
+    quiz_url, quiz_model_name = env.get("QUIZ_LLM_BASE_URL", "").strip(), env.get("QUIZ_LLM_MODEL", "").strip()
+    unified_url, unified_model = env.get("UNIFIED_LLM_BASE_URL", "").strip(), env.get("UNIFIED_LLM_MODEL", "").strip()
+    if quiz_url or quiz_model_name or unified_url or unified_model:
+        source = "QUIZ_LLM" if quiz_url or quiz_model_name else "UNIFIED_LLM"
+        return QuizModel(quiz_url or unified_url, quiz_model_name or unified_model, source=source)
+    provider = env.get("LLM_PROVIDER", "").strip().lower()
+    if provider == "openai_compatible":
+        found = QuizModel(env.get("LLM_BASE_URL", "").strip(), env.get("LLM_MODEL", "").strip(),
+                          env.get("LLM_API_KEY", "").strip(), source="LLM")
+        return found if found.configured else replace(found, note=QUIZ_MODEL_NOT_CONFIGURED)
+    return QuizModel("", "", source="LLM" if provider else "NONE", note=QUIZ_MODEL_NOT_CONFIGURED)
+
+
 def model_settings() -> tuple[str, str]:
-    """(base URL, model) of the quiz model: QUIZ_LLM_* first, then UNIFIED_LLM_*."""
-    url = os.environ.get("QUIZ_LLM_BASE_URL") or os.environ.get("UNIFIED_LLM_BASE_URL", "")
-    model = os.environ.get("QUIZ_LLM_MODEL") or os.environ.get("UNIFIED_LLM_MODEL", "")
-    return url, model
+    """(base URL, model) of the quiz model; see `quiz_model()` for the order."""
+    m = quiz_model()
+    return m.url, m.model
 
 
 def _safe_url(url: str) -> str:
@@ -660,20 +695,25 @@ def _safe_url(url: str) -> str:
 
 def log_model_settings() -> None:
     """Once at service start: which model and address quiz questions will use. Never an API key."""
-    url, model = model_settings()
-    source = ("QUIZ_LLM" if os.environ.get("QUIZ_LLM_BASE_URL") or os.environ.get("QUIZ_LLM_MODEL")
-              else "UNIFIED_LLM")
-    if not url or not model:
-        log.info("quiz_model engine=%s configured=false source=%s", engine_setting(), source)
+    m = quiz_model()
+    if not m.configured:
+        log.info("quiz_model engine=%s configured=false source=%s note=%s", engine_setting(), m.source,
+                 m.note or "QUIZ_LLM_* / UNIFIED_LLM_* incomplete")
         return
     log.info("quiz_model engine=%s configured=true source=%s model=%s base_url=%s local=%s "
-             "output_token_scale=%s", engine_setting(), source, model, _safe_url(url),
-             is_local_endpoint(url), output_token_scale())
+             "output_token_scale=%s", engine_setting(), m.source, m.model, _safe_url(m.url),
+             is_local_endpoint(m.url), output_token_scale())
+
+
+def not_configured_message(m: QuizModel) -> str:
+    if not m.configured:
+        return "Local quiz model is not configured" + (f": {m.note}" if m.note else "")
+    return f"Quiz model address is not local ({_safe_url(m.url)}); quizzes use local models only"
 
 
 def quiz_v2(req: QuizRequest) -> dict:
-    url, model = model_settings()
-    if not url or not model or not is_local_endpoint(url):
-        raise HTTPException(503, {"code": qc.MODEL_UNREACHABLE, "message": "Local quiz model is not configured"})
+    m = quiz_model()
+    if not m.configured or not is_local_endpoint(m.url):
+        raise HTTPException(503, {"code": qc.MODEL_UNREACHABLE, "message": not_configured_message(m)})
     with httpx.Client() as client:
-        return generate(req, OpenAICompatibleProvider(url, model, client=client))
+        return generate(req, OpenAICompatibleProvider(m.url, m.model, m.api_key, client=client))

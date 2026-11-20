@@ -60,6 +60,14 @@ sentence-extraction baseline (useful for demos and frontend integration; it is *
 A free local model works through `LLM_PROVIDER=openai_compatible` + Ollama
 (`LLM_BASE_URL=http://localhost:11434/v1`).
 
+**Quiz model.** Quiz questions use the first of: `QUIZ_LLM_BASE_URL`/`QUIZ_LLM_MODEL`,
+`UNIFIED_LLM_BASE_URL`/`UNIFIED_LLM_MODEL`, and — when both are empty and
+`LLM_PROVIDER=openai_compatible` — the answer model (`LLM_BASE_URL`, `LLM_MODEL`, `LLM_API_KEY`).
+The start-up log names the choice (`quiz_model … source=QUIZ_LLM|UNIFIED_LLM|LLM`). With
+`LLM_PROVIDER=extractive` (or `mock`) and no quiz/unified model, quizzes are not configured: the log
+says `configured=false` and quiz requests get 503 with the note "ai-service/.env içinde
+LLM_PROVIDER=openai_compatible ve model ayarı gerekli". Quizzes only call a local (loopback) address.
+
 **External providers are off by default ($0).** A non-loopback `LLM_BASE_URL` is refused at
 start-up unless `LLM_ALLOW_EXTERNAL=true`, `LLM_BUDGET_USD > 0` and both
 `LLM_PRICE_*_PER_MTOK` are set; approved providers run behind a hard budget cap. No external

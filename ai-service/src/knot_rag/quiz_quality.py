@@ -146,13 +146,13 @@ def validate_draft(d, kind, evidence):
     return d
 
 
-def review_provider(client, writer_url, writer_model):
+def review_provider(client, writer_url, writer_model, writer_api_key=""):
     """(provider, model name) for the blind review. QUIZ_REVIEW_LLM_BASE_URL / QUIZ_REVIEW_LLM_MODEL
     select a second local model; without them the writer's model reviews (reported as not separate)."""
     url = os.environ.get("QUIZ_REVIEW_LLM_BASE_URL", "")
     model = os.environ.get("QUIZ_REVIEW_LLM_MODEL", "")
     if not url and not model:
-        return OpenAICompatibleProvider(writer_url, writer_model, client=client), writer_model
+        return OpenAICompatibleProvider(writer_url, writer_model, writer_api_key, client=client), writer_model
     url = url or writer_url
     if not model or not is_local_endpoint(url):
         raise HTTPException(503, "Local quiz review model unavailable")
@@ -160,10 +160,12 @@ def review_provider(client, writer_url, writer_model):
 
 
 def quiz(body):
-    url = os.environ.get("QUIZ_LLM_BASE_URL") or os.environ.get("UNIFIED_LLM_BASE_URL", "")
-    model = os.environ.get("QUIZ_LLM_MODEL") or os.environ.get("UNIFIED_LLM_MODEL", "")
-    if not url or not model or not is_local_endpoint(url):
-        raise HTTPException(503, "Local quiz model unavailable")
+    from knot_rag.quiz_engine import not_configured_message, quiz_model  # same choice as the v2 engine
+
+    m = quiz_model()
+    url, model = m.url, m.model
+    if not m.configured or not is_local_endpoint(url):
+        raise HTTPException(503, f"Local quiz model unavailable: {not_configured_message(m)}")
     evidence = body.evidence[:4]
     excerpts = source_excerpts(evidence)
     if not excerpts:
@@ -179,9 +181,9 @@ def quiz(body):
     # drafts need blind review; recall drafts need exact source reconstruction.
     deadline = time.monotonic() + 130
     with httpx.Client() as client:
-        provider = OpenAICompatibleProvider(url, model, client=client)
+        provider = OpenAICompatibleProvider(url, model, m.api_key, client=client)
         # The blind review can use a different local model: the writer cannot grade itself.
-        reviewer, reviewer_model = review_provider(client, url, model)
+        reviewer, reviewer_model = review_provider(client, url, model, m.api_key)
         failure = ""
         rejected_facts = []
         for attempt in range(3):

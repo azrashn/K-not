@@ -529,7 +529,7 @@ def test_quiz_llm_settings_win_and_a_missing_model_is_logged(monkeypatch, caplog
     with caplog.at_level(logging.INFO, logger="knot_rag.quiz_engine"):
         qe.log_model_settings()
     assert "source=QUIZ_LLM model=qwen2.5:3b base_url=http://127.0.0.1:11434/v1" in caplog.records[-1].getMessage()
-    for name in ("QUIZ_LLM_BASE_URL", "QUIZ_LLM_MODEL", "UNIFIED_LLM_BASE_URL", "UNIFIED_LLM_MODEL"):
+    for name in ("QUIZ_LLM_BASE_URL", "QUIZ_LLM_MODEL", "UNIFIED_LLM_BASE_URL", "UNIFIED_LLM_MODEL", "LLM_PROVIDER"):
         monkeypatch.delenv(name, raising=False)
     with caplog.at_level(logging.INFO, logger="knot_rag.quiz_engine"):
         qe.log_model_settings()
@@ -670,6 +670,7 @@ def client(monkeypatch):
     monkeypatch.delenv("UNIFIED_LLM_BASE_URL", raising=False)
     monkeypatch.delenv("QUIZ_LLM_BASE_URL", raising=False)
     monkeypatch.delenv("QUIZ_ENGINE", raising=False)
+    monkeypatch.delenv("LLM_PROVIDER", raising=False)  # no fallback to the answer model in these tests
     app = create_app(build_components(Settings(internal_api_token="engine-tests-token",
                                                embedding_backend="hashing", chroma_mode="memory")))
     with TestClient(app) as c:

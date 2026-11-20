@@ -12,7 +12,7 @@ Collection layout (contract with WBS-2):
 from __future__ import annotations
 
 import logging
-from typing import Any, Callable, Sequence, Union
+from typing import Any, Callable, NamedTuple, Sequence, Union
 
 from knot_rag.errors import ConfigurationError, IndexNotReady, RagError, RetrievalUnavailable
 from knot_rag.retrieval.embedding import Embedder
@@ -42,6 +42,23 @@ def _resolve(source: ConfigurationSource) -> EmbeddingConfiguration | None:
     return source() if callable(source) else source
 
 
+class ChromaTarget(NamedTuple):
+    """Where the client connects; only used to explain a failed connection."""
+
+    mode: str
+    host: str = ""
+    port: int = 0
+    path: str = ""
+
+    def unreachable_reason(self, exc: Exception) -> str:
+        if self.mode == "http":
+            # The usual local mistake: no `chroma run` server while the data sits in ./.chroma.
+            return f"chroma_http_unreachable {self.host}:{self.port} — CHROMA_MODE=persistent olmalı mı?"
+        if self.mode == "persistent":
+            return f"chroma_persistent_unavailable {self.path} ({type(exc).__name__})"
+        return f"chroma_unavailable mode={self.mode} ({type(exc).__name__})"
+
+
 def scope_filter(scope: SearchScope) -> dict[str, Any]:
     return {
         "$and": [
@@ -65,21 +82,36 @@ class ChromaChunkIndex:
         collection_name: str,
         embedder: Embedder,
         configuration: ConfigurationSource = None,
+        target: ChromaTarget | None = None,
     ):
         self._client_or_factory = client
         self._client = None if callable(client) and not hasattr(client, "list_collections") else client
         self._name = collection_name
         self._embedder = embedder
         self._configuration = configuration
+        self._target = target
         self._collection = None
         self._space = "l2"
+        self._last_unreachable: str | None = None  # logged once per distinct reason, not on every /ready poll
+
+    def _reason(self, exc: Exception) -> str:
+        if self._target is not None:
+            return self._target.unreachable_reason(exc)
+        return f"chroma_unavailable ({type(exc).__name__})"
+
+    def _unreachable(self, exc: Exception) -> RetrievalUnavailable:
+        reason = self._reason(exc)
+        if reason != self._last_unreachable:
+            log.warning("rag.index.unreachable", extra={"collection": self._name, "reason": reason, "error_type": type(exc).__name__})
+            self._last_unreachable = reason
+        return RetrievalUnavailable(details={"reason": reason})
 
     def _get_client(self):
         if self._client is None:
             try:
                 self._client = self._client_or_factory()
             except Exception as exc:
-                raise RetrievalUnavailable() from exc
+                raise self._unreachable(exc) from exc
         return self._client
 
     def _get_collection(self):
@@ -89,13 +121,16 @@ class ChromaChunkIndex:
         try:
             names = {getattr(c, "name", c) for c in client.list_collections()}
         except Exception as exc:
-            raise RetrievalUnavailable() from exc
+            raise self._unreachable(exc) from exc
+        if self._last_unreachable is not None:
+            log.info("rag.index.reachable", extra={"collection": self._name})
+            self._last_unreachable = None
         if self._name not in names:
             raise IndexNotReady(f"Collection '{self._name}' does not exist yet.")
         try:
             col = client.get_collection(self._name)
         except Exception as exc:
-            raise RetrievalUnavailable() from exc
+            raise self._unreachable(exc) from exc
         self._check_compatibility(col.metadata or {})
         self._collection = col
         return col
@@ -103,8 +138,9 @@ class ChromaChunkIndex:
     def _unavailable(self, exc: Exception) -> RetrievalUnavailable:
         # Drop cached handles: the collection may have been recreated by WBS-2.
         self._collection = None
-        log.warning("rag.index.call_failed", extra={"collection": self._name, "error_type": type(exc).__name__})
-        return RetrievalUnavailable()
+        reason = self._reason(exc)
+        log.warning("rag.index.call_failed", extra={"collection": self._name, "error_type": type(exc).__name__, "reason": reason})
+        return RetrievalUnavailable(details={"reason": reason})
 
     def _check_compatibility(self, meta: dict[str, Any]) -> None:
         config = _resolve(self._configuration)

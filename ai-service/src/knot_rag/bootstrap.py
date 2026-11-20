@@ -14,7 +14,7 @@ from knot_rag.evidence.support import HeuristicSupportAssessor, SupportAssessor
 from knot_rag.generation.generator import GroundedGenerator
 from knot_rag.generation.providers import LLMProvider, build_provider
 from knot_rag.pipeline import RagService
-from knot_rag.retrieval.chroma_index import ChromaChunkIndex, build_chroma_client
+from knot_rag.retrieval.chroma_index import ChromaChunkIndex, ChromaTarget, build_chroma_client
 from knot_rag.retrieval.embedding import Embedder, build_embedder
 from knot_rag.retrieval.index import ChunkIndex
 from knot_rag.retrieval.service import RetrievalService
@@ -54,7 +54,8 @@ def build_components(
         client = chroma_client or (
             lambda: build_chroma_client(settings.chroma_mode, settings.chroma_host, settings.chroma_port, settings.chroma_path)
         )
-        index = ChromaChunkIndex(client, settings.chroma_collection, embedder, configuration=embedding_configuration)
+        target = ChromaTarget(settings.chroma_mode, settings.chroma_host, settings.chroma_port, settings.chroma_path)
+        index = ChromaChunkIndex(client, settings.chroma_collection, embedder, configuration=embedding_configuration, target=target)
     provider = provider or build_provider(settings.llm)
     assessor: SupportAssessor = HeuristicSupportAssessor(settings.support)
     if settings.support.judge == "llm":

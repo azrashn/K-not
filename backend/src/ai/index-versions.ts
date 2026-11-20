@@ -74,7 +74,12 @@ export class IndexVersionService {
     if (!iv) return (this.guard = { state: 'no_active_version', checkedAt: now });
     const r = await this.ai.call('GET', '/ready', { timeoutMs: 5_000 });
     if (r.kind !== 'response' || !r.body || typeof r.body !== 'object') return (this.guard = { state: 'unavailable', checkedAt: now });
-    const idx = r.body.index;
+    const idx = r.body.index as
+      | { collection?: string; embedding_fingerprint?: string | null; index_version_id?: string | null; stamp?: string | null }
+      | undefined;
+    // `stamp: "unknown"`: the service could not read the collection (Chroma unreachable, not built yet).
+    // Without a configured fingerprint either, nothing can be compared: that is "unavailable", not a mismatch.
+    if (idx && idx.stamp === 'unknown' && !idx.embedding_fingerprint) return (this.guard = { state: 'unavailable', checkedAt: now });
     let reason: string | null = null;
     if (!idx) reason = 'ai-service /ready has no index identity (pre-C-1 service)';
     else if (idx.collection !== iv.collectionName) reason = 'collection differs from the ACTIVE IndexVersion';
