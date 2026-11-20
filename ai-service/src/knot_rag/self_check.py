@@ -12,6 +12,7 @@ whenever that is not clear the claim is reported as NOT_IN_SOURCE, never as a ma
 
 from __future__ import annotations
 
+import os
 import re
 import threading
 from collections import OrderedDict
@@ -489,6 +490,19 @@ def _remember(key: tuple, value: dict) -> None:
             _cache.popitem(last=False)
 
 
+def debug_enabled() -> bool:
+    """Developer trace (SELF_CHECK_DEBUG=on): why each statement got its label. Never reaches the student:
+    the backend only forwards known fields."""
+    return os.environ.get("SELF_CHECK_DEBUG", "").strip().lower() in ("1", "on", "true", "yes")
+
+
+def _brief(result: dict) -> dict:
+    return {"label": result["label"], "conflict": result.get("conflict"), "missing": result.get("missing_terms"),
+            "numbers": result.get("unmatched_numbers"),
+            "sources": [{"title": x.get("title"), "location": x.get("location"), "quote": x.get("quote")}
+                        for x in result.get("sources", [])]}
+
+
 def _join_translations(subs: list[dict]) -> dict | None:
     used = [x["translation"] for x in subs if x.get("translation")]
     if not used:
@@ -584,6 +598,7 @@ def self_check(index: UnifiedIndex, body: SelfCheck, translate=model_translate, 
             evidence_cache[text] = found
         return evidence_cache[text]
 
+    trace: list[dict] = []
     pending = [(c, split_compound(c) + [x for x in split_compound(c, loose=True) if len(split_compound(c)) == 1])
                for c in claims if _cached(_cache_key(body, c)) is None]
     source_language = materials_language(index, body) if pending else None
@@ -598,6 +613,8 @@ def self_check(index: UnifiedIndex, body: SelfCheck, translate=model_translate, 
 
     def check_statement(text: str, short_ok: bool = False) -> dict:
         first = {"text": text, "translated": False, "matched_terms": [], "translation": None, **classify(text, evidence_for(text), short_ok)}
+        step = {"statement": text, "source_language": source_language, "as_written": _brief(first), "variants": []}
+        trace.append(step)
         if not source_language or language_of(text) == source_language:
             return first
         best, best_key = first, (_RANK[first["label"]], 0)  # ties: model translation > dictionary > as written
@@ -613,6 +630,7 @@ def self_check(index: UnifiedIndex, body: SelfCheck, translate=model_translate, 
             if result["label"] == "CONFLICTS" and method == "dictionary" and (not conflict or conflict["kind"] != "NUMBER"):
                 # a word-by-word translation can lose a negation: only a number difference is trusted
                 continue
+            step["variants"].append({"method": method, "text": variant, **_brief(result)})
             candidate = {**first, **result, "text": text, "translated": True, "matched_terms": [],
                          "translation": {"text": variant if method == "model" else None, "method": method, "to": source_language}}
             key = (_RANK[candidate["label"]], 2 if method == "model" else 1)
@@ -661,4 +679,5 @@ def self_check(index: UnifiedIndex, body: SelfCheck, translate=model_translate, 
         "next_offset": body.offset + len(claims),
         "method": METHOD,
         "verified": False,
+        **({"debug": trace} if debug_enabled() else {}),
     }
