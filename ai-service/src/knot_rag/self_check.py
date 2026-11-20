@@ -137,11 +137,13 @@ def _windows(passage: str) -> list[tuple[str, int]]:
 def _best_line(claim: str, window: str) -> str:
     """The line (or sentence) of the window that shares the most words with the claim."""
     claim_stems = {stem(t) for t in _claim_words(claim)}
-    best, score = "", -1
+    best, score = "", (-1, 0)
     for line in _sentences(window):
         overlap = len(claim_stems & stem_set(line))
-        if overlap > score:
-            best, score = line, overlap
+        # equal overlap: prefer a real sentence/bullet over a bare heading ("TCP 3-way handshake")
+        key = (overlap, min(len(line.split()), 8))
+        if key > score:
+            best, score = line, key
     return best or window
 
 

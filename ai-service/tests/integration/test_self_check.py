@@ -441,3 +441,19 @@ def test_whole_claim_first_then_parts_with_context_and_unchecked_parts():
     assert _combine("c", [sub("IN_SOURCE"), sub("NOT_IN_SOURCE")])["label"] == "PARTIAL"
     assert _combine("c", [sub("NOT_IN_SOURCE"), sub("UNCHECKED")])["label"] == "UNCHECKED"
     assert _combine("c", [sub("IN_SOURCE"), sub("CONFLICTS")])["label"] == "CONFLICTS"
+
+
+def test_unit_spelling_does_not_hide_a_match_or_a_conflict():
+    e = Env()
+    e.add("pdf_u2", [("Ethernet frames carry at most 1500 bytes of payload in the data field of one frame.", 7)])
+    ok = only(e.check("Ethernet çerçeveleri bir çerçevenin veri alanında en fazla 1500 bayt yük taşır."))  # Turkish, bayt
+    assert ok["label"] != "CONFLICTS"
+    c = only(e.check("Ethernet frames carry at most 9000 bayt of payload in the data field of one frame."))
+    assert c["label"] == "CONFLICTS" and c["conflict"]["claim"] == ["9000"]
+
+
+def test_quote_prefers_a_sentence_over_a_bare_heading():
+    e = Env()
+    e.add("pdf_q", [("TCP 3-way handshake\nthe client sends a SYN segment to the server and waits\n12/87", 106)])
+    c = only(e.check("In the TCP 3-way handshake the client sends a SYN segment to the server."))
+    assert "client sends a SYN" in c["sources"][0]["quote"]

@@ -83,9 +83,34 @@ def number_words_to_digits(text: str) -> str:
     return "".join(pieces)
 
 
+# Units written in different ways mean the same: bayt / byte / bytes / 64 B, milisaniye / ms, ...
+_UNITS_RULES = [
+    (re.compile(r"\bkilo?bay\w*|\bkilobytes?\b", re.IGNORECASE), "kilobyte"),
+    (re.compile(r"\bmega?bay\w*|\bmegabytes?\b", re.IGNORECASE), "megabyte"),
+    (re.compile(r"\bgiga?bay\w*|\bgigabytes?\b", re.IGNORECASE), "gigabyte"),
+    (re.compile(r"\bbayt\w*|\bbytes?\b"), "byte"),
+    (re.compile(r"\bmilisaniye\w*|\bmilliseconds?\b"), "millisecond"),
+    (re.compile(r"\bbits?\b", re.IGNORECASE), "bit"),
+]
+# abbreviations right after a number ("64 B", "5 ms", "2 MB"); the space is kept
+_UNIT_ABBREVIATIONS = [
+    (re.compile(r"(?<=\d)\s?KB\b"), " kilobyte"), (re.compile(r"(?<=\d)\s?MB\b"), " megabyte"),
+    (re.compile(r"(?<=\d)\s?GB\b"), " gigabyte"), (re.compile(r"(?<=\d)\s?B\b"), " byte"),
+    (re.compile(r"(?<=\d)\s?ms\b"), " millisecond"),
+]
+
+
+def normalize_units(text: str) -> str:
+    for pattern, unit in _UNIT_ABBREVIATIONS:
+        text = pattern.sub(unit, text)
+    for pattern, unit in _UNITS_RULES:
+        text = pattern.sub(unit, text)
+    return text
+
+
 def canon(text: str) -> str:
     """The form in which claim and source are compared."""
-    return number_words_to_digits(text)
+    return normalize_units(number_words_to_digits(text))
 
 
 # ── OCR repair ──────────────────────────────────────────────────────────────────────────────
