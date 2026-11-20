@@ -1,6 +1,6 @@
 # Video ↔ Slayt/PDF eşleme — eşik ayarı
 
-`LINK_MIN_SIMILARITY` (`ai-service/src/knot_rag/links.py`) tek yerde tanımlıdır. Eşleşme bir **tahmindir**;
+`LINK_MIN_SIMILARITY` (`ai-service/src/knot_rag/links.py`, şu an **0.87**) tek yerde tanımlıdır. Eşleşme bir **tahmindir**;
 eşik belirsizlikte boş sonuç verecek şekilde yüksek tutulur. Ortam değişkeni `KNOT_LINK_MIN_SIMILARITY`
 ile (örn. başka bir gömme modeli için) geçersiz kılınabilir.
 
@@ -25,8 +25,8 @@ backend'in MySQL'i ve video transkripsiyon servisi çalışmıyordu; elde yalnı
 | 0.85 | 9 | 8 | 1 |
 | 0.86 | 8 | 7 | 1 |
 | 0.865 | 6 | 5 | 1 |
-| 0.87 | 6 | 5 | 1 |
-| **0.88** | **4** | **4** | **0** |
+| **0.87** | 6 | 5 | 1 |
+| 0.88 | **4** | **4** | **0** |
 | 0.89 | 2 | 2 | 0 |
 
 Gözlem: e5-small kosinüs skorları ilgisiz çiftlerde bile 0.79–0.85 arasındadır (skorlar sıkışıktır); bu
@@ -45,3 +45,20 @@ sıfıra indiren en düşük eşik 0.88 seçildi (geri çağırma bu vekil verid
 `docs/screenshots/esleme-acik.jpg` (açık), `esleme-koyu.jpg` (koyu), `esleme-mobil-390.jpg` (390 px),
 `esleme-video-koyu-mobil.jpg` ("Bu anın slaydı", koyu, 390 px). Görüntüler, sahte yanıtlı bir bileşen
 deneme sayfasından alındı; gerçek ders verisi değildir.
+
+## Gerçek veriyle kontrol (Chapter_1 PDF ↔ "1.1 Introduction" videosu)
+
+İndeksteki gerçek PDF sayfaları ve video transkripti, e5-small ile. En iyi video anı ve elle yargı:
+
+| Sayfa | En iyi an | Benzerlik | Yargı |
+|---:|---:|---:|---|
+| 6 (Internet: nuts and bolts) | 419 sn ("links, routers, switches, hosts") | 0.877 | doğru |
+| 11 (What's a protocol?) | 615 sn ("So what is the protocol here?") | 0.879 | doğru |
+| 10 (What's a protocol?) | 772 sn | 0.860 | belirsiz (transkript bozuk) |
+| 8 (network of networks) | 772 sn | 0.862 | yanlış |
+| 5 (Chapter goal) | 772 sn | 0.859 | yanlış (konuşulan an ~40 sn, transkript bozuk) |
+
+İki doğru eşleşme 0.877–0.879'da, bilinen yanlışlar 0.862 ve altında; bu yüzden eşik 0.88'den **0.87**'ye
+çekildi. Not: videonun ilk ~3 dakikasının transkripti yanlış dilde (Türkçe) çözülmüş, anlamsız; bu bölüm
+için hiçbir eşikle doğru sonuç çıkmaz ve boş dönmesi doğrudur. Asıl iyileştirme transkripsiyon dilinin
+doğru seçilmesidir.

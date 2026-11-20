@@ -121,7 +121,7 @@ def test_production_threshold_is_the_calibrated_e5_value():
     import importlib
     import knot_rag.links as module
 
-    assert importlib.reload(module).LINK_MIN_SIMILARITY == 0.88
+    assert importlib.reload(module).LINK_MIN_SIMILARITY == 0.87
 
 
 def test_own_material_is_excluded(env):

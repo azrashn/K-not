@@ -21,7 +21,7 @@ from knot_rag.text import fold, stem
 from knot_rag.unified import Manifest, technical_terms, topics
 
 # Minimum cosine similarity (1 - cosine distance) between the source text and a candidate.
-# The single place this is defined. 0.88 is calibrated for multilingual-e5-small, whose cosine
+# The single place this is defined. 0.87 is calibrated for multilingual-e5-small, whose cosine
 # scores are compressed into roughly 0.78-0.90 (see docs/video-slayt-esleme-esik.md); another
 # embedding model needs its own value, set with KNOT_LINK_MIN_SIMILARITY. When unsure, a higher
 # value is right: an empty answer is honest, a wrong moment is not.
@@ -29,8 +29,8 @@ def _min_similarity() -> float:
     try:
         value = float(os.environ.get("KNOT_LINK_MIN_SIMILARITY", ""))
     except ValueError:
-        return 0.88
-    return value if 0.0 <= value <= 1.0 else 0.88
+        return 0.87
+    return value if 0.0 <= value <= 1.0 else 0.87
 
 
 LINK_MIN_SIMILARITY = _min_similarity()
