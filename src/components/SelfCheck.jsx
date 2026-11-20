@@ -268,6 +268,9 @@ export default function SelfCheck({ courseId, onOpenSource }) {
                     {c.label === "UNCHECKED" && (
                       <p className="self-check-note">Metin ile kaynak farklı dillerde; sözcükler karşılaştırılamadı.</p>
                     )}
+                    {c.partly_unchecked && (
+                      <p className="self-check-note">Karşılaştırılabilen kısımlar kaynakta var; bir kısmı karşılaştırılamadı.</p>
+                    )}
                     {c.parts?.length > 1 && (
                       <ul className="self-check-parts" aria-label="İddianın parçaları">
                         {c.parts.map((p, k) => {

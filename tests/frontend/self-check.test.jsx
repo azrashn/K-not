@@ -234,3 +234,19 @@ test("a meaning warning is a note with the source quote; the badge stays what th
   expect(screen.getByText("Anlam farklı olabilir, kaynağa bak: “Process B waits for process A”")).toBeInTheDocument();
   expect(screen.getByText("Kaynakta var", { selector: ".board-badge" })).toBeInTheDocument();
 });
+
+test("found with a part that could not be compared says so", async () => {
+  const user = userEvent.setup();
+  const part = (text, label) => ({ text, label, sources: [], missing_terms: [], unmatched_numbers: [], conflict: null, parts: [], meaning_warning: null });
+  api.selfCheck.mockResolvedValue({
+    ...result,
+    claims: [{ text: "TCP el sıkışma kullanır ve sunucu SYNACK ile yanıt verir", label: "IN_SOURCE", partly_unchecked: true, translated: false, matched_terms: [], translation: null, meaning_warning: null, sources: [source()], missing_terms: [], unmatched_numbers: [], conflict: null,
+      parts: [part("TCP el sıkışma kullanır", "IN_SOURCE"), part("sunucu SYNACK ile yanıt verir", "UNCHECKED")] }],
+    summary: { IN_SOURCE: 1, NOT_IN_SOURCE: 0, CONFLICTS: 0, PARTIAL: 0, UNCHECKED: 0, total: 1 },
+  });
+  render(<SelfCheck courseId="course" onOpenSource={vi.fn()} />);
+  await user.type(screen.getByLabelText("Konuyu kendi cümlelerinle yaz"), "x");
+  await user.click(screen.getByRole("button", { name: "Kontrol et" }));
+  expect(await screen.findByText("Karşılaştırılabilen kısımlar kaynakta var; bir kısmı karşılaştırılamadı.")).toBeInTheDocument();
+  expect(screen.getByText("Kaynakta var", { selector: ".board-badge" })).toBeInTheDocument();
+});

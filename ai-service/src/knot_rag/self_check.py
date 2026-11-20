@@ -440,17 +440,34 @@ def split_compound(claim: str, loose: bool = False) -> list[str]:
     return parts[:MAX_PARTS] if len(parts) > 1 else [claim]
 
 
+def context_terms(parts: list[str], index: int) -> str:
+    """Retrieval help for a half that lost its subject ("the server answers with SYNACK"): the acronyms and
+    the longest words of the FIRST half are added to its search. Only the search sees them; the half is
+    still judged on its own words."""
+    if index == 0:
+        return ""
+    first = parts[0]
+    acronyms = [a.lower() for a in dict.fromkeys(_ACRONYM_RE.findall(first))]  # lowercase: no search anchor
+    words = sorted((w for w in dict.fromkeys(_claim_words(first)) if len(w) >= 5), key=len, reverse=True)[:2]
+    return " ".join(acronyms + words)
+
+
 def _combine(claim: str, subs: list[dict]) -> dict:
     """One result for a compound claim from the results of its parts."""
     labels = [x["label"] for x in subs]
     conflict = next((x for x in subs if x["label"] == "CONFLICTS"), None)
+    partly_unchecked = False
     if conflict:
         label = "CONFLICTS"
     elif all(l == "IN_SOURCE" for l in labels):
         label = "IN_SOURCE"
+    elif all(l in ("IN_SOURCE", "UNCHECKED") for l in labels):
+        # Every part that could be compared is in the sources; the rest could not be compared at all
+        # (not "missing"). The claim is found, and the student is told a part was not compared.
+        label, partly_unchecked = "IN_SOURCE", True
     elif all(l == "NOT_IN_SOURCE" for l in labels):
         label = "NOT_IN_SOURCE"
-    elif all(l == "UNCHECKED" for l in labels):
+    elif all(l in ("NOT_IN_SOURCE", "UNCHECKED") for l in labels):
         label = "UNCHECKED"
     else:
         label = "PARTIAL"
@@ -466,6 +483,7 @@ def _combine(claim: str, subs: list[dict]) -> dict:
         "missing_terms": [t for x in subs for t in x["missing_terms"]][:6],
         "unmatched_numbers": [t for x in subs for t in x["unmatched_numbers"]][:4],
         "conflict": conflict["conflict"] if conflict else None,
+        "partly_unchecked": partly_unchecked,
         "translated": any(x.get("translated") for x in subs),
         "matched_terms": [t for x in subs for t in x.get("matched_terms", [])][:6],
         "parts": [{"text": t, "label": x["label"], "sources": x["sources"][:1], "missing_terms": x["missing_terms"], "meaning_warning": None,
@@ -602,19 +620,20 @@ def self_check(index: UnifiedIndex, body: SelfCheck, translate=model_translate, 
         )
         return found.get("evidence", [])
 
-    def evidence_for(text: str) -> list[dict]:
-        if text not in evidence_cache:
-            found = search(text)
-            if not found and _ACRONYM_RE.search(text):
+    def evidence_for(text: str, context: str = "") -> list[dict]:
+        query = (text + " " + context).strip()
+        if query not in evidence_cache:
+            found = search(query)
+            if not found and _ACRONYM_RE.search(query):
                 # The search demands every acronym of the question in the passage, so a claim that SWAPS
                 # an acronym (FIFO for LIFO) would never meet the passage it contradicts. Ask again
                 # with the acronyms as plain words; classify() still treats a missing acronym as missing.
-                found = search(_ACRONYM_RE.sub(lambda m: m.group(0).lower(), text))
-            evidence_cache[text] = found
-        return evidence_cache[text]
+                found = search(_ACRONYM_RE.sub(lambda m: m.group(0).lower(), query))
+            evidence_cache[query] = found
+        return evidence_cache[query]
 
     trace: list[dict] = []
-    pending = [(c, split_compound(c) + [x for x in split_compound(c, loose=True) if len(split_compound(c)) == 1])
+    pending = [(c, [c] + [x for x in split_compound(c) + split_compound(c, loose=True) if x != c])
                for c in claims if _cached(_cache_key(body, c)) is None]
     source_language = materials_language(index, body) if pending else None
     # Statements written in another language than the materials are compared through a translation.
@@ -626,8 +645,8 @@ def self_check(index: UnifiedIndex, body: SelfCheck, translate=model_translate, 
             if translated:
                 model_translations[text] = translated
 
-    def check_statement(text: str, short_ok: bool = False) -> dict:
-        first = {"text": text, "translated": False, "matched_terms": [], "translation": None, **classify(text, evidence_for(text), short_ok, same_language=bool(source_language) and language_of(text) == source_language)}
+    def check_statement(text: str, short_ok: bool = False, context: str = "") -> dict:
+        first = {"text": text, "translated": False, "matched_terms": [], "translation": None, **classify(text, evidence_for(text, context), short_ok, same_language=bool(source_language) and language_of(text) == source_language)}
         step = {"statement": text, "source_language": source_language, "as_written": _brief(first), "variants": []}
         trace.append(step)
         if not source_language or language_of(text) == source_language:
@@ -640,7 +659,7 @@ def self_check(index: UnifiedIndex, body: SelfCheck, translate=model_translate, 
         if text in model_translations:
             variants.append((model_translations[text], "model"))
         for variant, method in variants:
-            result = classify(variant, evidence_for(variant), short_ok, same_language=True)
+            result = classify(variant, evidence_for(variant, context), short_ok, same_language=True)
             conflict = result.get("conflict")
             if result["label"] == "CONFLICTS" and method == "dictionary" and (not conflict or conflict["kind"] != "NUMBER"):
                 # a word-by-word translation can lose a negation: only a number difference is trusted
@@ -661,22 +680,22 @@ def self_check(index: UnifiedIndex, body: SelfCheck, translate=model_translate, 
         if hit is not None:
             results.append(hit)
             continue
-        parts = split_compound(claim)
-        base = {"text": claim, "translated": False, "matched_terms": [], "translation": None, "parts": [], "meaning_warning": None}
-        if len(parts) == 1:
-            result = {**base, **check_statement(claim)}
-            loose = split_compound(claim, loose=True)
-            if len(loose) > 1 and result["label"] in ("NOT_IN_SOURCE", "PARTIAL", "UNCHECKED"):
-                # A short half hid a supported half. The split is kept only when the sources confirm it:
-                # at least one part must be found in them, otherwise the claim stays one statement.
-                subs = [check_statement(p, short_ok=True) for p in loose]
-                if any(x["label"] == "IN_SOURCE" for x in subs):
+        base = {"text": claim, "translated": False, "matched_terms": [], "translation": None, "parts": [],
+                "meaning_warning": None, "partly_unchecked": False}
+        # The WHOLE claim is judged first. Only when it is not found as written (and not contradicted) is it
+        # split, so a good claim is never made worse by splitting it.
+        result = {**base, **check_statement(claim)}
+        if result["label"] != "IN_SOURCE" and result["label"] != "CONFLICTS":
+            parts, loose = split_compound(claim), False
+            if len(parts) == 1:
+                parts, loose = split_compound(claim, loose=True), True
+            if len(parts) > 1:
+                subs = [check_statement(p, short_ok=loose, context=context_terms(parts, i)) for i, p in enumerate(parts)]
+                # a loose split ("UDP is connectionless and TCP uses AES") is trusted only when the sources
+                # confirm at least one part; otherwise the claim stays one statement
+                if not loose or any(x["label"] == "IN_SOURCE" for x in subs):
                     result = {**base, **_combine(claim, subs)}
                     result["translation"] = _join_translations(subs)
-        else:
-            subs = [check_statement(p) for p in parts]
-            result = {**base, **_combine(claim, subs)}
-            result["translation"] = _join_translations(subs)
         fresh.append((key, result))
         results.append(result)
     _meaning_check([r for _, r in fresh], judge_fn)

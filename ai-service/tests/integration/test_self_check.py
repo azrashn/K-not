@@ -317,12 +317,11 @@ def _fake_model(mapping):
 def test_turkish_claim_against_english_material_through_the_model():
     e = _cross_env()
     claim = "TCP yavaş başlangıçta cwnd değerini 1 MSS ile başlatır ve her RTT sürede ikiye katlar."
-    mapping = {"TCP yavaş başlangıçta cwnd değerini 1 MSS ile başlatır": "TCP slow start begins with cwnd equal to 1 MSS",
-               "her RTT sürede ikiye katlar": "doubles cwnd every RTT"}
+    mapping = {claim.rstrip("."): "TCP slow start begins with cwnd equal to 1 MSS and doubles cwnd every RTT"}
     r = self_check(e.index, SelfCheck(course_id=COURSE, materials=e.materials, text=claim), translate=_fake_model(mapping))
     c = r["claims"][0]
     assert c["label"] == "IN_SOURCE" and c["translated"] is True
-    assert c["translation"] == {"text": "TCP slow start begins with cwnd equal to 1 MSS; doubles cwnd every RTT", "method": "model", "to": "en"}
+    assert c["translation"] == {"text": mapping[claim.rstrip(".")], "method": "model", "to": "en"}
     assert c["sources"][0]["location"] == {"page": 127}
 
 
@@ -423,3 +422,22 @@ def test_glossary_follows_indexing_and_deletion(tmp_path, monkeypatch):
     assert any(p[1] == "gateway" for p in g.course_pairs(COURSE))
     e.index.delete(COURSE, "pdf_g")
     assert g.course_pairs(COURSE) == []
+
+
+def test_whole_claim_first_then_parts_with_context_and_unchecked_parts():
+    e = Env()
+    e.add("pdf_w", [("TCP 3-way handshake: the client sends a SYN segment to the server, the server replies with SYNACK and the client answers with an ACK.", 106)])
+    # found as written: never split
+    c = only(e.check("In the TCP handshake the client sends a SYN segment to the server and the server replies with SYNACK."))
+    assert c["label"] == "IN_SOURCE" and c["parts"] == []
+    # the second half alone ("the server replies with SYNACK") is searched together with the first half's subject
+    from knot_rag.self_check import context_terms, _combine
+    assert context_terms(["TCP handshake client sends SYN", "the server replies"], 1).startswith("tcp")
+    assert context_terms(["a", "b"], 0) == ""
+    # combine: found + not compared = found, with the flag; found + missing = partly; unchecked only = unchecked
+    def sub(label, text="x"):
+        return {"text": text, "label": label, "sources": [], "missing_terms": [], "unmatched_numbers": [], "conflict": None}
+    assert (lambda r: (r["label"], r["partly_unchecked"]))(_combine("c", [sub("IN_SOURCE"), sub("UNCHECKED")])) == ("IN_SOURCE", True)
+    assert _combine("c", [sub("IN_SOURCE"), sub("NOT_IN_SOURCE")])["label"] == "PARTIAL"
+    assert _combine("c", [sub("NOT_IN_SOURCE"), sub("UNCHECKED")])["label"] == "UNCHECKED"
+    assert _combine("c", [sub("IN_SOURCE"), sub("CONFLICTS")])["label"] == "CONFLICTS"
