@@ -17,7 +17,7 @@ import re
 from pydantic import Field
 
 from knot_rag.claim_check import LIGHT_WORDS, MIN_TERMS, _sentences, check_claim
-from knot_rag.text import NEGATION_WORDS, content_tokens, fold, has_negation, normalize_text, numbers, stem, stem_in, stem_set
+from knot_rag.text import NEGATION_WORDS, STOPWORDS, content_tokens, fold, has_negation, normalize_text, numbers, stem, stem_in, stem_set
 from knot_rag.self_check_norm import canon
 from knot_rag.unified import Manifest, Search, UnifiedIndex
 
@@ -147,6 +147,7 @@ def _quantities(text: str) -> set[str]:
     return numbers(text) | _complexities(text)
 
 
+_EXAMPLE = re.compile(r"(?<![A-Za-z])(?:for example|for instance|e\.g|suppose|consider|assume|örnek|örneğin|diyelim|varsayalım)", re.IGNORECASE)
 _FOOTER = re.compile(r"(?<!\d)\d{1,3}\s*[-–]\s*\d{1,4}\s*$")
 
 
@@ -156,7 +157,7 @@ def _numeric_line(claim: str, window: str) -> str:
     claim_stems = {stem(t) for t in _claim_words(claim)}
     best, score = "", 1
     for line in _sentences(window):
-        if _FOOTER.search(line) or not _quantities(line):
+        if _FOOTER.search(line) or _EXAMPLE.search(line) or not _quantities(line):
             continue
         overlap = len(claim_stems & stem_set(line))
         if overlap > score:
@@ -198,7 +199,37 @@ def _source(evidence: dict, window: str, claim: str) -> dict:
     }
 
 
-def _conflict(claim: str, window: str, size: int, all_numbers: set[str]) -> dict | None:
+_PAIR = re.compile(r"(\d+(?:[.,]\d+)?)\s*-?\s*([A-Za-zÇĞİÖŞÜçğıöşüâîû]{2,})")
+
+
+def _pairs(text: str) -> set[tuple[str, str]]:
+    """(number, unit) pairs such as ("10", "mss") or ("64", "bayt"): a number and the word it counts."""
+    out = set()
+    for num, unit in _PAIR.findall(normalize_text(text)):
+        key = stem(fold(unit))
+        if fold(unit) not in STOPWORDS:
+            out.add((num.replace(",", "."), key))
+    return out
+
+
+def _unit_conflict(claim: str, window: str, all_pairs: set[tuple[str, str]]) -> dict | None:
+    """Same unit, different number ("10 MSS" against "1 MSS"). Works for claims with several numbers: each
+    (number, unit) pair is judged alone. A source line that introduces an example is no statement of fact."""
+    claim_pairs = _pairs(claim)
+    if not claim_pairs:
+        return None
+    for line in _sentences(window):
+        if _EXAMPLE.search(line) or _FOOTER.search(line):
+            continue
+        for m, unit in sorted(_pairs(line)):
+            for n, claim_unit in sorted(claim_pairs):
+                if claim_unit == unit and n != m and (n, unit) not in all_pairs:
+                    return {"kind": "NUMBER", "claim": [n], "source": [m]}
+    return None
+
+
+def _conflict(claim: str, window: str, size: int, all_numbers: set[str],
+              all_pairs: set[tuple[str, str]] | None = None) -> dict | None:
     """A clear contradiction between the claim and ONE source sentence, or None. Both rules need the
     claim to be about the same thing (almost all of its words are in the sentence)."""
     words = [t for t in _claim_words(claim) if t not in NEGATION_WORDS]
@@ -216,6 +247,10 @@ def _conflict(claim: str, window: str, size: int, all_numbers: set[str]) -> dict
     if (len(shared) >= NUMBER_MIN_SHARED and line_shared >= 2 and len(claim_numbers) == 1 and line_numbers
             and not claim_numbers & all_numbers and not line_numbers <= claim_numbers):
         return {"kind": "NUMBER", "claim": sorted(claim_numbers)[:3], "source": sorted(line_numbers - claim_numbers)[:3]}
+    if len(claim_numbers) > 1 or (all_pairs is not None and len(claim_numbers) == 1 and not line_numbers):
+        unit = _unit_conflict(claim, window, all_pairs or set())
+        if unit and len(shared) >= NUMBER_MIN_SHARED:
+            return unit
     # Polarity: one sentence at a time. A student who DENIES something may also be compared with a short
     # window (the statement can span two lines) as long as the window holds no negation at all.
     denial = has_negation(claim) and not has_negation(window) and 1 <= size <= WINDOW_SENTENCES
@@ -233,6 +268,9 @@ def classify(claim: str, evidence: list[dict]) -> dict:
     all_numbers: set[str] = set()
     for e in evidence:
         all_numbers |= _quantities(canon(e["text"]))
+    all_pairs: set[tuple[str, str]] = set()
+    for e in evidence:
+        all_pairs |= _pairs(canon(e["text"]))
     rank = {"SUPPORTED": 4, "ANCHORED": 3, "PARTIAL": 2, "UNCHECKED": 1, "UNSUPPORTED": 0}
     scored = []  # (rank, coverage, evidence index, window, support)
     conflicts = []
@@ -260,7 +298,7 @@ def classify(claim: str, evidence: list[dict]) -> dict:
             scored.append((rank[support["label"]], support["coverage"] or 0.0, -n, raw_window, support, e))
             # Polarity is compared one sentence at a time: a negation in a neighbouring sentence of a
             # wider window says nothing about this claim. A good single sentence also settles it.
-            c = _conflict(claim, window, size, all_numbers)
+            c = _conflict(claim, window, size, all_numbers, all_pairs)
             if c:
                 conflicts.append((c, raw_window, e))
             if size == 1 and support["label"] in _GOOD:

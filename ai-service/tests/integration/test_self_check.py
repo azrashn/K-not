@@ -199,9 +199,9 @@ def test_slide_bullets_work_as_one_passage_and_footer_numbers_are_ignored(slides
     assert only(slides.check("Transport Layer services run over 5 hosts in the TCP slow start phase."))["label"] != "CONFLICTS"
 
 
-def test_claim_with_several_numbers_never_conflicts(slides):
-    c = only(slides.check("TCP slow start begins has initially cwnd 10 MSS and doubles every 7 RTT."))
-    assert c["label"] != "CONFLICTS"
+def test_claim_with_several_numbers_conflicts_only_on_the_unit_that_differs(slides):
+    c = only(slides.check("TCP slow start has initially cwnd 10 MSS and doubles every 7 RTT."))
+    assert c["label"] == "CONFLICTS" and c["conflict"]["claim"] == ["10"]
 
 
 def test_mostly_missing_terms_is_not_partial(slides):
@@ -228,3 +228,16 @@ def test_number_words_match_digits_in_both_languages():
     wrong = only(e.check("TCP fast retransmit resends the unACKed segment after 5 duplicate ACKs."))
     assert wrong["label"] == "CONFLICTS" and wrong["conflict"] == {"kind": "NUMBER", "claim": ["5"], "source": ["3"]}
     assert only(e.check("TCP fast retransmit resends the unACKed segment after five duplicate ACKs."))["label"] == "CONFLICTS"
+
+
+def test_several_numbers_are_judged_per_unit():
+    e = Env()
+    e.add("pdf_u", [("TCP slow start\n•initially cwnd = 1 MSS\n•double cwnd every RTT\nEthernet frames carry at most 1500 bytes of payload.", 5),
+                    ("For example, suppose tableSize is 101 slots in the hash table.", 6)])
+    c = only(e.check("TCP slow start has initially cwnd 10 MSS and doubles cwnd every RTT."))
+    assert c["label"] == "CONFLICTS" and c["conflict"] == {"kind": "NUMBER", "claim": ["10"], "source": ["1"]}
+    c = only(e.check("Ethernet frames carry at most 9000 bytes of payload, 2 of them in the header."))
+    assert c["label"] != "CONFLICTS" or c["conflict"]["claim"] == ["9000"]
+    # a number the source gives only as an EXAMPLE is no statement of fact
+    c = only(e.check("The tableSize of the hash table has 53 slots."))
+    assert c["label"] != "CONFLICTS"
