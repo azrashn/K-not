@@ -49,7 +49,7 @@ function cleanOne(c: any, allowed: Allowed, withParts: boolean): any {
         ? { text: typeof c.translation.text === "string" ? c.translation.text.slice(0, 400) : null, method: c.translation.method as string, to: c.translation.to as string }
         : null,
     conflict:
-      c.label === "CONFLICTS" && c.conflict && ["NUMBER", "NEGATION"].includes(c.conflict.kind)
+      c.label === "CONFLICTS" && c.conflict && ["NUMBER", "NEGATION", "ANTONYM", "DIRECTION", "COMPARISON"].includes(c.conflict.kind)
         ? {
             kind: c.conflict.kind as string,
             claim: terms(c.conflict.claim),

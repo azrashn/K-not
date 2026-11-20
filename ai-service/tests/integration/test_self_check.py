@@ -369,3 +369,23 @@ def test_short_first_half_is_split_when_the_sources_confirm_it():
     # a plain list is not a compound claim
     c = only(e.check("TCP and UDP are transport protocols."))
     assert c["parts"] == []
+
+
+def test_rule_based_conflicts_end_to_end():
+    e = Env()
+    e.add("pdf_r2", [("The client sends a SYN segment to the server in the first step of the handshake.", 8),
+                     ("In slow start TCP increases the sending rate exponentially until the first loss event.", 9),
+                     ("UDP is faster than TCP because it has no handshake and no retransmission.", 10),
+                     ("A stack follows LIFO order for push and pop operations.", 11)])
+    c = only(e.check("The server sends a SYN segment to the client in the first step of the handshake."))
+    assert c["label"] == "CONFLICTS" and c["conflict"]["kind"] == "DIRECTION"
+    assert c["conflict"]["source"] == ["client", "server"]
+    c = only(e.check("In slow start TCP decreases the sending rate exponentially until the first loss event."))
+    assert c["label"] == "CONFLICTS" and c["conflict"] == {"kind": "ANTONYM", "claim": ["decreases"], "source": ["increases"]}
+    c = only(e.check("TCP is faster than UDP because it has no handshake and no retransmission."))
+    assert c["label"] == "CONFLICTS" and c["conflict"]["kind"] == "COMPARISON"
+    c = only(e.check("A stack follows FIFO order for push and pop operations."))
+    assert c["label"] == "CONFLICTS" and c["conflict"]["claim"] == ["fifo"]
+    # the true versions stay "in the source"
+    assert only(e.check("The client sends a SYN segment to the server in the first step of the handshake."))["label"] == "IN_SOURCE"
+    assert only(e.check("UDP is faster than TCP because it has no handshake and no retransmission."))["label"] == "IN_SOURCE"

@@ -21,9 +21,20 @@ const clock = (ms) => {
 const place = (l = {}) =>
   l.page != null ? `Sayfa ${l.page}` : l.slide != null ? `Slayt ${l.slide}` : l.start_ms != null ? clock(l.start_ms) : "";
 
+const ROLE_TR = {
+  client: "istemci", server: "sunucu", sender: "gönderici", receiver: "alıcı", source: "kaynak",
+  destination: "hedef", parent: "üst düğüm", child: "alt düğüm", producer: "üretici", consumer: "tüketici",
+  caller: "çağıran", callee: "çağrılan", master: "ana", slave: "bağımlı",
+};
+const role = (r) => ROLE_TR[r] || r;
+
 function conflictNote(c) {
   if (!c) return "";
   if (c.kind === "NUMBER") return `Sayı farklı: sen ${c.claim.join(", ")} yazdın, kaynakta ${c.source.join(", ")} geçiyor.`;
+  if (c.kind === "ANTONYM") return `Kaynakta zıt ifade var: sen “${c.claim[0]}” yazdın, kaynakta “${c.source[0]}” geçiyor.`;
+  if (c.kind === "DIRECTION")
+    return `Kaynakta yön ters: kaynakta ${role(c.source[0])} → ${role(c.source[1])}, sen ${role(c.claim[0])} → ${role(c.claim[1])} yazdın.`;
+  if (c.kind === "COMPARISON") return "Kaynakta karşılaştırma ters yazılmış.";
   return c.claim_negated
     ? "Senin cümlen olumsuz, kaynaktaki cümle olumlu."
     : "Senin cümlen olumlu, kaynaktaki cümle olumsuz.";

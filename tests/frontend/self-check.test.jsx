@@ -199,3 +199,23 @@ test("a claim compared through a translation shows the translation, a dictionary
   expect(await screen.findByText("Çeviri üzerinden karşılaştırıldı (İngilizce): “TCP uses a handshake”")).toBeInTheDocument();
   expect(screen.getByText("Kaynak başka dilde; terimler sözlükle eşlenerek karşılaştırıldı.")).toBeInTheDocument();
 });
+
+test("rule-based conflicts are explained: opposite word, swapped direction, reversed comparison", async () => {
+  const user = userEvent.setup();
+  const row = (text, conflict) => ({ text, label: "CONFLICTS", translated: false, matched_terms: [], translation: null, sources: [source()], missing_terms: [], unmatched_numbers: [], conflict, parts: [] });
+  api.selfCheck.mockResolvedValue({
+    ...result,
+    claims: [
+      row("a", { kind: "ANTONYM", claim: ["decreases"], source: ["increases"] }),
+      row("b", { kind: "DIRECTION", claim: ["server", "client"], source: ["client", "server"] }),
+      row("c", { kind: "COMPARISON", claim: ["udp", "tcp"], source: ["tcp", "udp"] }),
+    ],
+    summary: { IN_SOURCE: 0, NOT_IN_SOURCE: 0, CONFLICTS: 3, PARTIAL: 0, UNCHECKED: 0, total: 3 },
+  });
+  render(<SelfCheck courseId="course" onOpenSource={vi.fn()} />);
+  await user.type(screen.getByLabelText("Konuyu kendi cümlelerinle yaz"), "x");
+  await user.click(screen.getByRole("button", { name: "Kontrol et" }));
+  expect(await screen.findByText("Kaynakta zıt ifade var: sen “decreases” yazdın, kaynakta “increases” geçiyor.")).toBeInTheDocument();
+  expect(screen.getByText("Kaynakta yön ters: kaynakta istemci → sunucu, sen sunucu → istemci yazdın.")).toBeInTheDocument();
+  expect(screen.getByText("Kaynakta karşılaştırma ters yazılmış.")).toBeInTheDocument();
+});

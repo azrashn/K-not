@@ -20,6 +20,7 @@ from pydantic import Field
 
 from knot_rag.claim_check import LIGHT_WORDS, MIN_TERMS, _sentences, check_claim
 from knot_rag.text import NEGATION_WORDS, STOPWORDS, content_tokens, fold, has_negation, normalize_text, numbers, stem, stem_in, stem_set
+from knot_rag.self_check_rules import RULE_KINDS, rule_conflict
 from knot_rag.self_check_norm import canon, repair_ocr
 from knot_rag.self_check_translate import dictionary_translate, language_of, model_translate
 from knot_rag.unified import Manifest, Search, UnifiedIndex
@@ -44,6 +45,7 @@ PARTIAL_MIN_COVERAGE = 0.6
 PARTIAL_MAX_MISSING = 2
 
 _GOOD = ("SUPPORTED", "ANCHORED")
+_ACRONYM_RE = re.compile(r"(?<![A-Za-z])[A-Z][A-Z0-9]{1,9}(?![A-Za-z])")
 _FOLD = str.maketrans("çğıöşüâîûÇĞİÖŞÜ", "cgiosuaiuCGIOSU")
 _BULLET = re.compile(r"^\s*(?:[-–—•*▪●◦·]|\d{1,2}[.)])\s+")
 _BOUNDARY = re.compile(r"(?<=[.!?…])\s+|[\n;]+")
@@ -240,8 +242,8 @@ def _unit_conflict(claim: str, window: str, all_pairs: set[tuple[str, str]]) -> 
     return None
 
 
-def _conflict(claim: str, window: str, size: int, all_numbers: set[str],
-              all_pairs: set[tuple[str, str]] | None = None) -> dict | None:
+def _basic_conflict(claim: str, window: str, size: int, all_numbers: set[str],
+                    all_pairs: set[tuple[str, str]] | None = None) -> dict | None:
     """A clear contradiction between the claim and ONE source sentence, or None. Both rules need the
     claim to be about the same thing (almost all of its words are in the sentence)."""
     words = [t for t in _claim_words(claim) if t not in NEGATION_WORDS]
@@ -270,6 +272,12 @@ def _conflict(claim: str, window: str, size: int, all_numbers: set[str],
         if has_negation(claim) != has_negation(window):
             return {"kind": "NEGATION", "claim_negated": has_negation(claim), "source_negated": has_negation(window)}
     return None
+
+
+def _conflict(claim: str, window: str, size: int, all_numbers: set[str],
+              all_pairs: set[tuple[str, str]] | None = None) -> dict | None:
+    """Number / negation conflict, else a rule-based one (opposite word, swapped direction, comparison)."""
+    return _basic_conflict(claim, window, size, all_numbers, all_pairs) or rule_conflict(claim, window, size)
 
 
 def classify(claim: str, evidence: list[dict], short_ok: bool = False) -> dict:
@@ -320,10 +328,14 @@ def classify(claim: str, evidence: list[dict], short_ok: bool = False) -> dict:
                 or set(support["missing_terms"]) & acronyms
             ):
                 support = {**support, "label": "UNSUPPORTED", "reason": "LOW_COVERAGE"}
-            scored.append((rank[support["label"]], support["coverage"] or 0.0, -n, raw_window, support, e))
             # Polarity is compared one sentence at a time: a negation in a neighbouring sentence of a
             # wider window says nothing about this claim. A good single sentence also settles it.
             c = _conflict(claim, window, size, all_numbers, all_pairs)
+            if c and c["kind"] in RULE_KINDS and support["label"] in _GOOD:
+                # Same words, opposite meaning (swapped roles, opposite word): this sentence does not
+                # support the claim, it contradicts it.
+                support = {**support, "label": "UNSUPPORTED", "reason": "CONTRADICTED"}
+            scored.append((rank[support["label"]], support["coverage"] or 0.0, -n, raw_window, support, e))
             if c:
                 conflicts.append((c, raw_window, e))
             if size == 1 and support["label"] in _GOOD:
@@ -505,18 +517,27 @@ def self_check(index: UnifiedIndex, body: SelfCheck, translate=model_translate) 
         skipped = []  # already reported with the first part
     evidence_cache: dict[str, list[dict]] = {}
 
+    def search(question: str) -> list[dict]:
+        found = index.search(
+            Search(
+                course_id=body.course_id,
+                materials=body.materials,
+                question=question[:2000],
+                strategy="unified",
+                reference_mode="conversation",
+            )
+        )
+        return found.get("evidence", [])
+
     def evidence_for(text: str) -> list[dict]:
         if text not in evidence_cache:
-            found = index.search(
-                Search(
-                    course_id=body.course_id,
-                    materials=body.materials,
-                    question=text[:2000],
-                    strategy="unified",
-                    reference_mode="conversation",
-                )
-            )
-            evidence_cache[text] = found.get("evidence", [])
+            found = search(text)
+            if not found and _ACRONYM_RE.search(text):
+                # The search demands every acronym of the question in the passage, so a claim that SWAPS
+                # an acronym (FIFO for LIFO) would never meet the passage it contradicts. Ask again
+                # with the acronyms as plain words; classify() still treats a missing acronym as missing.
+                found = search(_ACRONYM_RE.sub(lambda m: m.group(0).lower(), text))
+            evidence_cache[text] = found
         return evidence_cache[text]
 
     pending = [(c, split_compound(c) + [x for x in split_compound(c, loose=True) if len(split_compound(c)) == 1])
