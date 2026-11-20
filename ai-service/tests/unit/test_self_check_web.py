@@ -63,7 +63,7 @@ def test_the_client_identifies_itself_as_a_bot_without_personal_data():
 def test_the_relevant_part_of_a_long_article_is_found_not_only_its_lead():
     lead = "Transport Layer Security is a cryptographic protocol. " * 30
     filler = ("The history of the protocol covers many versions and many working groups over the years. " * 20 + "\n") * 8
-    deep = "After the handshake both sides encrypt the connection using a symmetric session key derived from the shared secret.\n"
+    deep = "After the TLS handshake both sides encrypt the connection using a symmetric session key derived from the shared secret.\n"
     long_text = lead + "\n" + filler + deep + filler
     assert len(long_text) > 6000 and long_text.index("symmetric session key") > 1200
     fetch = fake([{"query": {"search": [{"title": "Transport Layer Security"}]}},
