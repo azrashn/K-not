@@ -20,7 +20,8 @@ from knot_rag.text import STOPWORDS, content_tokens, fold
 
 TIMEOUT = 8.0
 MAX_HITS = 3
-USER_AGENT = "knot-self-check/1.0 (study tool)"
+# Wikimedia rejects anonymous or unidentified clients (403). A declared bot identity, no personal data.
+USER_AGENT = "Mozilla/5.0 (compatible; KnotSelfCheck/1.0; self-hosted study tool; +https://localhost)"
 _ACRONYM = re.compile(r"(?<![A-Za-z])[A-Z][A-Z0-9]{1,9}(?![A-Za-z])")
 
 
@@ -37,7 +38,7 @@ def _query(claim: str) -> str:
 
 
 def _http_get(url: str, params: dict) -> dict:
-    with httpx.Client(timeout=TIMEOUT, headers={"User-Agent": USER_AGENT}, follow_redirects=False) as client:
+    with httpx.Client(timeout=TIMEOUT, headers={"User-Agent": USER_AGENT, "Accept": "application/json"}, follow_redirects=False) as client:
         response = client.get(url, params=params)
         response.raise_for_status()
         return response.json()
@@ -62,13 +63,18 @@ def web_check(claim: str, fetch=None) -> dict:
         titles = [h["title"] for h in found.get("query", {}).get("search", []) if isinstance(h.get("title"), str)][:MAX_HITS]
         if not titles:
             return {"status": "NOT_FOUND", "sources": []}
-        pages = get(f"https://{lang}.wikipedia.org/w/api.php",
-                    {"action": "query", "prop": "extracts", "explaintext": 1, "exlimit": MAX_HITS, "exchars": 2400,
-                     "titles": "|".join(titles), "format": "json", "redirects": 1})
+        # One request per page: the API caps extracts at ~1200 characters when several pages are asked at once.
+        pages = {}
+        for n, title in enumerate(titles[:2]):
+            reply = get(f"https://{lang}.wikipedia.org/w/api.php",
+                        {"action": "query", "prop": "extracts", "explaintext": 1, "exchars": 12000,
+                         "titles": title, "format": "json", "redirects": 1})
+            for key, page in (reply.get("query", {}).get("pages", {}) or {}).items():
+                pages[f"{n}-{key}"] = page
     except (httpx.HTTPError, ValueError, KeyError, TypeError):
         return {"status": "UNAVAILABLE", "sources": []}
     evidence = []
-    for page in (pages.get("query", {}).get("pages", {}) or {}).values():
+    for page in pages.values():
         text, title = page.get("extract"), page.get("title")
         if isinstance(text, str) and isinstance(title, str) and text.strip():
             evidence.append({"id": hashlib.sha256((lang + title).encode()).hexdigest(), "material_id": "web", "title": title,

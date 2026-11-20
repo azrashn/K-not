@@ -51,3 +51,10 @@ def test_switch_off(monkeypatch):
 
 def test_query_prefers_acronyms_and_long_words():
     assert _query("TCP uses a three-way handshake to open a connection").split()[0] == "TCP"
+
+
+def test_the_client_identifies_itself_as_a_bot_without_personal_data():
+    from knot_rag.self_check_web import USER_AGENT
+
+    assert "compatible" in USER_AGENT and "Knot" in USER_AGENT
+    assert "@" not in USER_AGENT  # no e-mail, no names
