@@ -18,6 +18,7 @@ from pydantic import Field
 
 from knot_rag.claim_check import LIGHT_WORDS, MIN_TERMS, _sentences, check_claim
 from knot_rag.text import NEGATION_WORDS, content_tokens, fold, has_negation, normalize_text, numbers, stem, stem_in, stem_set
+from knot_rag.self_check_norm import canon
 from knot_rag.unified import Manifest, Search, UnifiedIndex
 
 METHOD = "self-check-lexical-v1"
@@ -228,9 +229,10 @@ def classify(claim: str, evidence: list[dict]) -> dict:
     """{label, sources, missing_terms, unmatched_numbers, conflict} for one claim and its retrieved evidence."""
     if not evidence:
         return {"label": "NOT_IN_SOURCE", "sources": [], "missing_terms": [], "unmatched_numbers": [], "conflict": None}
+    claim = canon(claim)  # compared in the same form as the source: number words become digits
     all_numbers: set[str] = set()
     for e in evidence:
-        all_numbers |= _quantities(e["text"])
+        all_numbers |= _quantities(canon(e["text"]))
     rank = {"SUPPORTED": 4, "ANCHORED": 3, "PARTIAL": 2, "UNCHECKED": 1, "UNSUPPORTED": 0}
     scored = []  # (rank, coverage, evidence index, window, support)
     conflicts = []
@@ -238,6 +240,7 @@ def classify(claim: str, evidence: list[dict]) -> dict:
     claim_negated = has_negation(claim)
     for n, e in enumerate(evidence):
         for window, size in _windows(e["text"]):
+            raw_window, window = window, canon(window)
             support = check_claim(claim, [window])
             if support.get("reason") == "TOO_SHORT_TO_CHECK":
                 continue
@@ -254,12 +257,12 @@ def classify(claim: str, evidence: list[dict]) -> dict:
                 (support["coverage"] or 0) >= PARTIAL_MIN_COVERAGE and len(support["missing_terms"]) <= PARTIAL_MAX_MISSING
             ):
                 support = {**support, "label": "UNSUPPORTED", "reason": "LOW_COVERAGE"}
-            scored.append((rank[support["label"]], support["coverage"] or 0.0, -n, window, support, e))
+            scored.append((rank[support["label"]], support["coverage"] or 0.0, -n, raw_window, support, e))
             # Polarity is compared one sentence at a time: a negation in a neighbouring sentence of a
             # wider window says nothing about this claim. A good single sentence also settles it.
             c = _conflict(claim, window, size, all_numbers)
             if c:
-                conflicts.append((c, window, e))
+                conflicts.append((c, raw_window, e))
             if size == 1 and support["label"] in _GOOD:
                 single_good = True
     if not scored:

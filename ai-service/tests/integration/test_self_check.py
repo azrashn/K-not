@@ -217,3 +217,14 @@ def test_translated_claim_needs_two_shared_terms(slides):
     assert two["label"] in ("IN_SOURCE", "UNCHECKED", "NOT_IN_SOURCE")
     if two["label"] == "IN_SOURCE":
         assert two["translated"] is True and len(two["matched_terms"]) >= 2
+
+
+def test_number_words_match_digits_in_both_languages():
+    e = Env()
+    e.add("pdf_fr", [("Receipt of three duplicate ACKs indicates that the segment is likely lost. TCP fast retransmit resends the unACKed segment.", 93)])
+    ok = "TCP fast retransmit resends the unACKed segment after 3 duplicate ACKs."
+    assert only(e.check(ok))["label"] == "IN_SOURCE"
+    assert only(e.check(ok.replace("3", "üç")))["label"] in ("IN_SOURCE", "NOT_IN_SOURCE", "PARTIAL")
+    wrong = only(e.check("TCP fast retransmit resends the unACKed segment after 5 duplicate ACKs."))
+    assert wrong["label"] == "CONFLICTS" and wrong["conflict"] == {"kind": "NUMBER", "claim": ["5"], "source": ["3"]}
+    assert only(e.check("TCP fast retransmit resends the unACKed segment after five duplicate ACKs."))["label"] == "CONFLICTS"
