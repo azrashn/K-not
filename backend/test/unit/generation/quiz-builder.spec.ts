@@ -114,11 +114,18 @@ describe('a quiz set of 2-10 questions', () => {
     expect(done.items).toHaveLength(4);
   });
 
-  test('more questions than the topic\'s sources carry: a smaller set that says so', async () => {
+  test('more questions than the topic\'s sources carry: the rest come from the other parts of the course, and it says so', async () => {
     const { builder } = world();
     const row = await builder.startSet(u, 'c', { topic: 'final', kind: 'OPEN', count: 5 }, 240);
-    expect(row.requested).toBe(1);
-    expect(row.note).toBe('Bu konu için kaynaklar yaklaşık 1 soruya yetiyor; 5 soru istendi.');
+    expect(row.requested).toBe(5); // the student asked for 5 and gets 5
+    expect(row.note).toMatch(/^Bu konu için kaynaklar yaklaşık \d+ soruya yetiyor; kalan \d+ soru dersin diğer bölümlerinden tamamlandı\.$/);
+  });
+
+  test('when even the whole course cannot carry the request, the note says how many are still missing', async () => {
+    const { builder } = world();
+    const row = await builder.startSet(u, 'c', { topic: 'final', kind: 'OPEN', count: 10 }, 240);
+    expect(row.requested).toBeLessThan(10);
+    expect(row.note).toMatch(/dersin diğer bölümlerinden tamamlandı\. Yine de \d+ soru için yeterli kaynak yok\.$/);
   });
 
   test('one set per course at a time', async () => {

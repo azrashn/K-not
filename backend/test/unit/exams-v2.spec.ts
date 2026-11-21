@@ -153,9 +153,11 @@ describe('creating a v2 exam', () => {
     const data = last(prisma);
     expect(data.status).toBe('PARTIAL');
     expect(data.items).toHaveLength(7);
-    expect(data.note).toBe('8 sorudan 7\'si hazırlandı. Hazırlanamayan 1 sorunun 1\'inde neden: Soru, türünün gerektirdiği biçime uymuyordu. Her soru en fazla 3 kez denendi.');
+    expect(data.note).toBe('8 sorudan 7\'si hazırlandı. Hazırlanamayan 1 sorunun 1\'inde neden: Soru, türünün gerektirdiği biçime uymuyordu. Her soru en fazla 5 kez denendi.');
     expect(data.failures).toEqual([
       expect.objectContaining({ code: 'BAD_FORMAT', reason: expect.any(String), topic: expect.any(String), kind: expect.any(String) }),
+      expect.objectContaining({ code: 'BAD_FORMAT' }),
+      expect.objectContaining({ code: 'BAD_FORMAT' }),
       expect.objectContaining({ code: 'BAD_FORMAT' }),
       expect.objectContaining({ code: 'BAD_FORMAT' }),
     ]);

@@ -26,6 +26,8 @@ export type GenerateRequest = QuizScopeRequest & {
   guard?: RepeatGuard;
   /** PRACTICE (default): shown in the quiz history. EXAM: a question of a generated exam. */
   purpose?: "EXAM" | "PRACTICE";
+  /** A later try of the same question: the ai-service lets the length and number cues of the options through. */
+  relaxed?: boolean;
 };
 
 export type GenerateResult = {
@@ -104,6 +106,7 @@ export class QuizGenerator {
         items: b.items.map((it) => (it.variant ? { kind: it.kind, variant: it.variant } : { kind: it.kind })),
         language: "tr",
         budget_seconds: b.budgetSeconds,
+        ...(b.relaxed ? { relaxed: true } : {}),
         ...(b.styleHint ? { style_hint: b.styleHint } : {}),
         ...(b.avoidStems?.length ? { avoid_stems: b.avoidStems.slice(-10) } : {}),
         ...(b.avoidQuotes?.length ? { avoid_quotes: b.avoidQuotes.slice(-60) } : {}),
@@ -150,7 +153,13 @@ export class QuizGenerator {
         continue;
       }
       // Checked before storing, so a repeated question never reaches the student's history.
-      const repeat = guard.isRepeat(q.question) ? "DUPLICATE_STEM" : guard.isUsedQuote(q.quote) ? "DUPLICATE_QUOTE" : null;
+      // A question the ai-service built from a true statement (constructed_choice) has a template stem on purpose:
+      // its content is in the options, so a repeated stem is not a repeated question.
+      const repeat = !q.constructed_choice && guard.isRepeat(q.question)
+        ? "DUPLICATE_STEM"
+        : !b.relaxed && guard.isUsedQuote(q.quote)
+          ? "DUPLICATE_QUOTE"
+          : null;
       if (repeat) {
         failures.push(failure(slot, item.kind, repeat, q?.quality?.attempts ?? 0, item.variant));
         continue;

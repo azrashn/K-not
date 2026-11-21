@@ -15,9 +15,12 @@ import { partEvidence, type SourcePart } from "./source-pool";
 /** Model time for one request (one or two questions plus repairs on a CPU model). */
 export const REQUEST_BUDGET_SECONDS = 240;
 export const TIMEOUT_STREAK_LIMIT = 2;
-/** Requests a question may take: the planned one and two retries. The ai-service now also reads every true/false
- *  and multiple-choice key back against its sentence, so more drafts are refused; a third try makes up for it. */
-export const MAX_TRIES = 3;
+/** Requests a question may take: the planned one and four retries. The ai-service reads every true/false and
+ *  multiple-choice key back against its sentence, so some drafts are refused; the student asked for a number of
+ *  questions and should get them, each retry with another part (the plan's spare parts) while one is left. */
+export const MAX_TRIES = 5;
+/** From this try on the ai-service lets option length and number cues through (the count asked for comes first). */
+export const RELAXED_FROM_TRY = 3;
 
 export type Produced = { slot: number; quiz_id: string; kind: string; topic: string };
 /** One failed try of one question, kept for the details list. */
@@ -79,11 +82,14 @@ export async function runPlan(plan: QuestionPlan, o: RunOptions): Promise<RunRes
         items: slots.map((s) => ({ kind: s.kind, variant: s.variant ?? null })),
         styleHint: o.styleHint ?? null,
         avoidStems: guard.avoidStems(),
-        avoidQuotes: guard.avoidQuotes(),
+        // From the relaxed tries on a sentence may carry a second question (with another stem): the part's own
+        // sentences are what is left once the first questions have used them.
+        avoidQuotes: tryNo >= RELAXED_FROM_TRY ? [] : guard.avoidQuotes(),
         budgetSeconds: o.budgetSeconds ?? REQUEST_BUDGET_SECONDS,
         sources: [partEvidence(part)],
         guard,
         purpose: o.purpose,
+        relaxed: tryNo >= RELAXED_FROM_TRY,
       });
     } catch (e: any) {
       if (e?.code !== "VALIDATION_ERROR") throw e;

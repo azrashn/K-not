@@ -10,7 +10,10 @@ import type { SourcePart } from "./source-pool";
 import type { PlannedTopic } from "./topic-planner";
 
 export type PlanItem = { kind: QuestionKind | "CLOZE"; variant?: "CALCULATION" };
-export type PlannedSlot = { slot: number; kind: PlanItem["kind"]; variant?: "CALCULATION"; topic: string; part: SourcePart };
+/** `outside`: the part is not one of the topic's own: the topic's parts could not carry every question. */
+export type PlannedSlot = {
+  slot: number; kind: PlanItem["kind"]; variant?: "CALCULATION"; topic: string; part: SourcePart; outside?: boolean;
+};
 export type QuestionPlan = {
   slots: PlannedSlot[];
   requested: number;
@@ -50,12 +53,22 @@ export function capacityNote(planned: number, requested: number, forTopic = fals
   return `${forTopic ? "Bu konu için kaynaklar" : "Kaynaklar"} yaklaşık ${planned} soruya yetiyor; ${requested} soru istendi.`;
 }
 
+/** "Bu konu için kaynaklar yaklaşık 4 soruya yetiyor; kalan 2 soru dersin diğer bölümlerinden tamamlandı." */
+export function completedNote(inTopic: number, outside: number, missing: number): string {
+  const base = `Bu konu için kaynaklar yaklaşık ${inTopic} soruya yetiyor; kalan ${outside} soru dersin diğer bölümlerinden tamamlandı.`;
+  return missing > 0 ? `${base} Yine de ${missing} soru için yeterli kaynak yok.` : base;
+}
+
 /**
  * Assigns each item a topic and a part. Round 1 uses only parts not used yet, round 2 a part's second
  * question (capacity 2); within a round topics are tried in turn after the last one used. A calculation
  * prefers a part with a number (the ai-service turns it into a short answer otherwise).
+ *
+ * `extra`: parts outside the topic, nearest first (a quiz only). When the topic's own parts are used up the
+ * remaining questions go to these, so the student gets the number of questions asked; the note says how many
+ * came from the rest of the course. An exam (several topics) passes none and keeps the smaller plan.
  */
-export function planQuestions(items: PlanItem[], topics: PlannedTopic[], forTopic = false): QuestionPlan {
+export function planQuestions(items: PlanItem[], topics: PlannedTopic[], forTopic = false, extra: SourcePart[] = []): QuestionPlan {
   const used = new Map<string, number>();
   const free = (p: SourcePart, round: number) => (used.get(p.key) ?? 0) < Math.min(round, p.capacity);
   const slots: PlannedSlot[] = [];
@@ -73,12 +86,30 @@ export function planQuestions(items: PlanItem[], topics: PlannedTopic[], forTopi
     return null;
   };
 
+  const pickExtra = (item: PlanItem): SourcePart | null => {
+    const tries = item.variant === "CALCULATION" ? [(p: SourcePart) => hasNumbers(p.text), () => true] : [() => true];
+    for (const fits of tries)
+      for (const round of [1, 2]) {
+        const part = extra.find((p) => free(p, round) && fits(p));
+        if (part) return part;
+      }
+    return null;
+  };
+
+  let outside = 0;
   for (const item of items) {
     const found = pick(item);
-    if (!found) break; // nothing left: every later item would fail the same way
-    used.set(found.part.key, (used.get(found.part.key) ?? 0) + 1);
-    cursor = found.t + 1;
-    slots.push({ slot: slots.length, kind: item.kind, ...(item.variant ? { variant: item.variant } : {}), topic: topics[found.t].label, part: found.part });
+    if (found) {
+      used.set(found.part.key, (used.get(found.part.key) ?? 0) + 1);
+      cursor = found.t + 1;
+      slots.push({ slot: slots.length, kind: item.kind, ...(item.variant ? { variant: item.variant } : {}), topic: topics[found.t].label, part: found.part });
+      continue;
+    }
+    const part = pickExtra(item);
+    if (!part) break; // nothing left: every later item would fail the same way
+    used.set(part.key, (used.get(part.key) ?? 0) + 1);
+    outside += 1;
+    slots.push({ slot: slots.length, kind: item.kind, ...(item.variant ? { variant: item.variant } : {}), topic: topics[0].label, part, outside: true });
   }
 
   const spare: QuestionPlan["spare"] = [];
@@ -90,5 +121,10 @@ export function planQuestions(items: PlanItem[], topics: PlannedTopic[], forTopi
           seen.add(part.key);
           spare.push({ topic: topic.label, part });
         }
-  return { slots, requested: items.length, note: capacityNote(slots.length, items.length, forTopic), spare };
+  for (const part of extra)
+    if (!seen.has(part.key) && free(part, 1)) { seen.add(part.key); spare.push({ topic: topics[0].label, part }); }
+  const note = outside
+    ? completedNote(slots.length - outside, outside, items.length - slots.length)
+    : capacityNote(slots.length, items.length, forTopic);
+  return { slots, requested: items.length, note, spare };
 }
