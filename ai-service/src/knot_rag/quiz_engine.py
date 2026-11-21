@@ -82,9 +82,11 @@ def balance_enabled() -> bool:
 
 
 def truth_targets(req: "QuizRequest", items: list) -> dict[int, bool]:
-    """slot -> whether the true/false statement of that slot must be TRUE. They alternate, and the first
+    """slot -> whether the true/false statement of that slot must end up TRUE. They alternate, and the first
     one is picked from the request itself (so a single question is true about half the time, reproducibly).
-    A model left free writes true statements almost every time, so a set would be all "Doğru"."""
+    A model left free writes true statements almost every time, so a set would be all "Doğru". The model
+    still writes a TRUE statement for every slot; the server turns the planned-false ones into false
+    statements (quiz_false), which are false by construction. A slot with no possible change stays true."""
     if not balance_enabled():
         return {}
     seed = hashlib.sha256((req.topic + "|" + "|".join(str(e.get("text", ""))[:200] for e in req.evidence)).encode())
@@ -553,7 +555,8 @@ def build_request(req: QuizRequest, key: str, count: int, sources: list[dict], a
         # In the order of the questions: the statement written for position i must have is_true = truth[i].
         user["truth"] = truth
         system += (" The list truth says, for each statement in order, whether it must be TRUE (true) or FALSE "
-                   "(false): is_true must equal it.")
+                   "(false): is_true must equal it. When every entry is true, write a true statement each time: "
+                   "restate the chosen sentence in your own words and keep every fact.")
     if avoid:
         user["avoid_questions"] = avoid[-5:]
     if repair:
@@ -766,9 +769,16 @@ class Run:
         result = qc.check_question(item.kind, resolve_quote(draft, self.sentences), self.req.evidence,
                                    variant=item.variant,
                                    language=self.req.language, existing_stems=self.stems(),
-                                   used_quotes=self.used_quotes(), want_true=self.truth.get(slot))
+                                   used_quotes=self.used_quotes(), want_true=True if slot in self.truth else None)
         for correction in result.pop(qc.CORRECTIONS_KEY, []):
             log.info("quiz_item slot=%s kind=%s corrected: %s", slot, _key(item), correction)
+        if self.truth.get(slot) is False:
+            made = qc.make_false(result, self.req.language)
+            if made:
+                log.info("quiz_item slot=%s kind=TRUE_FALSE false_statement=%s", slot, made["constructed_false"])
+                result = made
+            else:
+                log.info("quiz_item slot=%s kind=TRUE_FALSE false_statement=unavailable stays=true", slot)
         verified = self.verify_key(slot, item, result)
         self.questions[slot] = finish(slot, result, attempt, verified)
         if slot in self.downgraded:
@@ -871,7 +881,8 @@ def plan_items(items: list[QuizItem], sources: list[dict]) -> tuple[list[QuizIte
 
 
 def _want(run: "Run", key: str, slot: int) -> list[bool] | None:
-    return [run.truth[slot]] if key == "TRUE_FALSE" and slot in run.truth else None
+    """The model is always asked for a TRUE statement when the balance is on (see truth_targets)."""
+    return [True] if key == "TRUE_FALSE" and slot in run.truth else None
 
 
 def generate(req: QuizRequest, provider, *, speed: Speed | None = None,
@@ -902,8 +913,7 @@ def generate(req: QuizRequest, provider, *, speed: Speed | None = None,
         key = _key(items[group[0]])
         group_started = clock()
         try:
-            drafts = run.call(key, len(group),
-                              truth=[run.truth[s] for s in group] if key == "TRUE_FALSE" and run.truth else None)
+            drafts = run.call(key, len(group), truth=[True] * len(group) if key == "TRUE_FALSE" and run.truth else None)
         except qc.QuizCheckError as error:
             drafts, call_error = [], error
         else:

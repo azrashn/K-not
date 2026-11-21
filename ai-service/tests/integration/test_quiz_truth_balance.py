@@ -1,4 +1,5 @@
-"""True/false statements: the server decides which are true and which false, and refuses the other kind."""
+"""True/false statements: the server decides which are true and which false. The model always writes a TRUE
+statement; the server turns the planned-false ones into false statements (false by construction)."""
 
 import json
 
@@ -17,11 +18,9 @@ TRUE_DRAFT = {"quote_id": 2, "statement": "BFS, sırada bekleyen düğümleri tu
               "is_true": True, "explanation": "Kaynak, BFS'nin kuyruk kullandığını söyler."}
 FALSE_DRAFT = {"quote_id": 2, "statement": "BFS, sırada bekleyen düğümleri tutmak için yığın kullanır.",
                "is_true": False, "explanation": "Kaynağa göre BFS yığın değil kuyruk kullanır."}
-# the same two kinds on another sentence ([3] "DFS, yığın veya özyineleme kullanır."), for a second question
+# a second sentence ([3] "DFS, yığın veya özyineleme kullanır."), for a second question
 TRUE_DRAFT_3 = {"quote_id": 3, "statement": "DFS, yığın veya özyineleme yapısını kullanır.",
                 "is_true": True, "explanation": "Kaynak, DFS'nin yığın veya özyineleme kullandığını söyler."}
-FALSE_DRAFT_3 = {"quote_id": 3, "statement": "DFS, kuyruk veya özyineleme kullanır.",
-                 "is_true": False, "explanation": "Kaynağa göre DFS kuyruk değil yığın kullanır."}
 
 
 @pytest.fixture(autouse=True)
@@ -65,28 +64,44 @@ def test_the_balance_can_be_switched_off(monkeypatch):
     assert qe.truth_targets(req, req.items) == {}
 
 
-def test_the_model_is_told_which_statement_is_true_and_which_false_and_both_are_kept():
+def test_the_model_writes_true_statements_and_the_server_makes_the_planned_false_ones_false():
     req = request("TRUE_FALSE", "TRUE_FALSE")
     plan = qe.truth_targets(req, req.items)
-    drafts = [(TRUE_DRAFT if plan[0] else FALSE_DRAFT), (TRUE_DRAFT_3 if plan[1] else FALSE_DRAFT_3)]
-    provider = Scripted(drafts)
+    provider = Scripted([TRUE_DRAFT, TRUE_DRAFT_3])
     out = qe.generate(req, provider, speed=FAST)
     sent = json.loads(provider.requests[0].user)
-    assert sent["truth"] == [plan[0], plan[1]] and "is_true must equal it" in provider.requests[0].system
-    assert out["failures"] == []
-    assert [q["expected"] for q in out["questions"]] == ["0" if plan[s] else "1" for s in (0, 1)]
+    assert sent["truth"] == [True, True]                       # the model is always asked for a true statement
+    assert out["failures"] == [] and len(provider.requests) == 1  # making a false one costs no model call
+    for q, slot in zip(out["questions"], (0, 1)):
+        assert q["expected"] == ("0" if plan[slot] else "1")
+        if not plan[slot]:
+            assert "constructed_false" in q and "doğrusu şöyledir" in q["explanation"]
+            assert "kullanmaz" in q["question"]                # a negation of the true statement
 
 
-def test_a_statement_of_the_other_kind_is_repaired_to_the_asked_kind():
+def test_a_false_statement_the_model_wrote_when_a_true_one_was_asked_is_repaired():
     req = request("TRUE_FALSE")
-    wanted = qe.truth_targets(req, req.items)[0]
-    wrong, right = (FALSE_DRAFT, TRUE_DRAFT) if wanted else (TRUE_DRAFT, FALSE_DRAFT)
-    provider = Scripted([wrong], [right])
+    provider = Scripted([FALSE_DRAFT], [TRUE_DRAFT])
     out = qe.generate(req, provider, speed=FAST)
-    assert out["failures"] == [] and out["questions"][0]["expected"] == ("0" if wanted else "1")
+    assert out["failures"] == []
     problem = json.loads(provider.requests[1].user)["problem"]
-    assert problem.startswith(qc.BAD_FORMAT) and ("TRUE" if wanted else "FALSE") in problem
-    assert json.loads(provider.requests[1].user)["truth"] == [wanted]
+    assert problem.startswith(qc.BAD_FORMAT) and "TRUE" in problem
+    assert json.loads(provider.requests[1].user)["truth"] == [True]
+
+
+def test_a_slot_planned_false_with_no_possible_change_stays_true():
+    # no opposite word, number or verb the server knows: the question is kept, as a true one
+    sentence = "Yığın yapısında elemanlar tek uçtan eklenir ve silinir."
+    draft = {"quote_id": 1, "statement": sentence, "is_true": True,
+             "explanation": "Kaynak, yığında elemanların tek uçtan eklenip silindiğini söyler."}
+    for topic in (f"konu {i}" for i in range(12)):
+        req = qe.QuizRequest(topic=topic, evidence=[{"text": sentence}], items=[{"kind": "TRUE_FALSE"}])
+        if qe.truth_targets(req, req.items)[0] is False:
+            out = qe.generate(req, Scripted([draft]), speed=FAST)
+            assert out["failures"] == [] and out["questions"][0]["expected"] == "0"
+            assert "constructed_false" not in out["questions"][0]
+            return
+    pytest.fail("no topic planned a false statement")
 
 
 def test_other_kinds_are_sent_without_a_truth_list():
