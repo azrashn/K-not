@@ -92,8 +92,17 @@ def number_changes(statement: str, quote: str) -> Iterator[tuple[str, str]]:
             continue
         value = int(text)
         year = 1000 <= value <= 2100
-        for other in ((value - 5, value + 5) if year else (value * 2, value + 1, max(1, value - 1), value + 10)):
-            if other > 0 and str(other) != text and str(other) not in have:
+        power_of_two = value >= 8 and value & (value - 1) == 0
+        if power_of_two:
+            # 32 -> 64: the neighbouring size is the believable wrong number; it may even be in the sentence
+            # (for another part), which quiz_truth.fit then reports as a number in the wrong place.
+            options = (value * 2, value // 2)
+        elif year:
+            options = (value - 5, value + 5)
+        else:
+            options = (value * 2, value + 1, max(1, value - 1), value + 10)
+        for other in options:
+            if other > 0 and str(other) != text and (power_of_two or str(other) not in have):
                 yield statement[: match.start()] + str(other) + statement[match.end():], f"number:{text}->{other}"
                 break
 
@@ -118,3 +127,44 @@ def candidates(statement: str, quote: str) -> Iterator[tuple[str, str]]:
             if candidate.strip() not in seen:
                 seen.add(candidate.strip())
                 yield candidate, how
+
+
+def _valid_false(candidate: str, source: str) -> bool:
+    """The sentence no longer states the candidate and it is still built from the sentence."""
+    fit = qt.fit(candidate, source)
+    return fit.shared >= qt.RELATED_MIN_SHARED and not (fit.states and not fit.new_terms)
+
+
+def false_variants(statement: str, quote: str, pool: list[str], limit: int = 3) -> list[str]:
+    """Up to `limit` different false statements for the wrong options of a multiple-choice question: first
+    variants of the true statement itself (one of each kind: an opposite word, a number, a negation), then
+    variants of the other sentences of the sources. Each is false by construction (see candidates)."""
+    out: list[str] = []
+    kinds: set[str] = set()
+
+    def add(candidate: str) -> bool:
+        key = re.sub(r"\s+", " ", candidate).strip().lower()
+        if candidate.strip() == statement.strip() or key in {re.sub(r"\s+", " ", o).strip().lower() for o in out}:
+            return False
+        out.append(candidate.strip())
+        return True
+
+    own = [(c, how) for c, how in candidates(statement, quote) if _valid_false(c, quote)]
+    for candidate, how in own:  # one of each kind first
+        kind = how.split(":")[0]
+        if kind not in kinds and len(out) < limit and add(candidate):
+            kinds.add(kind)
+    for candidate, _ in own:
+        if len(out) < limit:
+            add(candidate)
+    for sentence in pool:
+        if len(out) >= limit:
+            break
+        # a sentence cut from the middle of another one (it starts in lower case) makes a broken option
+        if (sentence.strip() == quote.strip() or len(qt.content_tokens(sentence)) < 4
+                or sentence.lstrip()[:1].islower()):
+            continue
+        for candidate, _ in candidates(sentence, sentence):
+            if _valid_false(candidate, sentence) and add(candidate):
+                break
+    return out[:limit]

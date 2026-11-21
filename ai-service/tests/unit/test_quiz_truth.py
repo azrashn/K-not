@@ -157,7 +157,7 @@ SOURCE_TEXT = ("Bytecode, Java Sanal Makinesi (JVM) tarafından çalıştırıl�
 
 
 def test_a_wrong_option_that_is_a_true_sentence_of_the_source_makes_two_right_answers():
-    draft = mc("Java programının çalıştırılmasında yer alan süreç hangisidir?",
+    draft = mc("Java programının çalıştırılmasıyla ilgili hangisi doğrudur?",
                ["JRE programları çalıştırmak için gereken JVM'yi ve kütüphaneleri içerir",
                 "Bytecode, Java Sanal Makinesi (JVM) tarafından çalıştırılır",
                 "Derleyici bytecode dosyalarını silip yeniden yazar",

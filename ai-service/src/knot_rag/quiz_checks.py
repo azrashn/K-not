@@ -187,11 +187,13 @@ _QUESTION_WORD = (r"(?:hangi\w*|ne|neyi|neye|neden|nerede|nereye|nereden|ne\s+za
 _DOUBLE_QUESTION = re.compile(rf"(?<!\w){_QUESTION_WORD}(?!\w).*?(?<!\w)(?:ve|and)\s+{_QUESTION_WORD}(?!\w)")
 
 
-def check_option_balance(question: str, correct: str, wrong: list[str]) -> None:
+def check_option_balance(question: str, correct: str, wrong: list[str], relaxed: bool = False) -> None:
     """BAD_FORMAT when the question asks two things, when the correct option is clearly the longest, or
     when only the correct option holds a number (a year, an amount): a student could guess it unread."""
     if _DOUBLE_QUESTION.search(_lower_tr(question)):
         raise QuizCheckError(BAD_FORMAT, "the question asks two things at once; ask exactly one")
+    if relaxed:
+        return  # a later try: the student asked for a number of questions; length and number cues are let through
     longest_wrong = max(len(o) for o in wrong)
     if len(correct) > LONGEST_RATIO * longest_wrong and len(correct) - longest_wrong >= LONGEST_MIN_GAP:
         raise QuizCheckError(BAD_FORMAT, "the correct option is clearly the longest; make the options alike")
@@ -234,6 +236,30 @@ def strip_option_labels(options: list[str], answer: str) -> tuple[list[str], str
     return clean, _label(answer)[1]
 
 
+CLOSE_OPTION = 0.75   # share of the shorter side's words that the answer and one option have in common
+CLOSE_MARGIN = 0.2    # and that option must beat every other one by this much
+
+
+def closest_option(answer: str, options: list[str]) -> int | None:
+    """The index of the one option the answer clearly means (the model wrote it with another ending or a
+    word dropped), or None. Without a clear winner the answer stays "not among the options"."""
+    wanted = {t for t in content_tokens(answer)}
+    if not wanted:
+        return None
+    scores = []
+    for option in options:
+        have = {t for t in content_tokens(option)}
+        shared = len(wanted & have)
+        # the share of the shorter side that the other has: an answer that is a part of an option, or an
+        # option that is a part of the answer; at least two words, so one common word proves nothing
+        scores.append(shared / min(len(wanted), len(have)) if shared >= 2 else 0.0)
+    best = max(scores)
+    if best < CLOSE_OPTION:
+        return None
+    ranked = sorted(scores, reverse=True)
+    return scores.index(best) if len(ranked) < 2 or best - ranked[1] >= CLOSE_MARGIN else None
+
+
 def check_option_support(correct: str, wrong: list[str], quote: str) -> None:
     """KEY_NOT_SUPPORTED when the sentence contradicts the option marked correct, or when a wrong option is
     stated by the sentence just as well (two right answers)."""
@@ -251,8 +277,33 @@ def check_option_support(correct: str, wrong: list[str], quote: str) -> None:
 # An option the model cut out of a sentence: it starts in the middle ("g, float, double …", "ve boolean …") or
 # stops on a word that needs another ("… değerleri ve"), or holds a made-up word like "3-than".
 _OPTION_FRAGMENT_START = re.compile(r"^(?:[a-zçğıöşü]{1,2}[,;]\s|(?:ve|veya|ile|ancak|fakat|ama|and|or|but)\s)")
-_OPTION_DANGLING_END = frozenset("ve veya ile ancak gibi için de da ki bir and or the of to".split())
+_OPTION_DANGLING_END = frozenset("ve veya ya yada ile ancak gibi için de da ki bir and or the of to".split())
 _OPTION_GARBLE = re.compile(r"(?<![\w-])\d+-[^\W\d_]{2,}(?![\w-])")
+
+
+# When every option is a whole statement, the stem must say which kind to pick: "…hangisi doğrudur?", "…hangisi
+# yanlıştır?", "…hangisi değildir?". "String veri tipi hakkında ne söylenir?" leaves the student guessing.
+_TRUTH_CUE = re.compile(
+    r"(?<!\w)(?:doğru|doğrudur|yanlış|yanlıştır|geçerli|geçersiz|hatalı|değildir|değil|true|false|correct|"
+    r"incorrect|not)(?!\w)"
+)
+STATEMENT_OPTION_WORDS = 4  # an option this long is a statement, not a term or a number
+
+
+TRUTH_STEM = {"tr": "{topic} ile ilgili aşağıdakilerden hangisi doğrudur?",
+              "en": "Which of the following is true about {topic}?"}
+
+
+def with_truth_cue(question: str, options: list[str], topic: str, language: str = "tr") -> tuple[str, bool]:
+    """(question, changed). When every option is a whole statement the question must say which kind to pick; a
+    stem that does not ("String veri tipi hakkında ne söylenir?") is replaced by one that does, with the quiz's
+    topic as its subject. A marked key is the TRUE statement, so the cue is always "doğrudur". Stems with a cue
+    and questions over short options (a term, a year) stay as they are."""
+    statements = [o for o in options if len(content_tokens(o)) >= STATEMENT_OPTION_WORDS]
+    if len(statements) < 3 or _TRUTH_CUE.search(_lower_tr(question)):
+        return question, False
+    subject = re.sub(r"\s+", " ", topic).strip().rstrip("?.!") or ("bu konu" if language == "tr" else "this topic")
+    return TRUTH_STEM.get(language, TRUTH_STEM["tr"]).format(topic=subject), True
 
 
 def check_options_are_whole(options: list[str], evidence: list[dict]) -> None:
@@ -298,7 +349,7 @@ def check_wrong_options_are_not_facts(wrong: list[str], evidence: list[dict]) ->
                                      + option[:80])
 
 
-def check_multiple_choice(draft: dict, evidence: list[dict], seed: str | None = None) -> dict:
+def check_multiple_choice(draft: dict, evidence: list[dict], seed: str | None = None, relaxed: bool = False) -> dict:
     question = _text(draft, "question", 10, 600)
     options = draft.get("options")
     if not isinstance(options, list) or any(not isinstance(o, str) for o in options):
@@ -317,9 +368,12 @@ def check_multiple_choice(draft: dict, evidence: list[dict], seed: str | None = 
     answer = _text(draft, "answer", 1, 180)
     hits = [i for i, k in enumerate(keys) if k == canonical(answer)]
     if len(hits) != 1:
-        raise QuizCheckError(ANSWER_NOT_IN_OPTIONS, answer[:120])
+        close = closest_option(answer, options)
+        if close is None:
+            raise QuizCheckError(ANSWER_NOT_IN_OPTIONS, answer[:120])
+        hits = [close]
     correct = options[hits[0]]
-    check_option_balance(question, correct, [o for i, o in enumerate(options) if i != hits[0]])
+    check_option_balance(question, correct, [o for i, o in enumerate(options) if i != hits[0]], relaxed)
     if len(keys[hits[0]]) >= 4 and _contains_word(canonical(question), keys[hits[0]]):
         raise QuizCheckError(ANSWER_LEAKED, correct[:120])
     source_index, quote = _quote(draft, evidence)
@@ -338,6 +392,46 @@ def check_multiple_choice(draft: dict, evidence: list[dict], seed: str | None = 
         "kind": "MULTIPLE_CHOICE", "question": question, "options": shuffled,
         "expected": str(order.index(hits[0])), "quote": quote, "source_index": source_index,
         "explanation": explanation, "objective": _objective(draft),
+    }
+
+
+CHOICE_STEMS = {
+    "tr": ["{topic} ile ilgili aşağıdakilerden hangisi doğrudur?",
+           "Kaynağa göre {topic} için aşağıdakilerden hangisi doğrudur?",
+           "{topic} konusunda aşağıdaki ifadelerden hangisi doğrudur?"],
+    "en": ["Which of the following is true about {topic}?", "According to the source, which statement about "
+           "{topic} is true?", "Which of these statements on {topic} is correct?"],
+}
+CHOICE_EXPLANATION = {"tr": "Kaynağa göre doğru ifade şudur: {true}", "en": "According to the source, the true statement is: {true}"}
+OPTION_MAX = 180
+
+
+def build_choice(result: dict, topic: str, language: str, evidence: list[dict]) -> dict | None:
+    """The multiple-choice question made from a TRUE true/false result: the true statement and three false
+    ones (quiz_false.false_variants) as options, asked as "{topic} ile ilgili aşağıdakilerden hangisi
+    doğrudur?". The server writes every option, so each wrong one is false by construction and the right one
+    is the sentence's own statement; no model writes options. None when three different false options cannot
+    be made (the caller then fails the question)."""
+    if result.get("kind") != "TRUE_FALSE" or result.get("expected") != "0":
+        return None
+    true, quote = result["question"], result["quote"]
+    wrong = qf.false_variants(true, quote, evidence_sentences(evidence))
+    options = [true] + wrong
+    if len(wrong) < 3 or any(len(o) > OPTION_MAX for o in options) or len({canonical(o) for o in options}) != 4:
+        return None
+    order = list(range(4))
+    random.Random(hashlib.sha256(true.encode()).hexdigest()).shuffle(order)
+    shuffled = [options[i] for i in order]
+    subject = re.sub(r"\s+", " ", topic).strip().rstrip("?.!") or ("bu konu" if language == "tr" else "this topic")
+    templates = CHOICE_STEMS.get(language, CHOICE_STEMS["tr"])
+    # The same few stems come back for every built question; the options carry the content. One is picked per
+    # statement so a quiz does not read as one question repeated.
+    question = templates[hashlib.sha256(true.encode()).digest()[0] % len(templates)].format(topic=subject)
+    explanation = short_explanation(CHOICE_EXPLANATION.get(language, CHOICE_EXPLANATION["tr"]).format(true=true))
+    return {
+        "kind": "MULTIPLE_CHOICE", "question": question, "options": shuffled, "expected": str(order.index(0)),
+        "quote": quote, "source_index": result["source_index"], "explanation": explanation,
+        "objective": result.get("objective"), "constructed_choice": True,
     }
 
 
@@ -713,7 +807,7 @@ def check_language(text: str, language: str) -> None:
 def check_question(kind: str, draft, evidence: list[dict], *, variant: str | None = None,
                    language: str = "tr", seed: str | None = None,
                    existing_stems: list[str] | None = None, used_quotes: list[str] | None = None,
-                   want_true: bool | None = None) -> dict:
+                   want_true: bool | None = None, relaxed: bool = False) -> dict:
     if not isinstance(draft, dict):
         raise QuizCheckError(SCHEMA_MISMATCH, "question must be a JSON object")
     if kind not in KINDS:
@@ -725,7 +819,7 @@ def check_question(kind: str, draft, evidence: list[dict], *, variant: str | Non
     elif variant is not None:
         raise QuizCheckError(SCHEMA_MISMATCH, f"unknown variant {variant}")
     elif kind == "MULTIPLE_CHOICE":
-        result = check_multiple_choice(draft, evidence, seed)
+        result = check_multiple_choice(draft, evidence, seed, relaxed)
     elif kind == "TRUE_FALSE":
         result = check_true_false(draft, evidence, language, want_true)
     elif kind == "CLOZE":
@@ -739,6 +833,6 @@ def check_question(kind: str, draft, evidence: list[dict], *, variant: str | Non
         check_language(result["question"], language)
     if existing_stems and is_duplicate_stem(result["question"], existing_stems):
         raise QuizCheckError(DUPLICATE_STEM, result["question"][:120])
-    if is_used_quote(result["quote"], used_quotes):
+    if not relaxed and is_used_quote(result["quote"], used_quotes):
         raise QuizCheckError(DUPLICATE_QUOTE, "the chosen sentence is already used by another question")
     return result

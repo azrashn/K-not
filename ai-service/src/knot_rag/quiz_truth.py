@@ -18,7 +18,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
-from knot_rag.text import STOPWORDS, content_tokens, fold
+from knot_rag.text import STOPWORDS, content_tokens, fold  # noqa: F401  (content_tokens is used by quiz_false)
 
 # A statement is "stated" by the sentence when it carries this share of its own content roots.
 SUPPORT_MIN = 0.6

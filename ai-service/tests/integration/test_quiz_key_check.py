@@ -179,3 +179,76 @@ def test_no_time_left_skips_the_check_without_failing():
     provider.complete = complete
     out = qe.generate(req, provider, speed=speed, clock=clock)
     assert out["failures"] == [] and out["questions"][0]["quality"]["key_checked"] is False
+
+
+def test_the_engine_adds_the_truth_cue_to_a_vague_stem_over_statement_options(monkeypatch):
+    monkeypatch.setenv("QUIZ_VERIFY_KEY", "off")
+    sentence = "String ise ilkel bir tip değildir; karakter dizilerini tutan bir sınıftır."
+    options = ["String ilkel bir tip değildir ve karakter dizisi tutar", "String mantıksal iki değer alan bir veridir",
+               "String tam sayıları tutan bir veri tipidir", "String yalnızca sayısal ifadeleri saklayan bir sınıftır"]
+    draft = {"quote_id": 1, "question": "String veri tipi hakkında ne söylenir?", "options": options,
+             "answer": options[0], "explanation": "Kaynak, String'in ilkel olmadığını söyler."}
+    req = qe.QuizRequest(topic="Veri Tipleri", evidence=[{"text": sentence}], items=[{"kind": "MULTIPLE_CHOICE"}])
+    out = qe.generate(req, Scripted([draft]), speed=FAST)
+    assert out["failures"] == []
+    assert out["questions"][0]["question"] == "Veri Tipleri ile ilgili aşağıdakilerden hangisi doğrudur?"
+
+
+def test_the_request_can_ask_for_the_relaxed_balance():
+    base = {"topic": "x", "evidence": [{"text": "bir cümle burada"}], "items": [{"kind": "OPEN"}]}
+    assert qe.QuizRequest(**base, relaxed=True).relaxed is True
+    assert qe.QuizRequest(**base).relaxed is False
+
+
+def test_a_relaxed_request_numbers_the_sentences_earlier_questions_used():
+    sentence = "BFS, sırada bekleyen düğümleri tutmak için kuyruk kullanır."
+    base = {"topic": "BFS", "evidence": [{"text": sentence}], "items": [{"kind": "OPEN"}], "avoid_quotes": [sentence]}
+    assert qe.number_sentences(qe.trim_sources(base["evidence"]), base["avoid_quotes"]) == []
+    out = qe.generate(qe.QuizRequest(**base), Scripted(), speed=FAST)
+    assert [f["code"] for f in out["failures"]] == ["DUPLICATE_QUOTE"]  # strict: nothing left to ask
+    provider = Scripted([{"quote_id": 1, "question": "BFS bekleyen düğümleri nasıl tutar, açıklayınız?",
+                          "explanation": "Kaynak, kuyruk kullanıldığını söyler."}])
+    relaxed = qe.generate(qe.QuizRequest(**base, relaxed=True), provider, speed=FAST)
+    assert relaxed["failures"] == [] and len(relaxed["questions"]) == 1
+
+
+def test_a_relaxed_try_keeps_a_key_the_code_backs_even_when_the_second_reading_differs():
+    # the checker reads another option, but the correct option is stated by the sentence word for word
+    strict = Scripted([mc()], pick("Yığın"), [mc()], pick("Yığın"))
+    assert generate("MULTIPLE_CHOICE", strict)["questions"] == []
+
+    provider = Scripted([mc()], pick("Yığın"))
+    req = qe.QuizRequest(topic="BFS", evidence=[{"text": BFS}], items=[{"kind": "MULTIPLE_CHOICE"}], relaxed=True)
+    out = qe.generate(req, provider, speed=FAST)
+    assert out["failures"] == [] and len(out["questions"]) == 1
+    assert out["questions"][0]["quality"]["key_checked"] is False and out["questions"][0]["note"] == qe.NOTE
+
+
+COURSE_TEXT = ("Java, 1995 yılında yayımlandı. Çöp toplayıcı, kullanılmayan nesnelerin belleğini otomatik olarak geri "
+               "kazanır. Java nesne yönelimli bir programlama dilidir. JVM, bytecode'u her platformda çalıştırır.")
+GC_STATEMENT = "Çöp toplayıcı, kullanılmayan nesnelerin belleğini otomatik olarak geri kazanır."
+
+
+def test_in_a_relaxed_request_a_multiple_choice_slot_is_asked_as_a_true_statement_and_built_by_the_server(monkeypatch):
+    monkeypatch.setenv("QUIZ_VERIFY_KEY", "off")
+    monkeypatch.delenv("QUIZ_TRUTH_BALANCE", raising=False)  # the server-built choice follows the balance switch
+    draft = {"quote_id": 2, "statement": GC_STATEMENT, "is_true": True,
+             "explanation": "Kaynak, çöp toplayıcının belleği geri kazandığını söyler."}
+    provider = Scripted([draft])
+    req = qe.QuizRequest(topic="Bellek Yönetimi", evidence=[{"text": COURSE_TEXT}],
+                         items=[{"kind": "MULTIPLE_CHOICE"}], relaxed=True)
+    out = qe.generate(req, provider, speed=FAST)
+    assert out["failures"] == [] and len(provider.requests) == 1
+    assert "statement" in provider.requests[0].response_schema["properties"]["questions"]["items"]["properties"]
+    q = out["questions"][0]
+    assert q["kind"] == "MULTIPLE_CHOICE" and len(q["options"]) == 4 and q["constructed_choice"] is True
+    assert q["options"][int(q["expected"])] == GC_STATEMENT
+    assert q["question"] in [t.format(topic="Bellek Yönetimi") for t in qc.CHOICE_STEMS["tr"]]
+
+
+def test_a_strict_request_still_asks_the_model_for_the_options(monkeypatch):
+    monkeypatch.setenv("QUIZ_VERIFY_KEY", "off")
+    provider = Scripted([mc()])
+    qe.generate(qe.QuizRequest(topic="BFS", evidence=[{"text": BFS}], items=[{"kind": "MULTIPLE_CHOICE"}]),
+                provider, speed=FAST)
+    assert "options" in provider.requests[0].response_schema["properties"]["questions"]["items"]["properties"]

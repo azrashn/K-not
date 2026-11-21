@@ -117,6 +117,8 @@ class QuizRequest(StrictModel):
     # Source sentences earlier questions of the same exam or quiz rest on: never numbered, never chosen.
     avoid_quotes: list[str] = Field(default_factory=list, max_length=AVOID_QUOTES_MAX)
     budget_seconds: float = Field(default=130, ge=20, le=600)
+    # A later try of the same question: the length and number cues of the options are let through.
+    relaxed: bool = False
 
 
 # ── settings ────────────────────────────────────────────────────────────────────────────────
@@ -243,7 +245,9 @@ KIND_REPAIR_HINTS = {
     ("MULTIPLE_CHOICE", qc.BAD_FORMAT): "Ask one thing only. Give four options of the same type and similar "
                                         "length; the wrong options must be plausible answers to the same "
                                         "question. The correct option must not be the longest or the only one "
-                                        "with a number or year.",
+                                        "with a number or year. When the options are whole statements, the "
+                                        "question must say which to pick (\"… hangisi doğrudur?\"); every option "
+                                        "is a complete phrase, never a piece cut out of a sentence.",
     ("TRUE_FALSE", qc.BAD_FORMAT): "A false statement must change one fact of the chosen sentence (a number, "
                                    "a name or a concept); never copy the sentence or a part of it.",
     (qc.CALCULATION, qc.BAD_FORMAT): "expression is plain arithmetic with the numbers given in the question "
@@ -660,6 +664,15 @@ def read_verdict(kind: str, text: str):
     return verdict if verdict in ("true", "false", "not_stated") else None
 
 
+def deterministic_support(result: dict) -> bool:
+    """The marked key is backed by the sentence by code alone: the correct option, or a true statement, is
+    stated by the sentence with nothing flipped. A false statement made or checked by the server counts."""
+    quote = result["quote"]
+    if result["kind"] == "MULTIPLE_CHOICE":
+        return qt.fit(result["options"][int(result["expected"])], quote).states
+    return result["expected"] == "1" or qt.fit(result["question"], quote).states
+
+
 def key_agrees(kind: str, expected: str, verdict) -> bool:
     """The checker's reading matches the key. A true key needs "true"; a false key is also fine when the
     sentence merely does not state it; a multiple-choice key needs the same option."""
@@ -686,6 +699,8 @@ class Run:
     output_tokens: int = 0
     unreachable: str | None = None
     truth: dict = field(default_factory=dict)  # slot -> the statement of that slot must be true / false
+    # slots asked as a true statement and turned into a multiple-choice question by the server (relaxed tries)
+    constructed: set = field(default_factory=set)
 
     def remaining(self) -> float:
         return self.deadline - self.clock()
@@ -760,19 +775,39 @@ class Run:
             return False
         if not key_agrees(item.kind, result["expected"], verdict):
             log.info("quiz_item slot=%s kind=%s key_check=disagrees verdict=%s", slot, item.kind, verdict)
+            if self.req.relaxed and deterministic_support(result):
+                # A later try: the student asked for a number of questions. The key still passed every check
+                # by code (the sentence states the marked option, nothing in it is flipped); only the second
+                # reading by the small model differs. The question is kept and says it was not key-checked.
+                log.info("quiz_item slot=%s kind=%s key_check=disagrees_kept reason=relaxed_try", slot, item.kind)
+                return False
             raise qc.QuizCheckError(qc.KEY_NOT_SUPPORTED, "a second reading of the sentence does not give the "
                                     "marked answer; the sentence must state the answer plainly")
         log.info("quiz_item slot=%s kind=%s key_check=agrees", slot, item.kind)
         return True
 
     def check(self, slot: int, item: QuizItem, draft, attempt: int, started: float) -> None:
-        result = qc.check_question(item.kind, resolve_quote(draft, self.sentences), self.req.evidence,
-                                   variant=item.variant,
+        built = slot in self.constructed
+        result = qc.check_question("TRUE_FALSE" if built else item.kind, resolve_quote(draft, self.sentences),
+                                   self.req.evidence, variant=item.variant,
                                    language=self.req.language, existing_stems=self.stems(),
-                                   used_quotes=self.used_quotes(), want_true=True if slot in self.truth else None)
+                                   used_quotes=self.used_quotes(), want_true=True if slot in self.truth or built else None,
+                                   relaxed=self.req.relaxed)
+        if item.kind == "MULTIPLE_CHOICE" and not item.variant and not built:
+            question, changed = qc.with_truth_cue(result["question"], result["options"], self.req.topic,
+                                                  self.req.language)
+            if changed:
+                log.info("quiz_item slot=%s kind=MULTIPLE_CHOICE corrected: truth cue added to the stem", slot)
+                result = {**result, "question": question}
         for correction in result.pop(qc.CORRECTIONS_KEY, []):
             log.info("quiz_item slot=%s kind=%s corrected: %s", slot, _key(item), correction)
-        if self.truth.get(slot) is False:
+        if built:
+            choice = qc.build_choice(result, self.req.topic, self.req.language, self.req.evidence)
+            if not choice:
+                raise qc.QuizCheckError(qc.BAD_FORMAT, "four different options could not be built from this statement")
+            log.info("quiz_item slot=%s kind=MULTIPLE_CHOICE built_from_true_statement", slot)
+            result = choice
+        elif self.truth.get(slot) is False:
             made = qc.make_false(result, self.req.language)
             if made:
                 log.info("quiz_item slot=%s kind=TRUE_FALSE false_statement=%s", slot, made["constructed_false"])
@@ -819,11 +854,12 @@ def finish(slot: int, result: dict, attempt: int, key_checked: bool = False) -> 
     }
 
 
-def _groups(items: list[QuizItem], size: int) -> list[list[int]]:
-    """Slots grouped by kind/variant, in request order, at most `size` per call."""
+def _groups(items: list[QuizItem], size: int, constructed: set | None = None) -> list[list[int]]:
+    """Slots grouped by kind/variant, in request order, at most `size` per call. A slot built from a true
+    statement is written like a true/false one, so it never shares a call with a real multiple-choice slot."""
     order: dict[str, list[int]] = {}
     for slot, item in enumerate(items):
-        order.setdefault(_key(item), []).append(slot)
+        order.setdefault("CONSTRUCTED" if constructed and slot in constructed else _key(item), []).append(slot)
     return [slots[i:i + size] for slots in order.values() for i in range(0, len(slots), size)]
 
 
@@ -882,7 +918,7 @@ def plan_items(items: list[QuizItem], sources: list[dict]) -> tuple[list[QuizIte
 
 def _want(run: "Run", key: str, slot: int) -> list[bool] | None:
     """The model is always asked for a TRUE statement when the balance is on (see truth_targets)."""
-    return [True] if key == "TRUE_FALSE" and slot in run.truth else None
+    return [True] if key == "TRUE_FALSE" and (slot in run.truth or slot in run.constructed) else None
 
 
 def generate(req: QuizRequest, provider, *, speed: Speed | None = None,
@@ -891,7 +927,7 @@ def generate(req: QuizRequest, provider, *, speed: Speed | None = None,
     sources = trim_sources(req.evidence)
     run = Run(req=req, provider=provider, speed=speed or Speed.from_env(), clock=clock,
               deadline=started + req.budget_seconds, sources=sources,
-              sentences=number_sentences(sources, req.avoid_quotes, topic=req.topic))
+              sentences=number_sentences(sources, [] if req.relaxed else req.avoid_quotes, topic=req.topic))
     if not sources:
         raise HTTPException(422, {"code": "QUIZ_NO_SOURCE", "message": "No source text for quiz"})
     if not run.sentences:
@@ -909,11 +945,14 @@ def generate(req: QuizRequest, provider, *, speed: Speed | None = None,
                            "input_tokens": 0, "output_tokens": 0}}
     items, run.downgraded = plan_items(req.items, sources)
     run.truth = truth_targets(req, items)
-    for group in _groups(items, max_batch or batch_size()):
-        key = _key(items[group[0]])
+    if req.relaxed and balance_enabled():
+        run.constructed = {i for i, item in enumerate(items) if item.kind == "MULTIPLE_CHOICE" and not item.variant}
+    for group in _groups(items, max_batch or batch_size(), run.constructed):
+        key = "TRUE_FALSE" if group[0] in run.constructed else _key(items[group[0]])
         group_started = clock()
         try:
-            drafts = run.call(key, len(group), truth=[True] * len(group) if key == "TRUE_FALSE" and run.truth else None)
+            drafts = run.call(key, len(group),
+                              truth=[True] * len(group) if key == "TRUE_FALSE" and (run.truth or run.constructed) else None)
         except qc.QuizCheckError as error:
             drafts, call_error = [], error
         else:
