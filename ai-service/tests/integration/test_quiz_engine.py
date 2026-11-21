@@ -32,6 +32,14 @@ DFS_QUOTE = "DFS, yığın veya özyineleme kullanır."
 FAST = qe.Speed(decode_tps=1000, prefill_tps=100000)  # every call fits any budget
 
 
+@pytest.fixture(autouse=True)
+def _no_key_check(monkeypatch):
+    """These tests count the calls of the writing flow; the key check (a second call per true/false and
+    multiple-choice question) has its own tests in test_quiz_key_check.py."""
+    monkeypatch.setenv("QUIZ_VERIFY_KEY", "off")
+    monkeypatch.setenv("QUIZ_TRUTH_BALANCE", "off")  # these drafts fix is_true themselves
+
+
 def mc(question="BFS bekleyen düğümleri hangi veri yapısında tutar?", **over):
     return {"quote": QUOTE, "question": question,
             "options": ["Kuyruk", "Yığın", "İkili ağaç", "Karma tablosu"], "answer": "Kuyruk",
