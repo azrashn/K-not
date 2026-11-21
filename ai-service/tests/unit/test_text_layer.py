@@ -1,6 +1,7 @@
 """Page text layer (word boxes from Poppler's pdftotext -bbox-layout) for marking a quoted sentence."""
 
 import shutil
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -64,15 +65,50 @@ def _material(monkeypatch, tmp_path, fixture):
                           storage_key="documents/doc1/original.pdf", page=1)
 
 
-POPPLER = shutil.which("pdftotext") or (shutil.which("pdftoppm") and Path(shutil.which("pdftoppm")).with_name(
-    "pdftotext" + Path(shutil.which("pdftoppm")).suffix).is_file())
-needs_poppler = pytest.mark.skipif(not POPPLER, reason="Poppler pdftotext is not installed")
+def test_endpoint_returns_word_boxes_from_mocked_pdftotext(monkeypatch, tmp_path):
+    """Runs without Poppler: pdftotext's output is faked, the endpoint's own path is exercised."""
+    body = _material(monkeypatch, tmp_path, "notes_tr.pdf")
+    monkeypatch.setattr(visuals, "pdftotext_path", lambda: "fake-pdftotext")
+    calls = []
+
+    def fake_run(args, timeout):
+        calls.append(args)
+        Path(args[-1]).write_text(MARKUP, encoding="utf-8")
+
+    monkeypatch.setattr(visuals, "run", fake_run)
+    out = visuals.text_layer(body)
+    assert calls and calls[0][0] == "fake-pdftotext" and "-bbox-layout" in calls[0]
+    assert calls[0][calls[0].index("-f") + 1] == "1" and calls[0][calls[0].index("-l") + 1] == "1"
+    assert out["material_id"] == "pdf_doc1" and out["page"] == 1 and out["page_count"] >= 1
+    assert out["lines"] == visuals.parse_bbox_layout(MARKUP)
+    # Second call comes from the cache; the raw markup is not kept.
+    monkeypatch.setattr(visuals, "run", lambda *a, **k: (_ for _ in ()).throw(AssertionError("ran again")))
+    assert visuals.text_layer(body)["lines"] == out["lines"]
+    assert not list((tmp_path / ".previews").rglob("*.bbox.html"))
+
+
+def _working_pdftotext():
+    """The pdftotext the service would use (PDFTOTEXT_PATH, next to PDFTOPPM_PATH, or PATH), if it actually runs."""
+    executable = visuals.pdftotext_path()
+    if not executable:
+        return None
+    try:
+        visuals.run([executable, "-f", "1", "-l", "1", str(FIXTURES / "notes_tr.pdf"), "-"], 30)
+    except (subprocess.SubprocessError, OSError):
+        return None
+    return executable
+
+
+PDFTOTEXT = _working_pdftotext()
+needs_poppler = pytest.mark.skipif(
+    not PDFTOTEXT,
+    reason="Poppler pdftotext not found or not runnable (set PDFTOTEXT_PATH, or put pdftotext on PATH / next to PDFTOPPM_PATH)",
+)
 
 
 @needs_poppler
 def test_a_real_page_gives_its_words_and_is_cached(monkeypatch, tmp_path):
-    if shutil.which("pdftoppm"):
-        monkeypatch.setenv("PDFTOPPM_PATH", shutil.which("pdftoppm"))
+    monkeypatch.setenv("PDFTOTEXT_PATH", PDFTOTEXT)
     body = _material(monkeypatch, tmp_path, "notes_tr.pdf")
     out = visuals.text_layer(body)
     assert out["page"] == 1 and out["page_count"] >= 1
@@ -86,6 +122,5 @@ def test_a_real_page_gives_its_words_and_is_cached(monkeypatch, tmp_path):
 
 @needs_poppler
 def test_a_scanned_page_has_an_empty_layer(monkeypatch, tmp_path):
-    if shutil.which("pdftoppm"):
-        monkeypatch.setenv("PDFTOPPM_PATH", shutil.which("pdftoppm"))
+    monkeypatch.setenv("PDFTOTEXT_PATH", PDFTOTEXT)
     assert visuals.text_layer(_material(monkeypatch, tmp_path, "scanned.pdf"))["lines"] == []
