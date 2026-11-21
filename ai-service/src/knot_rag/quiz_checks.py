@@ -15,6 +15,7 @@ import operator
 import random
 import re
 
+from knot_rag import quiz_truth as qt
 from knot_rag.text import content_tokens, fold
 
 # ── failure codes (stable strings; also used by quiz_engine and the backend) ─────────────────
@@ -35,12 +36,14 @@ BUDGET_EXHAUSTED = "BUDGET_EXHAUSTED"
 TRUNCATED = "TRUNCATED"  # the output hit the token limit (finish_reason "length")
 NOT_SELF_CONTAINED = "NOT_SELF_CONTAINED"  # the stem leans on a sentence the student does not see
 DUPLICATE_QUOTE = "DUPLICATE_QUOTE"  # the source sentence already carries another question of the set
+KEY_NOT_SUPPORTED = "KEY_NOT_SUPPORTED"  # the marked answer is not what the chosen sentence says
+WRONG_LANGUAGE = "WRONG_LANGUAGE"  # the stem is written in another language than the quiz's
 
 FAILURE_CODES = (
     TIMEOUT, MODEL_UNREACHABLE, INVALID_JSON, SCHEMA_MISMATCH, QUOTE_NOT_FOUND,
     ANSWER_NOT_IN_OPTIONS, DUPLICATE_OPTIONS, ANSWER_LEAKED, ANSWER_NOT_IN_SOURCE, BAD_FORMAT,
     CALC_MISMATCH, CALC_DATA_MISSING, DUPLICATE_STEM, BUDGET_EXHAUSTED, TRUNCATED, NOT_SELF_CONTAINED,
-    DUPLICATE_QUOTE,
+    DUPLICATE_QUOTE, KEY_NOT_SUPPORTED, WRONG_LANGUAGE,
 )
 EXPLANATION_MAX = 200
 
@@ -129,10 +132,23 @@ def _quote(draft: dict, evidence: list[dict]) -> tuple[int, str]:
     return find_quote(_text(draft, "quote", 1, 600), evidence)
 
 
+_SOURCE_NUMBER = re.compile(r"\[\s*\d{1,3}\s*\]")
+
+
+def _without_source_numbers(text: str) -> str:
+    """The model sees its sentences as "[3] …" and sometimes answers "Kaynak [3] buna doğrudan işaret eder."
+    The student never sees those numbers, so a sentence that cites one is dropped; a stray mark is cut."""
+    if not _SOURCE_NUMBER.search(text):
+        return text
+    sentences = re.split(r"(?<=[.!?…])\s+", text)
+    kept = [s for s in sentences if not _SOURCE_NUMBER.search(s)]
+    return " ".join(kept) if kept else ""
+
+
 def short_explanation(text: str, limit: int = EXPLANATION_MAX) -> str:
     """One sentence, at most `limit` characters: the first sentence, cut at a word if still too long.
     A longer explanation is shortened here rather than costing the question."""
-    text = re.sub(r"\s+", " ", text).strip()
+    text = _without_source_numbers(re.sub(r"\s+", " ", text).strip())
     end = re.search(r"[.!?…](?=\s|$)", text)
     # A very short first "sentence" ("Doğru.") is not an explanation on its own; keep reading then.
     sentence = text[: end.end()] if end and end.end() >= 20 else text
@@ -217,6 +233,49 @@ def strip_option_labels(options: list[str], answer: str) -> tuple[list[str], str
     return clean, _label(answer)[1]
 
 
+def check_option_support(correct: str, wrong: list[str], quote: str) -> None:
+    """KEY_NOT_SUPPORTED when the sentence contradicts the option marked correct, or when a wrong option is
+    stated by the sentence just as well (two right answers)."""
+    key = qt.fit(correct, quote)
+    if key.conflicts:
+        raise QuizCheckError(KEY_NOT_SUPPORTED, "the option marked correct contradicts the sentence ("
+                             + key.describe() + ")")
+    for option in wrong:
+        other = qt.fit(option, quote)
+        if other.states and other.coverage >= key.coverage and other.coverage >= qt.SUPPORT_MIN:
+            raise QuizCheckError(KEY_NOT_SUPPORTED, "a wrong option is stated by the sentence as well as the "
+                                 f"correct one: {option[:80]}")
+
+
+_SENTENCE_BREAK = re.compile(r"(?<=[.!?…])\s+|\n\s*\n|\n(?=[ \t]*(?:[•▪●◦■*]|[-–]\s))")
+FACT_MIN_WORDS = 4      # shorter options (a term, a year) cannot be judged against a sentence
+FACT_COVERAGE = 0.85    # an option this much inside one source sentence is that sentence's fact
+
+
+def evidence_sentences(evidence: list[dict]) -> list[str]:
+    out = []
+    for item in evidence:
+        text = item.get("text") if isinstance(item, dict) else None
+        if isinstance(text, str):
+            out += [re.sub(r"\s+", " ", piece).strip() for piece in _SENTENCE_BREAK.split(text)]
+    return [s for s in out if len(s) >= 15]
+
+
+def check_wrong_options_are_not_facts(wrong: list[str], evidence: list[dict]) -> None:
+    """KEY_NOT_SUPPORTED when a wrong option is a sentence the source itself says ("Bytecode, JVM tarafından
+    çalıştırılır" beside the right answer "JRE ... JVM'yi içerir"): it is true, so the question has two right
+    answers. Only options of a few words are judged this way."""
+    sentences = evidence_sentences(evidence)
+    for option in wrong:
+        if len(content_tokens(option)) < FACT_MIN_WORDS:
+            continue
+        for sentence in sentences:
+            fit = qt.fit(option, sentence)
+            if fit.states and fit.coverage >= FACT_COVERAGE and fit.shared >= FACT_MIN_WORDS:
+                raise QuizCheckError(KEY_NOT_SUPPORTED, "a wrong option is a true sentence of the source: "
+                                     + option[:80])
+
+
 def check_multiple_choice(draft: dict, evidence: list[dict], seed: str | None = None) -> dict:
     question = _text(draft, "question", 10, 600)
     options = draft.get("options")
@@ -244,6 +303,9 @@ def check_multiple_choice(draft: dict, evidence: list[dict], seed: str | None = 
     source_index, quote = _quote(draft, evidence)
     if not shares_root(correct, quote):
         raise QuizCheckError(ANSWER_NOT_IN_SOURCE, correct[:120])
+    wrong_options = [o for i, o in enumerate(options) if i != hits[0]]
+    check_option_support(correct, wrong_options, quote)
+    check_wrong_options_are_not_facts(wrong_options, evidence)
     explanation = _explanation(draft)
     # Small models favour one letter; the server decides the position, reproducibly.
     order = list(range(4))
@@ -256,7 +318,26 @@ def check_multiple_choice(draft: dict, evidence: list[dict], seed: str | None = 
     }
 
 
-def check_true_false(draft: dict, evidence: list[dict], language: str = "tr") -> dict:
+def check_statement_key(statement: str, is_true: bool, quote: str) -> None:
+    """KEY_NOT_SUPPORTED when the key does not follow from the chosen sentence. A true statement must be
+    what the sentence says (nearly all its words, nothing flipped); a false one is the sentence with a fact
+    changed: still built from it, and different from it in a way that shows (a new term, a flipped word, a
+    number, a negation). A "false" statement the sentence still states is true, so it is refused."""
+    fit = qt.fit(statement, quote)
+    if is_true:
+        if not fit.states:
+            raise QuizCheckError(KEY_NOT_SUPPORTED, "marked true, but the sentence does not state it ("
+                                 + fit.describe() + ")")
+        return
+    if fit.shared < qt.RELATED_MIN_SHARED:
+        raise QuizCheckError(KEY_NOT_SUPPORTED, "marked false, but the statement is not about the chosen "
+                             "sentence; change one fact of that sentence")
+    if fit.states and not fit.new_terms:
+        raise QuizCheckError(KEY_NOT_SUPPORTED, "marked false, but the sentence still states it; change one "
+                             "fact of the sentence")
+
+
+def check_true_false(draft: dict, evidence: list[dict], language: str = "tr", want_true: bool | None = None) -> dict:
     statement = _text(draft, "statement", 10, 400)
     is_true = draft.get("is_true")
     if type(is_true) is not bool:
@@ -273,6 +354,12 @@ def check_true_false(draft: dict, evidence: list[dict], language: str = "tr") ->
     elif not is_true and canonical(statement) in canonical(quote):
         # Only part of the sentence: cutting words can change the meaning, so neither key is safe.
         raise QuizCheckError(BAD_FORMAT, "a false statement cannot be copied from the source")
+    check_self_contained(statement)  # the form comes before the truth of the key
+    if want_true is not None and is_true != want_true:
+        raise QuizCheckError(BAD_FORMAT, "a " + ("TRUE" if want_true else "FALSE") + " statement was asked for; "
+                             + ("restate the sentence without a new claim" if want_true
+                                else "change exactly one fact of the sentence"))
+    check_statement_key(statement, is_true, quote)
     result = {
         "kind": "TRUE_FALSE", "question": statement, "options": list(TRUE_FALSE_OPTIONS[language]),
         "expected": "0" if is_true else "1", "quote": quote, "source_index": source_index,
@@ -565,10 +652,23 @@ def check_self_contained(text: str) -> None:
         raise QuizCheckError(NOT_SELF_CONTAINED, f"starts with \"{start[: match.end()]}\"")
 
 
+LANGUAGE_NAME = {"tr": "Turkish", "en": "English"}
+
+
+def check_language(text: str, language: str) -> None:
+    """WRONG_LANGUAGE when the stem is plainly in the other language ("What action does the sender
+    perform…" in a Turkish quiz). Source terms and names inside a sentence do not count; too little text
+    to tell is accepted."""
+    guessed = qt.guess_language(text)
+    if guessed and guessed != language:
+        raise QuizCheckError(WRONG_LANGUAGE, f"the question must be written in {LANGUAGE_NAME.get(language, language)}")
+
+
 # ── dispatcher ──────────────────────────────────────────────────────────────────────────────
 def check_question(kind: str, draft, evidence: list[dict], *, variant: str | None = None,
                    language: str = "tr", seed: str | None = None,
-                   existing_stems: list[str] | None = None, used_quotes: list[str] | None = None) -> dict:
+                   existing_stems: list[str] | None = None, used_quotes: list[str] | None = None,
+                   want_true: bool | None = None) -> dict:
     if not isinstance(draft, dict):
         raise QuizCheckError(SCHEMA_MISMATCH, "question must be a JSON object")
     if kind not in KINDS:
@@ -582,7 +682,7 @@ def check_question(kind: str, draft, evidence: list[dict], *, variant: str | Non
     elif kind == "MULTIPLE_CHOICE":
         result = check_multiple_choice(draft, evidence, seed)
     elif kind == "TRUE_FALSE":
-        result = check_true_false(draft, evidence, language)
+        result = check_true_false(draft, evidence, language, want_true)
     elif kind == "CLOZE":
         result = check_cloze(draft, evidence, language)
     elif kind == "SHORT_ANSWER":
@@ -591,6 +691,7 @@ def check_question(kind: str, draft, evidence: list[dict], *, variant: str | Non
         result = check_open(draft, evidence)
     if kind != "CLOZE":  # a cloze stem is the source sentence itself, written by the server
         check_self_contained(result["question"])
+        check_language(result["question"], language)
     if existing_stems and is_duplicate_stem(result["question"], existing_stems):
         raise QuizCheckError(DUPLICATE_STEM, result["question"][:120])
     if is_used_quote(result["quote"], used_quotes):

@@ -149,7 +149,10 @@ def tf(**over):
 def test_true_false_options_and_key_are_built_by_the_server():
     q = check_question("TRUE_FALSE", tf(), EVIDENCE)
     assert q["options"] == ["Doğru", "Yanlış"] and q["expected"] == "1"
-    q = check_question("TRUE_FALSE", tf(statement=QUOTE, is_true=True, quote=QUOTE), EVIDENCE, language="en")
+    english = "BFS uses a queue to hold the nodes that are waiting."
+    q = check_question("TRUE_FALSE", tf(statement=english, is_true=True, quote=english,
+                                        explanation="The statement is the source sentence."),
+                       [{"text": english}], language="en")
     assert q["options"] == ["True", "False"] and q["expected"] == "0"
 
 
@@ -345,8 +348,9 @@ def test_duplicate_stem_rejects_a_repeated_question():
 
 
 def test_failure_codes_are_unique_strings():
-    assert len(set(qc.FAILURE_CODES)) == len(qc.FAILURE_CODES) == 17
-    assert {qc.TRUNCATED, qc.NOT_SELF_CONTAINED, qc.DUPLICATE_QUOTE} <= set(qc.FAILURE_CODES)
+    assert len(set(qc.FAILURE_CODES)) == len(qc.FAILURE_CODES) == 19
+    assert {qc.TRUNCATED, qc.NOT_SELF_CONTAINED, qc.DUPLICATE_QUOTE,
+            qc.KEY_NOT_SUPPORTED, qc.WRONG_LANGUAGE} <= set(qc.FAILURE_CODES)
 
 
 @pytest.mark.parametrize("text,expected", [
@@ -383,10 +387,15 @@ def test_a_plain_statement_is_not_an_open_question():
     "BFS'nin kuyruk kullanımına bir örnek veriniz.",
     "BFS kuyruğu nasıl kullanır, kısaca yazın.",
     "BFS KUYRUĞU NEDEN KULLANIR, AÇIKLAYINIZ",
-    "Explain why BFS keeps waiting nodes in a queue.",
 ])
 def test_a_question_or_an_instruction_is_an_open_question(question):
     assert check_question("OPEN", {**OPEN_BASE, "question": question}, EVIDENCE)["question"] == question.strip()
+
+
+def test_an_english_instruction_is_an_open_question_in_an_english_quiz():
+    question = "Explain why BFS keeps waiting nodes in a queue."
+    assert check_question("OPEN", {**OPEN_BASE, "question": question}, EVIDENCE,
+                          language="en")["question"] == question
 
 
 # ── stems understandable on their own ────────────────────────────────────────────────────────
