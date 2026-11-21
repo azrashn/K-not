@@ -7,6 +7,7 @@ import { PageFrame, Btn } from "../components/ui";
 import { MobileBar } from "../components/PageBits";
 import { PageTitle, EmptyState } from "../components/ProductUI";
 import { videoErrorText } from "../lib/video";
+import { locatorOf, openLabel, sourceBadgeText } from "../lib/review";
 import { HISTORY_FILTERS, filterHistory, historyLabel, summarizeHistory } from "../lib/quiz-history";
 const labels = {
   MULTIPLE_CHOICE: "Çoktan seçmeli",
@@ -57,6 +58,8 @@ export default function CourseQuiz({ courseId }) {
     [elapsed, setElapsed] = useState(0);
   const abortRef = useRef(null);
   const summary = summarizeHistory(history);
+  // Yanlış cevapta kaynak konumu: yalnızca kayıtlı kaynaktan; konum yoksa rozet gösterilmez, sayfa uydurulmaz.
+  const resultLoc = result?.source ? locatorOf(result.source.kind, result.source.location) : null;
   const visibleHistory = filterHistory(history, historyFilter);
   const consumed = useRef(false), requestEpoch = useRef(0);
   // Topic ideas: what was practised before and what the course materials are called.
@@ -632,6 +635,11 @@ export default function CourseQuiz({ courseId }) {
                     </p>
                   )}
                   <blockquote>{result.quote}</blockquote>
+                  {result.score === 0 && resultLoc && (
+                    <span className="review-quiz-source">
+                      <span className="source-badge">{sourceBadgeText(result.source.title, resultLoc)}</span>
+                    </span>
+                  )}
                   <div className="product-actions">
                     {quizSet && setIndex + 1 < setQuestions.length && (
                       <Btn onClick={() => openSetQuestion(setIndex + 1)}>
@@ -641,15 +649,17 @@ export default function CourseQuiz({ courseId }) {
                     {quizSet && setIndex + 1 >= setQuestions.length && setRunning && (
                       <span className="product-note" role="status">Sonraki soru hazırlanıyor…</span>
                     )}
-                    <Btn
-                      onClick={() =>
-                        navigate(`/dersler/${course}/ogrenme`, {
-                          openSource: result.source,
-                        })
-                      }
-                    >
-                      İlgili kaynağı aç →
-                    </Btn>
+                    {result.source && (
+                      <Btn
+                        onClick={() =>
+                          navigate(`/dersler/${course}/ogrenme`, {
+                            openSource: result.source,
+                          })
+                        }
+                      >
+                        {result.score === 0 && resultLoc ? openLabel(resultLoc) : "İlgili kaynağı aç →"}
+                      </Btn>
+                    )}
                     <button
                       className="product-link"
                       onClick={() => {

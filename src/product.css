@@ -3107,3 +3107,47 @@ nav[aria-label='Ana gezinme'] { z-index: 2; }
 .self-check-web .board-control { height: 1.75rem; font-size: 12px; }
 .self-check-web blockquote { flex-basis: 100%; margin: 6px 0 0; padding-left: 10px; border-left: 2px solid var(--color-line-strong); overflow-wrap: anywhere; }
 .transcript-garbled { color: var(--color-ink-3); font-style: italic; }
+
+/* ── Yanlış defteri ─────────────────────────────────────────────────────────
+   Yalnızca token renkleri; 1px kenarlık, 8px yarıçap, hap yok. Animasyon yok. */
+.review-panel {
+  margin: 0 0 16px;
+  padding: 16px;
+  border: 1px solid var(--color-line);
+  border-radius: 10px;
+  background: var(--color-sheet);
+}
+.review-panel[hidden] { display: none; }
+.review-panel-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.review-panel-head h2 { margin: 0; font-size: 16px; font-weight: 600; letter-spacing: -0.03em; }
+.review-open { display: inline-flex; align-items: center; gap: 6px; }
+.review-open svg { flex: none; }
+.review-notice {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  margin: 0 0 12px; padding: 8px 12px;
+  border: 1px solid var(--color-line); border-radius: 8px; background: var(--color-sheet);
+  font-size: 13px; color: var(--color-ink-2);
+}
+.review-notebook { display: grid; gap: 12px; margin-top: 12px; }
+.review-counts { margin: 0; font-family: var(--font-mono); font-size: 12px; color: var(--color-ink-2); }
+.review-group { border: 1px solid var(--color-line); border-radius: 8px; background: var(--color-sheet); }
+.review-group-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+  padding: 8px 12px; border-bottom: 1px solid var(--color-line);
+}
+.review-list { list-style: none; margin: 0; padding: 0; }
+.review-item { padding: 12px; border-top: 1px solid var(--color-line); transition: background-color 160ms ease; }
+.review-item:first-child { border-top: 0; }
+.review-item:hover { background: color-mix(in srgb, var(--color-accent) 5%, var(--color-sheet)); }
+.review-item-top { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
+.review-question { margin: 0 0 6px; font-size: 14px; color: var(--color-ink); }
+.review-answer { margin: 0 0 6px; font-size: 13px; color: var(--color-ink-2); }
+.review-reveal { margin: 0 0 8px; font-size: 13px; color: var(--color-ink-2); }
+.review-reveal summary { cursor: pointer; width: fit-content; color: var(--color-accent); }
+.review-reveal p { margin: 6px 0 0; }
+.review-quiz-source { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+@media (max-width: 480px) {
+  .review-panel { padding: 12px; }
+  .review-group-head { padding: 8px; }
+}
+@media (prefers-reduced-motion: reduce) { .review-item { transition: none; } }
