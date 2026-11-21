@@ -1,7 +1,7 @@
 /** Runs a question plan through the quiz generator (ai-service quiz engine v2 + backend checks).
  *
  *  One request per source part: that part is the only evidence, so each question is written from the part the
- *  plan gave it. A question that fails is tried once more (MAX_TRIES), with a spare part of the plan when one
+ *  plan gave it. A question that fails is tried again (up to MAX_TRIES requests), with a spare part of the plan when one
  *  is left, otherwise with its own part. The repeat guard spans the whole set: used sentences are never shown
  *  to the model again and a repeated stem is refused before it is stored. The run stops when the model cannot
  *  be reached, or after TIMEOUT_STREAK_LIMIT requests in a row that only timed out. */
@@ -15,8 +15,9 @@ import { partEvidence, type SourcePart } from "./source-pool";
 /** Model time for one request (one or two questions plus repairs on a CPU model). */
 export const REQUEST_BUDGET_SECONDS = 240;
 export const TIMEOUT_STREAK_LIMIT = 2;
-/** Requests a question may take: the planned one and one retry. */
-export const MAX_TRIES = 2;
+/** Requests a question may take: the planned one and two retries. The ai-service now also reads every true/false
+ *  and multiple-choice key back against its sentence, so more drafts are refused; a third try makes up for it. */
+export const MAX_TRIES = 3;
 
 export type Produced = { slot: number; quiz_id: string; kind: string; topic: string };
 /** One failed try of one question, kept for the details list. */
@@ -117,17 +118,20 @@ export async function runPlan(plan: QuestionPlan, o: RunOptions): Promise<RunRes
     failed.push(...(await ask(a, 1)));
   }
 
-  // Try 2: a spare part while one is left (each spare once), else the question's own part.
-  if (!state.stopped && failed.length && (o.maxTries ?? MAX_TRIES) > 1) {
-    const spare = [...plan.spare];
-    const retry = failed.map((slot) => {
+  // Tries 2..MAX_TRIES: a spare part while one is left (each spare once), else the question's own part.
+  const spare = [...plan.spare];
+  let pending = failed;
+  for (let tryNo = 2; tryNo <= (o.maxTries ?? MAX_TRIES) && pending.length && !state.stopped; tryNo++) {
+    const retry = pending.map((slot) => {
       const s = spare.shift();
       return s ? { slot, topic: s.topic, part: s.part } : { slot, topic: slot.topic, part: slot.part };
     });
+    const again: PlannedSlot[] = [];
     for (const a of byPart(retry)) {
       if (state.stopped) break;
-      await ask(a, 2);
+      again.push(...(await ask(a, tryNo)));
     }
+    pending = again;
   }
 
   state.produced.sort((a, b) => a.slot - b.slot);

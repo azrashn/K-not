@@ -55,7 +55,7 @@ describe('running a plan', () => {
     expect(generationNote({ requested: 6, planned: 6, produced: 6, unresolved: [], stopped: null })).toBeNull();
   });
 
-  test('a failed question is tried once more with a spare part, never more than twice', async () => {
+  test('a failed question is tried again with a spare part, never more than three times', async () => {
     const plan = planQuestions(quizItems('OPEN', 4), topics); // n1..n4 used once; n5 and n4's second use are spare
     const generator = fakeGenerator((_req, call) => (call === 0 ? 'BAD_FORMAT' : 'ok'));
     const result = await runPlan(plan, options(generator));
@@ -63,7 +63,25 @@ describe('running a plan', () => {
     const retry = generator.generate.mock.calls[4][2];
     expect(retry.sources[0].id).toBe(plan.spare[0].part.id);
     expect(result.tries).toEqual([expect.objectContaining({ slot: 0, code: 'BAD_FORMAT', try: 1 })]);
-    expect(MAX_TRIES).toBe(2);
+    expect(MAX_TRIES).toBe(3);
+  });
+
+  test('a question refused twice gets a third try, then stops', async () => {
+    const plan = planQuestions(quizItems('OPEN', 1), topics);
+    let refused = 0;
+    const generator = fakeGenerator(() => (refused++ < 2 ? 'KEY_NOT_SUPPORTED' : 'ok'));
+    const result = await runPlan(plan, options(generator));
+    expect(generator.generate).toHaveBeenCalledTimes(3);
+    expect(result.produced).toHaveLength(1);
+    expect(result.tries.map((t) => t.try)).toEqual([1, 2]);
+  });
+
+  test('a question refused on every try is asked MAX_TRIES times and then reported', async () => {
+    const plan = planQuestions(quizItems('OPEN', 1), topics);
+    const generator = fakeGenerator(() => 'KEY_NOT_SUPPORTED');
+    const result = await runPlan(plan, options(generator));
+    expect(generator.generate).toHaveBeenCalledTimes(MAX_TRIES);
+    expect(result.unresolved).toEqual([expect.objectContaining({ slot: 0, code: 'KEY_NOT_SUPPORTED', tries: MAX_TRIES })]);
   });
 
   test('without a spare part the retry uses the question\'s own part', async () => {
@@ -84,9 +102,9 @@ describe('running a plan', () => {
     const generator = fakeGenerator((req) => (req.sources[0].id === 'p3' ? 'NOT_SELF_CONTAINED' : 'ok'));
     const result = await runPlan(plan, options(generator));
     expect(result.produced.length / plan.slots.length).toBeGreaterThanOrEqual(0.8);
-    expect(result.unresolved).toEqual([expect.objectContaining({ slot: 3, code: 'NOT_SELF_CONTAINED', tries: 2 })]);
+    expect(result.unresolved).toEqual([expect.objectContaining({ slot: 3, code: 'NOT_SELF_CONTAINED', tries: 3 })]);
     expect(generationNote({ requested: 10, planned: 10, produced: result.produced.length, unresolved: result.unresolved, stopped: null }))
-      .toBe('10 sorudan 9\'u hazırlandı. Hazırlanamayan 1 sorunun 1\'inde neden: Soru, görülmeyen bir önceki cümleye bağlı başlıyordu (ör. "Bu", "Ardından"); tek başına anlaşılmıyordu. Her soru en fazla 2 kez denendi.');
+      .toBe('10 sorudan 9\'u hazırlandı. Hazırlanamayan 1 sorunun 1\'inde neden: Soru, görülmeyen bir önceki cümleye bağlı başlıyordu (ör. "Bu", "Ardından"); tek başına anlaşılmıyordu. Her soru en fazla 3 kez denendi.');
   });
 
   test('an unreachable model stops the run at once', async () => {
