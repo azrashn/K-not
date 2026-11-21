@@ -304,16 +304,71 @@ def _chunks(text: str) -> list[str]:
     return out + ([text] if text else [])
 
 
-def _spans(text: str) -> list[tuple[int, int]]:
-    """(start, end) of each sentence of `text`. A piece shorter than SENTENCE_MIN joins the next one."""
+# ── Heading lines ("3. Nesne Yönelimli Programlama"): their own unit, never part of a sentence or a quote ──
+HEADING_MAX_WORDS = 8   # a short line without an ending is a heading below this many words
+HEADING_MAX_CHARS = 60  # a wrapped body line is longer
+_NUMBERED_HEADING = re.compile(r"^(?:\d+(?:\.\d+)*[.)]?|[IVXLC]+[.)])\s+\w")
+_LIST_ITEM = re.compile(r"^(?:[•▪●◦■*]|[-–]\s)")
+
+
+def _heading(line: str, prev: str | None, nxt: str | None) -> bool:
+    """A line that names a section rather than says something: it starts a block (the text starts, a blank
+    line or a finished sentence comes before it), has no sentence ending, and the next line starts anew (a
+    capital, a number, a blank line or the end). Then it is a numbered heading, a short line, or the last
+    line before a new paragraph. A wrapped sentence line ("… James Gosling liderliğindeki") does not start
+    a block or is longer, so it stays in its sentence."""
+    s = line.strip()
+    if not s or _LIST_ITEM.match(s) or s[-1] in ".!?…:;,\"'’”)]":
+        return False
+    numbered = _NUMBERED_HEADING.match(s)
+    body = re.sub(r"^(?:\d+(?:\.\d+)*[.)]?|[IVXLC]+[.)])\s+", "", s) if numbered else s
+    if re.search(r"[.!?…]\s", body):  # a sentence ends inside the line: running text
+        return False
+    before = (prev or "").rstrip()
+    if before and before[-1] not in ".!?…:":
+        return False  # the line goes on with the sentence above it
+    after = (nxt or "").strip()
+    if after and not (after[0].isupper() or after[0].isdigit()):
+        return False  # continued in lower case, or a list follows (the line introduces it)
+    words = len(s.split())
+    if not (s[0].isupper() or s[0].isdigit()):
+        return False
+    if numbered and words <= 12:
+        return True
+    if words < HEADING_MAX_WORDS and len(s) <= HEADING_MAX_CHARS and "," not in s:
+        return True
+    return nxt is not None and not after and words <= 12  # the last line before a new paragraph
+
+
+def heading_spans(text: str) -> list[tuple[int, int]]:
+    """(start, end) of every heading line of `text` (see _heading)."""
+    lines = [(m.start(), m.end(), m.group(0)) for m in re.finditer(r"[^\n]+|(?<=\n)(?=\n)", text)]
+    out = []
+    for i, (start, end, line) in enumerate(lines):
+        prev = lines[i - 1][2] if i else None
+        nxt = lines[i + 1][2] if i + 1 < len(lines) else None
+        # A blank line between them counts as "blank" before / after.
+        if i and text[lines[i - 1][1]:start].count("\n") > 1:
+            prev = ""
+        if i + 1 < len(lines) and text[end:lines[i + 1][0]].count("\n") > 1:
+            nxt = ""
+        if _heading(line, prev, nxt):
+            out.append((start, end))
+    return out
+
+
+def _sentence_spans(text: str, lo: int, hi: int) -> list[tuple[int, int]]:
+    """Sentences of text[lo:hi] as (start, end) in `text`. A piece shorter than SENTENCE_MIN joins the next
+    one; a short tail joins the one before (never across a heading: the region ends there)."""
+    region = text[lo:hi]
     spans: list[tuple[int, int]] = []
     start, pending = 0, None
-    bounds = [(m.start(), m.end()) for m in _SENTENCE_END.finditer(text) if _real_end(text, m)]
-    bounds.append((len(text), len(text)))
+    bounds = [(m.start(), m.end()) for m in _SENTENCE_END.finditer(region) if _real_end(region, m)]
+    bounds.append((len(region), len(region)))
     for stop, after in bounds:
         begin = pending if pending is not None else start
         start = after
-        piece = text[begin:stop].strip()
+        piece = region[begin:stop].strip()
         if not piece:
             continue
         if len(piece) < SENTENCE_MIN:
@@ -321,12 +376,23 @@ def _spans(text: str) -> list[tuple[int, int]]:
             continue
         spans.append((begin, stop))
         pending = None
-    if pending is not None:  # a short tail joins the sentence before it
+    if pending is not None:
         if spans:
-            spans[-1] = (spans[-1][0], len(text))
-        else:
-            spans.append((pending, len(text)))
-    return spans
+            spans[-1] = (spans[-1][0], len(region))
+        elif region[pending:].strip():
+            spans.append((pending, len(region)))
+    return [(lo + a, lo + b) for a, b in spans]
+
+
+def _spans(text: str) -> list[tuple[int, int]]:
+    """(start, end) of each sentence of `text`. Heading lines are left out: a sentence never takes in the
+    heading above it ("3. Nesne Yönelimli Programlama Java nesne …"), and a heading cannot be a quote."""
+    spans: list[tuple[int, int]] = []
+    pos = 0
+    for start, end in heading_spans(text):
+        spans += _sentence_spans(text, pos, start)
+        pos = end
+    return spans + _sentence_spans(text, pos, len(text))
 
 
 def _used(sentence: str, avoid_keys: list[str]) -> bool:

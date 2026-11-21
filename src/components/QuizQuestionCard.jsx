@@ -30,6 +30,8 @@ export default function QuizQuestionCard({
   badge = null,
   actions = null,
   disabled = false,
+  // Where "← Soruya dön" on the source screen leads: the page passes its own set/exam and question.
+  returnTo = null,
 }) {
   const { navigate } = useApp();
   // A question answered before opens with that answer (the server records the response with the result).
@@ -121,7 +123,7 @@ export default function QuizQuestionCard({
                 onClick={() => {
                   // The quote travels with the source so the viewer can mark the sentence the question rests on;
                   // the page's address (it holds the set or exam and the question) is where "← Soruya dön" goes.
-                  const here = window.location.hash.replace(/^#/, "");
+                  const here = returnTo || window.location.hash.replace(/^#/, "");
                   navigate(`/dersler/${courseId}/ogrenme`, {
                     openSource: { ...result.source, ...(result.quote ? { quote: result.quote } : {}) },
                     ...(/^\/(dersler\/[^/?#]+\/(quiz|sinavlar)|quiz)(\?|$)/.test(here) ? { returnTo: here } : {}),

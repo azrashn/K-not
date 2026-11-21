@@ -3,6 +3,9 @@
 // one (from the side menu). Storage may be unavailable (private window, blocked): then nothing is remembered.
 
 const key = (kind, course) => `knot.resume.${kind}.${course}`;
+/** The record of the last set open in this tab, whatever the course ({ id, q, course }): the general quiz
+ *  page (#/quiz) knows no course of its own. */
+export const LAST = '_last';
 const ID = /^[A-Za-z0-9_-]{1,80}$/;
 
 /** { id, q, ... } for this course, or null. `q` is the 1-based question number. */

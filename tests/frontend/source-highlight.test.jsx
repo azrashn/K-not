@@ -162,7 +162,7 @@ describe('"← Soruya dön" on a source opened from a question', () => {
     const user = userEvent.setup()
     open('/dersler/c/sinavlar?exam=x1&mode=solve&q=2')
     await user.click(await screen.findByRole('button', { name: '← Soruya dön' }))
-    expect(nav).toHaveBeenCalledWith('/dersler/c/sinavlar?exam=x1&mode=solve&q=2')
+    expect(nav).toHaveBeenCalledWith('/dersler/c/sinavlar?exam=x1&mode=solve&q=2', { returnToQuestion: true })
     expect(screen.queryByRole('button', { name: '← Derslerin' })).toBeNull()
   })
 

@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import QuizQuestionCard from "../components/QuizQuestionCard";
 import QuestionNav from "../components/QuestionNav";
-import { hashParam, rememberInHash } from "../lib/page-query";
-import { clearResume, finished, loadResume, positionOf, recordedResults, saveResume } from "../lib/resume";
+import { hashParam, hashWith, rememberInHash } from "../lib/page-query";
+import { LAST, clearResume, finished, loadResume, positionOf, recordedResults, saveResume } from "../lib/resume";
 import { api } from "../api/endpoints";
 import { useResource } from "../hooks/useApi";
 import { useApp } from "../app/store";
@@ -52,7 +52,7 @@ export default function CourseQuiz({ courseId }) {
     [scopeNote, setScopeNote] = useState(""),
     [elapsed, setElapsed] = useState(0);
   const abortRef = useRef(null);
-  const consumed = useRef(false), requestEpoch = useRef(0);
+  const consumed = useRef(false), requestEpoch = useRef(0), intentRef = useRef(null);
   // The open set lives in the address ("?set=<id>&q=<question id>", plus "course=" on the general /quiz
   // page), so leaving the page and coming back reopens it at the same question. Not written before the
   // address has been read, or the first render would erase it.
@@ -133,47 +133,79 @@ export default function CourseQuiz({ courseId }) {
   useEffect(() => {
     if (!addressRead.current) return;
     rememberInHash(base, quizSet?.id ? { ...(courseId ? {} : { course }), set: quizSet.id, q: openQ } : {});
-    if (quizSet?.id) saveResume("quiz", course, { id: quizSet.id, q: openQ ?? 1 });
-  }, [base, courseId, course, quizSet?.id, openQ]);
-  useEffect(() => {
-    if (consumed.current) return;
-    consumed.current = true;
-    const intent = takeIntent?.();
-    if (intent?.topic) setTopic(intent.topic.slice(0, 200));
-    if (intent?.materialId) {
-      // Started from the study screen: keep the quiz on the material the student was looking at.
-      setScopeMode("active");
-      setMaterial(intent.materialId);
-      setAdvancedOpen(true);
-      setScopeNote(`Çalışma ekranındaki materyalden başlatıldı${intent.materialTitle ? `: ${intent.materialTitle}` : ""}. Kapsamı “Gelişmiş ayarlar” içinden değiştirebilirsin.`);
+    if (quizSet?.id) {
+      saveResume("quiz", course, { id: quizSet.id, q: openQ ?? 1 });
+      saveResume("quiz", LAST, { id: quizSet.id, q: openQ ?? 1, course });
     }
+  }, [base, courseId, course, quizSet?.id, openQ]);
+  /** The set is closed by the student: neither this course's record nor the tab's last set points to it. */
+  function forgetSet(c) {
+    clearResume("quiz", c);
+    if (loadResume("quiz", LAST)?.course === c) clearResume("quiz", LAST);
+  }
+  // Where "← Soruya dön" brings the student back: built from what is open, not read back from the address.
+  const returnTo = quizSet?.id
+    ? hashWith(base.slice(1), { ...(courseId ? {} : { course }), set: quizSet.id, q: openQ ?? 1 })
+    : undefined;
+  useEffect(() => {
+    // The intent is taken once (it is gone after takeIntent); the restore below runs on every mount. In
+    // development React mounts, unmounts and mounts again (StrictMode): the restore used to run only on the
+    // first mount, whose answer the unmount then marked stale, so the page stayed empty ("Ders seç").
+    if (!consumed.current) {
+      consumed.current = true;
+      const taken = takeIntent?.() ?? null;
+      intentRef.current = taken;
+      if (taken?.topic) setTopic(taken.topic.slice(0, 200));
+      if (taken?.materialId) {
+        // Started from the study screen: keep the quiz on the material the student was looking at.
+        setScopeMode("active");
+        setMaterial(taken.materialId);
+        setAdvancedOpen(true);
+        setScopeNote(`Çalışma ekranındaki materyalden başlatıldı${taken.materialTitle ? `: ${taken.materialTitle}` : ""}. Kapsamı “Gelişmiş ayarlar” içinden değiştirebilirsin.`);
+      }
+    }
+    const intent = intentRef.current;
+    let cancelled = false;
+    const epoch = requestEpoch.current; // a request the student starts meanwhile wins over the restore
+    const stale = () => cancelled || epoch !== requestEpoch.current;
     if (intent?.quizId && courseId) {
       addressRead.current = true;
       api
         .quiz(courseId, intent.quizId)
-        .then(setQuiz)
-        .catch((e) => setError(videoErrorText(e)));
-      return;
+        .then((q) => !stale() && setQuiz(q))
+        .catch((e) => !stale() && setError(videoErrorText(e)));
+      return () => {
+        cancelled = true;
+      };
     }
     // Which set to reopen, at which question: the one in the address (back from another page, a reload),
-    // else the one this tab left unfinished in this course (opened from the menu). Not when the student
-    // came to start something new (a topic or material from the study screen).
+    // else the one this tab left open (from the menu, or "← Soruya dön" when the address lost it). Not when
+    // the student came to start something new (a topic or material from the study screen).
     const hash = window.location.hash;
-    const setCourseId = courseId || hashParam(hash, "course");
+    const back = Boolean(intent?.returnToQuestion);
+    const addressCourse = courseId || hashParam(hash, "course");
     const fromAddress = hashParam(hash, "set");
-    const record = fromAddress || intent?.topic || intent?.materialId ? null : loadResume("quiz", setCourseId);
+    let record = null;
+    if (!fromAddress && !intent?.topic && !intent?.materialId) {
+      record = loadResume("quiz", addressCourse);
+      // The general quiz page does not know the course: the last set open in this tab names it.
+      const last = record || courseId ? null : loadResume("quiz", LAST);
+      if (last?.course && (!addressCourse || last.course === addressCourse)) record = last;
+    }
+    const setCourseId = addressCourse || record?.course;
     const setId = fromAddress || record?.id;
     const q = fromAddress ? hashParam(hash, "q") : record?.q;
     if (!setId || !setCourseId) {
       addressRead.current = true;
-      return;
+      return undefined;
     }
-    const epoch = ++requestEpoch.current;
     Promise.resolve(api.quizSet(setCourseId, setId))
       .then((s) => {
+        if (stale()) return;
         addressRead.current = true;
-        if (epoch !== requestEpoch.current || !s) return;
-        if (record && finished(s)) return clearResume("quiz", setCourseId); // all answered: nothing to go back to
+        if (!s) return;
+        // Every question answered: nothing to go back to from the menu (but "← Soruya dön" still goes back).
+        if (record && !back && finished(s)) return forgetSet(setCourseId);
         if (!courseId) setCourse(setCourseId);
         const questions = (s.questions ?? []).filter((x) => x.available);
         const i = positionOf(q, questions.length);
@@ -183,11 +215,17 @@ export default function CourseQuiz({ courseId }) {
         if (questions[i]) setQuiz(questions[i]);
       })
       .catch(() => {
+        if (stale()) return;
         addressRead.current = true;
-        clearResume("quiz", setCourseId);
+        forgetSet(setCourseId);
         rememberInHash(base, {}); // removed meanwhile: the page opens without it
       });
-  }, [takeIntent, courseId]); // eslint-disable-line react-hooks/exhaustive-deps
+    return () => {
+      cancelled = true;
+    };
+    // Only on mount and when the course page changes: not when takeIntent's identity does (a new
+    // function would rerun the restore and put the saved set back over the one just started).
+  }, [courseId]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!course) return;
     const abort = new AbortController();
@@ -256,7 +294,7 @@ export default function CourseQuiz({ courseId }) {
       const saved = await api.quiz(course, item.id);
       if (epoch !== requestEpoch.current) return;
       setQuizSet(null);
-      clearResume("quiz", course); // a single question now: the set is no longer the place to return to
+      forgetSet(course); // a single question now: the set is no longer the place to return to
       setQuiz(saved);
       setResults({});
     } catch (e) {
@@ -272,7 +310,7 @@ export default function CourseQuiz({ courseId }) {
     setSetIndex(0);
     setError("");
     setResults({});
-    clearResume("quiz", course); // a new practice replaces the one left open
+    forgetSet(course); // a new practice replaces the one left open
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
@@ -599,6 +637,7 @@ export default function CourseQuiz({ courseId }) {
             <QuizQuestionCard
               key={quiz.id}
               courseId={course}
+              returnTo={returnTo}
               quiz={quiz}
               result={result}
               disabled={busy}

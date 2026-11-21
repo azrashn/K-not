@@ -13,7 +13,7 @@ import {
   EXAM_STYLES_MAX, KIND_LABELS, OPTION_LETTERS, averageExamCount, examFormProblem, examFromHash, examHash,
   examStatusText, examSummary, fileProblem, topicsFromText,
 } from "../lib/exam";
-import { hashParam, rememberInHash } from "../lib/page-query";
+import { hashParam, hashWith, rememberInHash } from "../lib/page-query";
 import { clearResume, finished, loadResume, positionOf, recordedResults, saveResume } from "../lib/resume";
 
 /** The questions that can be solved: a question whose source was removed is left out. */
@@ -83,6 +83,7 @@ function ExamSolver({ exam, courseId, results, setResults, pos, setPos, showSumm
           })
         }
         onError={onError}
+        returnTo={hashWith(`/dersler/${courseId}/sinavlar`, { exam: exam.id, mode: "solve", q: at + 1 })}
         badge={<span className="source-badge">Soru {at + 1} / {n}</span>}
       />
       <QuestionNav at={at} total={n} onGo={setPos} last={<Btn onClick={() => setShowSummary(true)}>Özeti gör</Btn>}>
@@ -160,7 +161,9 @@ function ExamSheet({ exam, answerKey, onSolve, printOnly = false }) {
 // Past exam → saved style → a new source-bound exam. Questions that no course source supports are
 // not written; the exam lists what could not be prepared and why.
 export default function CourseExams({ courseId, pollMs = 2500 }) {
-  const { navigate } = useApp();
+  const { navigate, takeIntent } = useApp();
+  // Taken once; kept in a ref so that the second mount of StrictMode sees it too.
+  const intentRef = useRef(undefined);
   const [styles, setStyles] = useState([]),
     [exams, setExams] = useState([]),
     [exam, setExam] = useState(null),
@@ -233,6 +236,9 @@ export default function CourseExams({ courseId, pollMs = 2500 }) {
     const abort = new AbortController();
     // Which exam to reopen: the one in the address (back from another page, a reload), else the one this
     // tab was solving and has not finished (opened from the menu, without an address).
+    if (intentRef.current === undefined) intentRef.current = takeIntent?.() ?? null;
+    // "← Soruya dön": back to the exam even when every question is answered.
+    const back = Boolean(intentRef.current?.returnToQuestion);
     const hash = window.location.hash;
     const fromAddress = examFromHash(hash);
     const record = fromAddress ? null : loadResume("exam", courseId);
@@ -249,7 +255,7 @@ export default function CourseExams({ courseId, pollMs = 2500 }) {
             const detail = await api.exam(courseId, wanted, abort.signal);
             if (abort.signal.aborted) return;
             addressRead.current = true;
-            if (record && finished(detail)) {
+            if (record && !back && finished(detail)) {
               clearResume("exam", courseId); // every question answered: nothing to go back to
             } else {
               const at = solveQ != null && solvable(detail).length ? positionOf(solveQ, solvable(detail).length) : null;
@@ -276,7 +282,7 @@ export default function CourseExams({ courseId, pollMs = 2500 }) {
       alive.current = false;
       abort.abort();
     };
-  }, [courseId, show]);
+  }, [courseId, show, takeIntent]);
 
   const refreshList = useCallback(async () => {
     try {

@@ -173,7 +173,11 @@ describe('solving the exam on its page', () => {
     expect(within(feedback).getByText('Kuyrukta ilk giren ilk çıkar.')).toBeInTheDocument()
     expect(within(feedback).getByText('Kuyruk FIFO çalışır.')).toBeInTheDocument()
     await user.click(within(feedback).getByRole('button', { name: 'İlgili kaynağı aç →' }))
-    expect(nav).toHaveBeenCalledWith('/dersler/c/ogrenme', { openSource: { id: 's1', material_id: 'pdf_a', quote: 'Kuyruk FIFO çalışır.' } })
+    // The way back is built from the open exam and question, not read from the address.
+    expect(nav).toHaveBeenCalledWith('/dersler/c/ogrenme', {
+      openSource: { id: 's1', material_id: 'pdf_a', quote: 'Kuyruk FIFO çalışır.' },
+      returnTo: '/dersler/c/sinavlar?exam=x1&mode=solve&q=1',
+    })
 
     await user.click(within(solver()).getByRole('button', { name: 'Sonraki →' }))
     expect(within(solver()).getByText('Soru 2 / 3')).toBeInTheDocument()

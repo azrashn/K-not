@@ -775,7 +775,9 @@ export default function LearningWorkspace({ courseId }) {
         <div>
           {returnTo ? (
             // Opened from a question ("İlgili kaynağı aç"): back to that question, with its answer.
-            <button className="product-link" onClick={() => navigate(returnTo)}>
+            // The intent tells the page it is a way back: if the address lost the set or exam, the tab's
+            // record of the last one open is used, also when every question is already answered.
+            <button className="product-link" onClick={() => navigate(returnTo, { returnToQuestion: true })}>
               ← Soruya dön
             </button>
           ) : (
