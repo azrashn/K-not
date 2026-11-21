@@ -2,7 +2,9 @@
 
 import shutil
 import subprocess
+import tempfile
 from pathlib import Path
+from xml.etree import ElementTree
 
 import pytest
 from fastapi import HTTPException
@@ -88,22 +90,27 @@ def test_endpoint_returns_word_boxes_from_mocked_pdftotext(monkeypatch, tmp_path
 
 
 def _working_pdftotext():
-    """The pdftotext the service would use (PDFTOTEXT_PATH, next to PDFTOPPM_PATH, or PATH), if it actually runs."""
+    """(executable, skip reason): the pdftotext the service would use (PDFTOTEXT_PATH, next to PDFTOPPM_PATH,
+    or PATH), checked with the endpoint's own command. It counts as working only if -bbox-layout yields word boxes;
+    an old xpdf pdftotext (e.g. the one shipped with Git for Windows) runs but has no -bbox-layout."""
     executable = visuals.pdftotext_path()
     if not executable:
-        return None
-    try:
-        visuals.run([executable, "-f", "1", "-l", "1", str(FIXTURES / "notes_tr.pdf"), "-"], 30)
-    except (subprocess.SubprocessError, OSError):
-        return None
-    return executable
+        return None, "Poppler pdftotext not found (set PDFTOTEXT_PATH, or put pdftotext on PATH / next to PDFTOPPM_PATH)"
+    with tempfile.TemporaryDirectory() as folder:
+        out = Path(folder) / "probe.bbox.html"
+        try:
+            visuals.run([executable, "-f", "1", "-l", "1", "-bbox-layout", "-enc", "UTF-8",
+                         str(FIXTURES / "notes_tr.pdf"), str(out)], 30)
+            lines = visuals.parse_bbox_layout(out.read_text(encoding="utf-8", errors="replace"))
+        except (subprocess.SubprocessError, OSError, ElementTree.ParseError, ValueError, TypeError) as exc:
+            return None, f"pdftotext at {executable} cannot produce -bbox-layout word boxes ({type(exc).__name__}); Poppler's pdftotext is needed"
+    if not lines:
+        return None, f"pdftotext at {executable} produced no -bbox-layout word boxes for notes_tr.pdf; Poppler's pdftotext is needed"
+    return executable, ""
 
 
-PDFTOTEXT = _working_pdftotext()
-needs_poppler = pytest.mark.skipif(
-    not PDFTOTEXT,
-    reason="Poppler pdftotext not found or not runnable (set PDFTOTEXT_PATH, or put pdftotext on PATH / next to PDFTOPPM_PATH)",
-)
+PDFTOTEXT, SKIP_REASON = _working_pdftotext()
+needs_poppler = pytest.mark.skipif(not PDFTOTEXT, reason=SKIP_REASON or "pdftotext works")
 
 
 @needs_poppler
