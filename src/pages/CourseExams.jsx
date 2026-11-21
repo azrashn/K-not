@@ -10,9 +10,11 @@ import QuestionNav from "../components/QuestionNav";
 import { videoErrorText } from "../lib/video";
 import { describeExamStyle, examStyleProblem } from "../lib/exam-style";
 import {
-  EXAM_STYLES_MAX, KIND_LABELS, OPTION_LETTERS, averageExamCount, examFormProblem, examFromHash, examStatusText,
-  examSummary, fileProblem, rememberExam, topicsFromText,
+  EXAM_STYLES_MAX, KIND_LABELS, OPTION_LETTERS, averageExamCount, examFormProblem, examFromHash, examHash,
+  examStatusText, examSummary, fileProblem, topicsFromText,
 } from "../lib/exam";
+import { hashParam, rememberInHash } from "../lib/page-query";
+import { clearResume, finished, loadResume, positionOf, recordedResults, saveResume } from "../lib/resume";
 
 /** The questions that can be solved: a question whose source was removed is left out. */
 const solvable = (exam) => (exam?.questions || []).filter((q) => q.available !== false);
@@ -206,26 +208,36 @@ export default function CourseExams({ courseId, pollMs = 2500 }) {
     };
   }, []);
 
-  /** A new exam is open: the solver starts again and the address remembers it. */
-  const show = useCallback(
-    (next) => {
-      setExam(next);
-      setKey(null);
-      setShowKey(false);
-      setSolving(false);
-      setPos(0);
-      setResults({});
-      setShowSummary(false);
-      rememberExam(courseId, next?.id ?? null);
-    },
-    [courseId],
-  );
+  /** An exam is open: with the answers the server recorded, on its paper or (solveAt) solving that question. */
+  const show = useCallback((next, solveAt = null) => {
+    setExam(next);
+    setKey(null);
+    setShowKey(false);
+    setSolving(solveAt !== null);
+    setPos(solveAt ?? 0);
+    setResults(recordedResults(next?.questions));
+    setShowSummary(false);
+  }, []);
+
+  // The address and the tab's record follow the open exam: "?exam=…" on its paper,
+  // "?exam=…&mode=solve&q=2" while solving. Not before the address has been read, or it would be erased.
+  const addressRead = useRef(false);
+  useEffect(() => {
+    if (!addressRead.current) return;
+    rememberInHash(examHash(courseId, null), exam?.id ? { exam: exam.id, ...(solving ? { mode: "solve", q: pos + 1 } : {}) } : {});
+    if (exam?.id && solving) saveResume("exam", courseId, { id: exam.id, q: pos + 1 });
+  }, [courseId, exam?.id, solving, pos]);
 
   useEffect(() => {
     alive.current = true;
     const abort = new AbortController();
-    // The exam in the address ("?exam=…"): coming back from another page, or a reload, opens it again.
-    const wanted = examFromHash(window.location.hash);
+    // Which exam to reopen: the one in the address (back from another page, a reload), else the one this
+    // tab was solving and has not finished (opened from the menu, without an address).
+    const hash = window.location.hash;
+    const fromAddress = examFromHash(hash);
+    const record = fromAddress ? null : loadResume("exam", courseId);
+    const wanted = fromAddress || record?.id;
+    const solveQ = fromAddress ? (hashParam(hash, "mode") === "solve" ? hashParam(hash, "q") || "1" : null) : record?.q;
     Promise.all([api.examStyles(courseId, abort.signal), api.exams(courseId, abort.signal)])
       .then(async ([s, e]) => {
         if (abort.signal.aborted) return;
@@ -235,18 +247,30 @@ export default function CourseExams({ courseId, pollMs = 2500 }) {
         if (wanted) {
           try {
             const detail = await api.exam(courseId, wanted, abort.signal);
-            if (!abort.signal.aborted) show(detail);
-            return;
+            if (abort.signal.aborted) return;
+            addressRead.current = true;
+            if (record && finished(detail)) {
+              clearResume("exam", courseId); // every question answered: nothing to go back to
+            } else {
+              const at = solveQ != null && solvable(detail).length ? positionOf(solveQ, solvable(detail).length) : null;
+              show(detail, at);
+              return;
+            }
           } catch (err) {
             if (abort.signal.aborted || err.name === "AbortError") return;
-            rememberExam(courseId, null); // deleted meanwhile: the page opens without it
+            // Deleted meanwhile: the page opens without it.
+            clearResume("exam", courseId);
+            rememberInHash(examHash(courseId, null), {});
           }
         }
+        addressRead.current = true;
         const running = e.find((x) => x.status === "GENERATING");
         if (running) setExam({ ...running, questions: [] });
       })
       .catch((err) => {
-        if (err.name !== "AbortError") setError(videoErrorText(err));
+        if (err.name === "AbortError") return;
+        addressRead.current = true;
+        setError(videoErrorText(err));
       });
     return () => {
       alive.current = false;
@@ -338,6 +362,7 @@ export default function CourseExams({ courseId, pollMs = 2500 }) {
         ...(topics.length ? { topics } : {}),
       });
       setExams((list) => [created, ...list]);
+      clearResume("exam", courseId);
       show({ ...created, questions: [] });
     } catch (err) {
       setError(videoErrorText(err));
@@ -349,7 +374,10 @@ export default function CourseExams({ courseId, pollMs = 2500 }) {
   async function open(id) {
     setError("");
     try {
-      show(await api.exam(courseId, id));
+      const detail = await api.exam(courseId, id);
+      // Another exam chosen by hand: the record of the one solved before no longer applies.
+      if (loadResume("exam", courseId)?.id !== id) clearResume("exam", courseId);
+      show(detail);
     } catch (err) {
       setError(videoErrorText(err));
     }
@@ -359,6 +387,7 @@ export default function CourseExams({ courseId, pollMs = 2500 }) {
     try {
       await api.deleteExam(courseId, id);
       setExams((list) => list.filter((x) => x.id !== id));
+      if (loadResume("exam", courseId)?.id === id) clearResume("exam", courseId);
       if (exam?.id === id) show(null);
     } catch (err) {
       setError(videoErrorText(err));
@@ -569,7 +598,10 @@ export default function CourseExams({ courseId, pollMs = 2500 }) {
                   setPos={setPos}
                   showSummary={showSummary}
                   setShowSummary={setShowSummary}
-                  onClose={() => setSolving(false)}
+                  onClose={() => {
+                    clearResume("exam", courseId); // back on the paper: nothing to reopen from the menu
+                    setSolving(false);
+                  }}
                   onError={(err) => setError(videoErrorText(err))}
                 />
               ) : (

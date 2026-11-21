@@ -5,6 +5,11 @@ import { useApp } from "../app/store";
 import { Btn } from "./ui";
 import { KIND_LABELS } from "../lib/quiz-history";
 
+/** The quote is stored exactly as in the source (PDF line breaks included, so it can be found there);
+ *  shown on one line, a line-end hyphen joining its word. */
+const reflowQuote = (text) =>
+  String(text).replace(/(\p{L})[-­]\s*\n\s*(\p{L})/gu, "$1$2").replace(/\s+/g, " ").trim();
+
 /**
  * One question to solve: the stem, the options or a text box, and after the answer the feedback with the
  * explanation and the source passage. Used by the practice page and by the exam page ("Sınavı çöz").
@@ -27,7 +32,8 @@ export default function QuizQuestionCard({
   disabled = false,
 }) {
   const { navigate } = useApp();
-  const [answer, setAnswer] = useState("");
+  // A question answered before opens with that answer (the server records the response with the result).
+  const [answer, setAnswer] = useState(() => (result?.response != null ? String(result.response) : ""));
   const [saving, setSaving] = useState(false);
   const alive = useRef(true);
   useEffect(() => {
@@ -107,17 +113,20 @@ export default function QuizQuestionCard({
               <strong>Kaynakla eşleştirilen yanıt:</strong> {result.expected}
             </p>
           )}
-          {result.quote && <blockquote>{result.quote}</blockquote>}
+          {result.quote && <blockquote>{reflowQuote(result.quote)}</blockquote>}
           <div className="product-actions">
             {actions}
             {result.source && (
               <Btn
-                onClick={() =>
-                  // The quote travels with the source so the viewer can mark the sentence the question rests on.
+                onClick={() => {
+                  // The quote travels with the source so the viewer can mark the sentence the question rests on;
+                  // the page's address (it holds the set or exam and the question) is where "← Soruya dön" goes.
+                  const here = window.location.hash.replace(/^#/, "");
                   navigate(`/dersler/${courseId}/ogrenme`, {
                     openSource: { ...result.source, ...(result.quote ? { quote: result.quote } : {}) },
-                  })
-                }
+                    ...(/^\/(dersler\/[^/?#]+\/(quiz|sinavlar)|quiz)(\?|$)/.test(here) ? { returnTo: here } : {}),
+                  });
+                }}
               >
                 İlgili kaynağı aç →
               </Btn>

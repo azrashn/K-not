@@ -326,7 +326,8 @@ export class ExamsService implements OnModuleInit {
         questions.push({ id: item.quiz_id, kind: item.kind, topic: item.topic, available: false });
       }
     }
-    return { ...this.summary(row), questions };
+    // Earlier answers come with their questions, so the page reopens a half-solved exam as it was.
+    return { ...this.summary(row), questions: await this.learning.withLastAnswers(u, questions) };
   }
 
   /** Answer key for printing: correct answer, explanation and the source passage of each question. */

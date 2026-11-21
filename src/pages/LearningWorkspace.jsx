@@ -269,6 +269,8 @@ export default function LearningWorkspace({ courseId }) {
   const [tab, setTab] = useState("sayfa");
   // The sentence a question rests on, opened from "İlgili kaynağı aç": marked on the page and in the text.
   const [highlight, setHighlight] = useState(null);
+  // The question the source was opened from ("/dersler/c/sinavlar?exam=…&mode=solve&q=2"), for "← Soruya dön".
+  const [returnTo, setReturnTo] = useState(null);
   const input = useRef(null),
     player = useRef(null),
     activeRequest = useRef(null),
@@ -320,7 +322,7 @@ export default function LearningWorkspace({ courseId }) {
     if (!materials.length || !intent.current) return;
     const next = intent.current;
     intent.current = null;
-    if (next.openSource) void openEvidence(next.openSource);
+    if (next.openSource) void openEvidence(next.openSource, next.returnTo);
     else if (next.resume?.materialId) {
       const m = materials.find((m) => m.id === next.resume.materialId);
       if (m) void select(m);
@@ -484,7 +486,9 @@ export default function LearningWorkspace({ courseId }) {
       if (e.name !== "AbortError") setError(videoErrorText(e));
     }
   }
-  async function openEvidence(e) {
+  async function openEvidence(e, from = null) {
+    // Only a quiz or exam page of this app is a place to return to.
+    if (typeof from === "string" && /^\/(dersler\/[^/?#]+\/(quiz|sinavlar)|quiz)(\?|$)/.test(from)) setReturnTo(from);
     try {
       const actual = await api.knowledgeSource(courseId, e.material_id, e.id);
       const material = materials.find((m) => m.id === e.material_id);
@@ -769,9 +773,16 @@ export default function LearningWorkspace({ courseId }) {
       <MobileBar />
       <header className="workspace-heading">
         <div>
-          <button className="product-link" onClick={() => navigate("/dersler")}>
-            ← Derslerin
-          </button>
+          {returnTo ? (
+            // Opened from a question ("İlgili kaynağı aç"): back to that question, with its answer.
+            <button className="product-link" onClick={() => navigate(returnTo)}>
+              ← Soruya dön
+            </button>
+          ) : (
+            <button className="product-link" onClick={() => navigate("/dersler")}>
+              ← Derslerin
+            </button>
+          )}
           <h1>{course?.name || "Ders çalışma alanı"}</h1>
           <span className="title-note" aria-hidden>masan hazır</span>
           <p>Materyalini incele. Aynı bağlamda sor, öğren ve uygula.</p>

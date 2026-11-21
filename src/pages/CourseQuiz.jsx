@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import QuizQuestionCard from "../components/QuizQuestionCard";
 import QuestionNav from "../components/QuestionNav";
 import { hashParam, rememberInHash } from "../lib/page-query";
+import { clearResume, finished, loadResume, positionOf, recordedResults, saveResume } from "../lib/resume";
 import { api } from "../api/endpoints";
 import { useResource } from "../hooks/useApi";
 import { useApp } from "../app/store";
@@ -100,6 +101,8 @@ export default function CourseQuiz({ courseId }) {
         const next = await api.quizSet(course, quizSet.id);
         if (stopped) return;
         setQuizSet(next);
+        // Answers given meanwhile stay; the server's record fills in the rest.
+        setResults((rs) => ({ ...recordedResults(next?.questions), ...rs }));
         if (next.status !== "GENERATING") api.quizzes(course).then((h) => !stopped && setHistory(h)).catch(() => {});
       } catch (e) {
         if (!stopped) setError(videoErrorText(e));
@@ -125,13 +128,13 @@ export default function CourseQuiz({ courseId }) {
     setSetIndex(i);
     setQuiz(setQuestions[i]);
   }
+  // The address ("?set=<id>&q=2", q counted from 1) and this tab's record follow the open set.
+  const openQ = quizSet?.id && quiz ? setIndex + 1 : null;
   useEffect(() => {
     if (!addressRead.current) return;
-    rememberInHash(
-      base,
-      quizSet?.id ? { ...(courseId ? {} : { course }), set: quizSet.id, q: quiz?.id } : {},
-    );
-  }, [base, courseId, course, quizSet?.id, quiz?.id]);
+    rememberInHash(base, quizSet?.id ? { ...(courseId ? {} : { course }), set: quizSet.id, q: openQ } : {});
+    if (quizSet?.id) saveResume("quiz", course, { id: quizSet.id, q: openQ ?? 1 });
+  }, [base, courseId, course, quizSet?.id, openQ]);
   useEffect(() => {
     if (consumed.current) return;
     consumed.current = true;
@@ -152,28 +155,36 @@ export default function CourseQuiz({ courseId }) {
         .catch((e) => setError(videoErrorText(e)));
       return;
     }
-    // Back on the page (or reloaded) with an open set in the address: the same set, at the same question.
+    // Which set to reopen, at which question: the one in the address (back from another page, a reload),
+    // else the one this tab left unfinished in this course (opened from the menu). Not when the student
+    // came to start something new (a topic or material from the study screen).
     const hash = window.location.hash;
-    const setId = hashParam(hash, "set");
     const setCourseId = courseId || hashParam(hash, "course");
+    const fromAddress = hashParam(hash, "set");
+    const record = fromAddress || intent?.topic || intent?.materialId ? null : loadResume("quiz", setCourseId);
+    const setId = fromAddress || record?.id;
+    const q = fromAddress ? hashParam(hash, "q") : record?.q;
     if (!setId || !setCourseId) {
       addressRead.current = true;
       return;
     }
-    if (!courseId) setCourse(setCourseId);
     const epoch = ++requestEpoch.current;
     Promise.resolve(api.quizSet(setCourseId, setId))
       .then((s) => {
         addressRead.current = true;
-        if (epoch !== requestEpoch.current) return;
-        const questions = (s?.questions ?? []).filter((q) => q.available);
-        const i = Math.max(0, questions.findIndex((q) => q.id === hashParam(hash, "q")));
+        if (epoch !== requestEpoch.current || !s) return;
+        if (record && finished(s)) return clearResume("quiz", setCourseId); // all answered: nothing to go back to
+        if (!courseId) setCourse(setCourseId);
+        const questions = (s.questions ?? []).filter((x) => x.available);
+        const i = positionOf(q, questions.length);
         setQuizSet(s);
         setSetIndex(i);
+        setResults(recordedResults(s.questions));
         if (questions[i]) setQuiz(questions[i]);
       })
       .catch(() => {
         addressRead.current = true;
+        clearResume("quiz", setCourseId);
         rememberInHash(base, {}); // removed meanwhile: the page opens without it
       });
   }, [takeIntent, courseId]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -238,13 +249,14 @@ export default function CourseQuiz({ courseId }) {
           setQuizSet(s);
           setSetIndex(i);
           setQuiz(questions[i]);
-          setResults({});
+          setResults(recordedResults(s.questions));
           return;
         }
       }
       const saved = await api.quiz(course, item.id);
       if (epoch !== requestEpoch.current) return;
       setQuizSet(null);
+      clearResume("quiz", course); // a single question now: the set is no longer the place to return to
       setQuiz(saved);
       setResults({});
     } catch (e) {
@@ -260,6 +272,7 @@ export default function CourseQuiz({ courseId }) {
     setSetIndex(0);
     setError("");
     setResults({});
+    clearResume("quiz", course); // a new practice replaces the one left open
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;

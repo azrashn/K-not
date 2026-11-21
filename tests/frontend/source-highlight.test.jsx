@@ -9,8 +9,9 @@ import { foldWithMap, highlightBoxes, matchQuote, sentenceSpans } from '../../sr
 
 vi.mock('../../src/api/endpoints')
 const intent = vi.hoisted(() => ({ current: null }))
+const nav = vi.hoisted(() => vi.fn())
 vi.mock('../../src/app/store', () => ({
-  useApp: () => ({ navigate: vi.fn(), takeIntent: () => { const i = intent.current; intent.current = null; return i } }),
+  useApp: () => ({ navigate: nav, takeIntent: () => { const i = intent.current; intent.current = null; return i } }),
 }))
 vi.mock('../../src/hooks/useVideoProgress', () => ({ useVideoProgress: () => ({ flushForQuestion: vi.fn().mockResolvedValue(true) }) }))
 
@@ -141,4 +142,34 @@ test('"İlgili kaynağı aç" from a quiz opens the source with its sentence mar
   await waitFor(() => expect(container.querySelector('mark.evidence')).not.toBeNull())
   expect(container.querySelector('mark.evidence').textContent).toBe('İlkel veri tipleri sekiz tanedir')
   expect(screen.getByRole('tab', { name: 'Metin' })).toHaveAttribute('aria-selected', 'true')
+})
+
+describe('"← Soruya dön" on a source opened from a question', () => {
+  const txt = { id: 'file_notes', kind: 'TXT', source_id: 'notes', title: 'Notlar', status: 'READY' }
+  const seg = { id: 'seg2', material_id: txt.id, text: 'İlkel veri tipleri sekiz tanedir.', location: { kind: 'text' } }
+  const open = (returnTo) => {
+    intent.current = { openSource: { id: 'seg2', material_id: txt.id, quote: 'İlkel veri tipleri sekiz tanedir.' }, returnTo }
+    api.conversations.mockResolvedValue([])
+    api.activity.mockResolvedValue({})
+    api.course.mockResolvedValue({ name: 'Java' })
+    api.knowledgeMaterials.mockResolvedValue({ materials: [txt] })
+    api.knowledgeSource.mockResolvedValue(seg)
+    api.knowledgePreview.mockResolvedValue({ material: txt, segments: [seg] })
+    return render(<LearningWorkspace courseId="c" />)
+  }
+
+  test('goes back to the same question (the address holds the exam, mode and question)', async () => {
+    const user = userEvent.setup()
+    open('/dersler/c/sinavlar?exam=x1&mode=solve&q=2')
+    await user.click(await screen.findByRole('button', { name: '← Soruya dön' }))
+    expect(nav).toHaveBeenCalledWith('/dersler/c/sinavlar?exam=x1&mode=solve&q=2')
+    expect(screen.queryByRole('button', { name: '← Derslerin' })).toBeNull()
+  })
+
+  test('only a quiz or exam page of the app is a way back; otherwise the usual "← Derslerin"', async () => {
+    const { container } = open('https://example.com/x')
+    await waitFor(() => expect(container.querySelector('mark.evidence')).not.toBeNull())
+    expect(screen.queryByRole('button', { name: '← Soruya dön' })).toBeNull()
+    expect(screen.getByRole('button', { name: '← Derslerin' })).toBeInTheDocument()
+  })
 })

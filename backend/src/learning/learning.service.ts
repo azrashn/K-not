@@ -230,7 +230,8 @@ export class LearningService {
     }
   }
 
-  /** GET /quiz-sets/:id: the set with its questions as students see them (no answers, no quotes). */
+  /** GET /quiz-sets/:id: the set with its questions as students see them (no answer key, no quotes), and
+   *  for a question the student has answered, that answer as it was graded (`last_answer`). */
   async quizSet(u: AuthUser, c: string, id: string) {
     await this.access.requireMember(u, c);
     const row = await this.prisma.generatedExam.findFirst({ where: { id, courseId: c, userId: u.id, purpose: "PRACTICE" } });
@@ -244,7 +245,37 @@ export class LearningService {
         questions.push({ id: item.quiz_id, kind: item.kind, topic: item.topic, available: false });
       }
     }
-    return { ...this.quizSetSummary(row), questions };
+    return { ...this.quizSetSummary(row), questions: await this.withLastAnswers(u, questions) };
+  }
+
+  /**
+   * Each available question with the student's latest answer (`last_answer`, the same shape POST …/answers
+   * returned: score, message, expected, explanation, quote, source, plus the response), or null. The answer
+   * key and quote are shown only for what the student already answered, as after answering. Read-only.
+   */
+  async withLastAnswers<T extends { id: string; available?: boolean }>(
+    u: AuthUser,
+    questions: T[],
+  ): Promise<(T & { last_answer?: Record<string, unknown> | null })[]> {
+    const ids = questions.filter((q) => q.available !== false).map((q) => q.id);
+    const rows = ids.length
+      ? await this.prisma.learningQuizAttempt.findMany({
+          where: { userId: u.id, quizId: { in: ids } },
+          orderBy: { createdAt: "desc" },
+          distinct: ["quizId"],
+        })
+      : [];
+    const latest = new Map(rows.map((r) => [r.quizId, r]));
+    return questions.map((q) => {
+      if (q.available === false) return q;
+      const r = latest.get(q.id);
+      return {
+        ...q,
+        last_answer: r
+          ? { ...((r.feedback as object) ?? {}), id: r.id, outcome: r.outcome, score: r.score, response: r.response, answered_at: r.createdAt }
+          : null,
+      };
+    });
   }
 
   /** The original engine (ai-service quiz_quality.py) with its original acceptance rules. */
@@ -419,7 +450,7 @@ export class LearningService {
     const row = await this.prisma.learningQuizAttempt.create({
       data: { quizId: id, userId: u.id, response, outcome, feedback, score },
     });
-    return { id: row.id, outcome, score, ...feedback };
+    return { id: row.id, outcome, score, response, ...feedback };
   }
   private async styleHintFor(u: AuthUser, c: string, id?: string) {
     if (!id) return null;

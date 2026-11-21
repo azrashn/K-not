@@ -22,7 +22,7 @@ function make(over: { prisma?: any; ai?: any; learning?: any; knowledge?: any } 
     learningQuiz: { findMany: jest.fn().mockResolvedValue([]) },
     ...over.prisma,
   };
-  const learning = { start: jest.fn(), quiz: jest.fn(), createExamStyle: jest.fn(async (_u, _c, b) => ({ id: 'new', name: b.name, profile })), ...over.learning };
+  const learning = { start: jest.fn(), quiz: jest.fn(), withLastAnswers: jest.fn(async (_u: any, qs: any[]) => qs), createExamStyle: jest.fn(async (_u, _c, b) => ({ id: 'new', name: b.name, profile })), ...over.learning };
   const ai = { call: jest.fn(), ...over.ai };
   // Course sources that mention every term of the past exam: topic grounding keeps them all.
   const knowledge = {
@@ -200,6 +200,15 @@ describe('reading an exam', () => {
     learning.quiz.mockResolvedValueOnce({ id: 'q1', question: 'Q?' }).mockRejectedValueOnce(new ApiError('NOT_FOUND', 'x'));
     const exam = await svc.get(u, 'c', 'x1');
     expect(exam.questions.map((q: any) => q.available)).toEqual([true, false]);
+  });
+  test('an exam comes with the student\'s earlier answers (a half-solved exam reopens as it was)', async () => {
+    const { svc, prisma, learning } = make();
+    prisma.generatedExam.findFirst.mockResolvedValue(row);
+    learning.quiz.mockResolvedValue({ id: 'q1', question: 'Q?' });
+    learning.withLastAnswers.mockImplementationOnce(async (_u: any, qs: any[]) => qs.map((q) => ({ ...q, last_answer: { score: 1 } })));
+    const exam = await svc.get(u, 'c', 'x1');
+    expect(learning.withLastAnswers).toHaveBeenCalledWith(u, expect.any(Array));
+    expect(exam.questions[0].last_answer).toEqual({ score: 1 });
   });
   test('another student cannot read the exam', async () => {
     const { svc, prisma } = make();

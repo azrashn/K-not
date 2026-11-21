@@ -254,15 +254,51 @@ def trim_sources(evidence: list[dict]) -> list[dict]:
 
 SENTENCE_MIN = 8      # find_quote needs at least this many characters
 SENTENCE_MAX = 600    # the longest quote a question may rest on (as before)
-_SENTENCE_END = re.compile(r"(?<=[.!?…])\s+|\s*\n\s*")
+# Where a sentence may end. PDF text breaks lines inside sentences ("… James Gosling liderliğindeki\nGreen
+# Team ekibi …"), so a single line break is NOT an end: only . ! ? … (also before a closing quote or bracket)
+# followed by white space, a blank line, or a new list item ("\n• …", "\n- …").
+_SENTENCE_END = re.compile(
+    r"(?:(?<=[.!?…])|(?<=[.!?…][\"'’”)\]]))\s+"
+    r"|\n[ \t]*\n\s*"
+    r"|\n(?=[ \t]*(?:[•▪●◦■*]|[-–]\s))"
+)
+# Words written with a dot that do not end a sentence (compared in lower case, without the dot).
+_ABBREVIATIONS = frozenset(
+    "vb vs vd örn ör bkz bk krş çev yay haz ed dr prof doç yrd öğr gör av sn no nr s sf ss st yy yk "
+    "mö ms bşk alb yzb etc eg ie vol fig al cf mr mrs jr sr inc ltd".split()
+)
+_WORD_BEFORE_DOT = re.compile(r"([^\W\d_]+)\.[\"'’”)\]]*$")
+
+
+def _real_end(text: str, m: re.Match) -> bool:
+    """A punctuation match ends a sentence unless the dot belongs to an abbreviation ("vb.", "örn."),
+    an initial ("J. Gosling") or the text goes on in lower case ("1990. yılda", "vs. diğerleri")."""
+    if re.search(r"\n[ \t]*\n", m.group(0)):
+        return True  # a blank line always ends a sentence
+    if text[m.start() - 1:m.start()] not in tuple(".!?…\"'’”)]"):
+        return True  # a new list item (the only match that does not follow punctuation)
+    after = text[m.end():m.end() + 1]
+    if after and after.islower():
+        return False
+    word = _WORD_BEFORE_DOT.search(text[:m.start()])
+    if word and (len(word.group(1)) == 1 or word.group(1).lower() in _ABBREVIATIONS):
+        return False
+    return True
+
+
+def reflow(text: str) -> str:
+    """A sentence as read: a line-end hyphen joins its word ("geliş-\\ntirildi" → "geliştirildi"), every line
+    break and run of white space becomes one space."""
+    joined = re.sub(r"(?<=[^\W\d_])[-­]\s*\n\s*(?=[^\W\d_])", "", text)
+    return re.sub(r"\s+", " ", joined.replace("­", "")).strip()
 
 
 def _chunks(text: str) -> list[str]:
-    """A sentence longer than SENTENCE_MAX (slides without punctuation) in pieces cut at a space."""
+    """A sentence longer than SENTENCE_MAX (slides without punctuation) in pieces cut at white space."""
     out = []
     while len(text) > SENTENCE_MAX:
-        cut = text.rfind(" ", SENTENCE_MAX // 2, SENTENCE_MAX)
-        cut = cut if cut > 0 else SENTENCE_MAX
+        window = [m.start() for m in re.finditer(r"\s", text[SENTENCE_MAX // 2:SENTENCE_MAX])]
+        cut = SENTENCE_MAX // 2 + window[-1] if window else SENTENCE_MAX
         out.append(text[:cut].strip())
         text = text[cut:].strip()
     return out + ([text] if text else [])
@@ -272,7 +308,8 @@ def _spans(text: str) -> list[tuple[int, int]]:
     """(start, end) of each sentence of `text`. A piece shorter than SENTENCE_MIN joins the next one."""
     spans: list[tuple[int, int]] = []
     start, pending = 0, None
-    bounds = [(m.start(), m.end()) for m in _SENTENCE_END.finditer(text)] + [(len(text), len(text))]
+    bounds = [(m.start(), m.end()) for m in _SENTENCE_END.finditer(text) if _real_end(text, m)]
+    bounds.append((len(text), len(text)))
     for stop, after in bounds:
         begin = pending if pending is not None else start
         start = after
@@ -298,18 +335,21 @@ def _used(sentence: str, avoid_keys: list[str]) -> bool:
 
 
 def number_sentences(sources: list[dict], avoid: list[str] | None = None) -> list[dict]:
-    """The sentences of the trimmed sources, numbered from 1 across all of them: {id, source, text}.
-    Every text is an exact substring of its source, so the existing quote check still applies.
+    """The sentences of the trimmed sources, numbered from 1 across all of them: {id, source, text, read}.
+    `text` is an exact substring of its source (line breaks included), so the quote checks here and in the
+    backend still apply and it becomes the quote; `read` is the same sentence reflowed, as the model reads it.
     Sentences in `avoid` (already used by the same exam or quiz) are left out: the model cannot pick them."""
-    avoid_keys = [k for k in (qc.canonical(a) for a in avoid or []) if k]
+    # A used quote is compared as stored and reflowed: older quotes were cut at line breaks.
+    avoid_keys = [k for k in dict.fromkeys(qc.canonical(v) for a in avoid or [] for v in (a, reflow(a))) if k]
     out: list[dict] = []
     for source in sources:
         text = source["text"]
         for begin, end in _spans(text):
             for chunk in _chunks(text[begin:end].strip()):
-                if avoid_keys and _used(chunk, avoid_keys):
+                read = reflow(chunk)
+                if avoid_keys and (_used(chunk, avoid_keys) or _used(read, avoid_keys)):
                     continue
-                out.append({"id": len(out) + 1, "source": source["source"], "text": chunk})
+                out.append({"id": len(out) + 1, "source": source["source"], "text": chunk, "read": read})
     return out
 
 
@@ -317,7 +357,7 @@ def numbered_sources(sentences: list[dict]) -> list[dict]:
     """What the model reads: each source as its sentences with their numbers, "[1] … [2] …"."""
     by_source: dict[int, list[str]] = {}
     for s in sentences:
-        by_source.setdefault(s["source"], []).append(f"[{s['id']}] {s['text']}")
+        by_source.setdefault(s["source"], []).append(f"[{s['id']}] {s.get('read', s['text'])}")
     return [{"source": source, "text": " ".join(lines)} for source, lines in by_source.items()]
 
 
