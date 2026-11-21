@@ -123,14 +123,25 @@ function parseQuestions(text: string): { stem: string; options: number; body: st
       continue;
     }
     if (!current) continue;
-    if (OPTION_LINE.test(raw)) current.options += 1;
+    // One option per line, or all of them on one line ("a) Microsoft b) Sun Microsystems c) Apple d) IBM").
+    if (OPTION_LINE.test(raw)) current.options += Math.max(1, inlineOptionCount(raw));
     else if (raw.trim()) current.body += " " + raw.trim();
   }
   return questions.slice(0, EXAM_QUESTIONS_MAX);
 }
 
+/** Options written on the question's own line, as a PDF often has them: "… hangi şirket? a) Microsoft b) Sun
+ *  c) Apple d) IBM". Counted only as an ordered run a, b, c, … so "A) " elsewhere in a sentence is not an option. */
+export function inlineOptionCount(text: string): number {
+  let next = 0;
+  for (const m of text.matchAll(/(?:^|\s)\(?([A-Ea-e])[.)]\s*\S/g)) {
+    if (m[1].toLowerCase() === String.fromCharCode(97 + next)) next += 1;
+  }
+  return next;
+}
+
 function formatOf(q: { options: number; body: string }): ExamFormat {
-  if (q.options >= 3) return "MULTIPLE_CHOICE";
+  if (q.options >= 3 || inlineOptionCount(q.body) >= 3) return "MULTIPLE_CHOICE";
   if (/\b(doğru|yanlış|true|false)\b/i.test(q.body)) return "TRUE_FALSE";
   if (/(hesapla|bulunuz|bulun|hesaplay|kaç|calculate|compute)/i.test(q.body)) return "CALCULATION";
   return "OPEN";

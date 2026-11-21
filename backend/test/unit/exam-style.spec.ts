@@ -1,4 +1,4 @@
-import { buildExamProfile, examStyleHint, EXAM_QUESTIONS_MAX } from '../../src/learning/exam-style';
+import { buildExamProfile, examStyleHint, EXAM_QUESTIONS_MAX, inlineOptionCount } from '../../src/learning/exam-style';
 import { LearningService } from '../../src/learning/learning.service';
 
 const EXAM = [
@@ -71,4 +71,56 @@ test('another student\'s style, or an unknown one, is not found and nothing is s
   const service = new LearningService(prisma as any, { requireMember: jest.fn() } as any, knowledge as any, ai as any);
   await expect(service.start({ id: 'u', role: 'USER' } as any, 'c', { topic: 'Dijkstra', kind: 'TRUE_FALSE', exam_style_id: 'other' })).rejects.toMatchObject({ code: 'NOT_FOUND' });
   expect(ai.call).not.toHaveBeenCalled();
+});
+
+// A PDF often puts the options on the question's own line. The Java midterm of the test package:
+// two multiple-choice questions written that way were read as open questions.
+const INLINE_EXAM = [
+  'JAVA PROGRAMLAMA - VİZE SINAVI',
+  '1. Java dilini hangi şirket geliştirmiştir? a) Microsoft b) Sun Microsystems c) Apple d) IBM',
+  '2. Java kaynak kodu derleyici tarafından hangi biçime çevrilir? a) Makine kodu b) Bytecode c) Assembly d) HTML',
+  "3. Java Sanal Makinesi (JVM) bytecode'u çalıştırır. (Doğru / Yanlış)",
+  '4. Java nesne yönelimli bir programlama dilidir. (Doğru / Yanlış)',
+  '5. Java programlarının farklı işletim sistemlerinde çalışabilmesinin nedenini kısaca açıklayınız.',
+  '6. Çöp toplayıcının (garbage collector) görevi nedir? Açıklayınız.',
+].join('\n');
+
+test('options written on the question line make it a multiple-choice question', () => {
+  const p = buildExamProfile(INLINE_EXAM);
+  expect(p.question_count).toBe(6);
+  expect(p.formats).toEqual({ MULTIPLE_CHOICE: 2, TRUE_FALSE: 2, CALCULATION: 0, OPEN: 2 });
+});
+
+test('inline options count only as an ordered run a, b, c', () => {
+  expect(inlineOptionCount('hangisi? a) Microsoft b) Sun c) Apple d) IBM')).toBe(4);
+  expect(inlineOptionCount('hangisi? A) Microsoft B) Sun C) Apple')).toBe(3);
+  expect(inlineOptionCount('(a) bir (b) iki (c) üç')).toBe(3);
+  // an "A)" in running text, or letters out of order, are not a list of options
+  expect(inlineOptionCount('Madde A) tanımlayın; sonra C) ile karşılaştırın.')).toBe(1);
+  expect(inlineOptionCount('Kaç tane? Yazınız.')).toBe(0);
+});
+
+test('a question with options on separate lines is still counted once', () => {
+  const p = buildExamProfile(EXAM);
+  expect(p.formats.MULTIPLE_CHOICE).toBe(1);
+});
+
+// What the PDF extractor really returns for the Java midterm: the options sit on the line under the question.
+const PDF_SHAPED = [
+  'JAVA PROGRAMLAMA - VİZE SINAVI',
+  '1. Java dilini hangi şirket geliştirmiştir?',
+  'a) Microsoft b) Sun Microsystems c) Apple d) IBM',
+  '2. Java kaynak kodu derleyici tarafından hangi biçime çevrilir?',
+  'a) Makine kodu b) Bytecode c) Assembly d) HTML',
+  "3. Java Sanal Makinesi (JVM) bytecode'u çalıştırır. (Doğru / Yanlış)",
+  '4. Java nesne yönelimli bir programlama dilidir. (Doğru / Yanlış)',
+  '5. Java programlarının farklı işletim sistemlerinde çalışabilmesinin nedenini',
+  'kısaca açıklayınız.',
+  '6. Çöp toplayıcının (garbage collector) görevi nedir? Açıklayınız.',
+].join('\n');
+
+test('all options on the line under the question make it multiple choice (the extracted midterm PDF)', () => {
+  const p = buildExamProfile(PDF_SHAPED);
+  expect(p.question_count).toBe(6);
+  expect(p.formats).toEqual({ MULTIPLE_CHOICE: 2, TRUE_FALSE: 2, CALCULATION: 0, OPEN: 2 });
 });
