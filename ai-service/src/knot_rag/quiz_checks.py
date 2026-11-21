@@ -15,6 +15,7 @@ import operator
 import random
 import re
 
+from knot_rag import quiz_false as qf
 from knot_rag import quiz_truth as qt
 from knot_rag.text import content_tokens, fold
 
@@ -247,6 +248,27 @@ def check_option_support(correct: str, wrong: list[str], quote: str) -> None:
                                  f"correct one: {option[:80]}")
 
 
+# An option the model cut out of a sentence: it starts in the middle ("g, float, double …", "ve boolean …") or
+# stops on a word that needs another ("… değerleri ve"), or holds a made-up word like "3-than".
+_OPTION_FRAGMENT_START = re.compile(r"^(?:[a-zçğıöşü]{1,2}[,;]\s|(?:ve|veya|ile|ancak|fakat|ama|and|or|but)\s)")
+_OPTION_DANGLING_END = frozenset("ve veya ile ancak gibi için de da ki bir and or the of to".split())
+_OPTION_GARBLE = re.compile(r"(?<![\w-])\d+-[^\W\d_]{2,}(?![\w-])")
+
+
+def check_options_are_whole(options: list[str], evidence: list[dict]) -> None:
+    """BAD_FORMAT when an option looks cut or garbled. Every option must be a complete phrase."""
+    source = " ".join(str(e.get("text", "")) for e in evidence if isinstance(e, dict))
+    for number, option in enumerate(options, 1):
+        text = option.strip()
+        words = re.findall(r"[^\W_]+", _lower_tr(text))
+        if _OPTION_FRAGMENT_START.match(_lower_tr(text)) or (len(words) >= 3 and words[-1] in _OPTION_DANGLING_END):
+            raise QuizCheckError(BAD_FORMAT, f"option {number} looks cut out of a sentence; "
+                                 "write each option as a complete phrase")
+        for junk in _OPTION_GARBLE.findall(text):
+            if junk not in source:
+                raise QuizCheckError(BAD_FORMAT, f"option {number} holds a garbled word ({junk})")
+
+
 _SENTENCE_BREAK = re.compile(r"(?<=[.!?…])\s+|\n\s*\n|\n(?=[ \t]*(?:[•▪●◦■*]|[-–]\s))")
 FACT_MIN_WORDS = 4      # shorter options (a term, a year) cannot be judged against a sentence
 FACT_COVERAGE = 0.85    # an option this much inside one source sentence is that sentence's fact
@@ -303,6 +325,7 @@ def check_multiple_choice(draft: dict, evidence: list[dict], seed: str | None = 
     source_index, quote = _quote(draft, evidence)
     if not shares_root(correct, quote):
         raise QuizCheckError(ANSWER_NOT_IN_SOURCE, correct[:120])
+    check_options_are_whole(options, evidence)
     wrong_options = [o for i, o in enumerate(options) if i != hits[0]]
     check_option_support(correct, wrong_options, quote)
     check_wrong_options_are_not_facts(wrong_options, evidence)
@@ -316,6 +339,28 @@ def check_multiple_choice(draft: dict, evidence: list[dict], seed: str | None = 
         "expected": str(order.index(hits[0])), "quote": quote, "source_index": source_index,
         "explanation": explanation, "objective": _objective(draft),
     }
+
+
+FALSE_EXPLANATION = {"tr": "Kaynağa göre doğrusu şöyledir: {true}", "en": "According to the source: {true}"}
+
+
+def make_false(result: dict, language: str = "tr") -> dict | None:
+    """The true/false question `result` (a TRUE statement) with its statement made false by the server: an
+    opposite word, a changed number or a negation, kept only when the sentence no longer states it. The
+    explanation is written here too, quoting the true statement, so it always matches the key. None when no
+    change is possible (the question then stays true)."""
+    if result.get("kind") != "TRUE_FALSE" or result.get("expected") != "0":
+        return None
+    original, quote = result["question"], result["quote"]
+    for candidate, how in qf.candidates(original, quote):
+        fit = qt.fit(candidate, quote)
+        if fit.shared < qt.RELATED_MIN_SHARED or (fit.states and not fit.new_terms):
+            continue
+        if canonical(candidate) == canonical(original) or canonical(candidate) in canonical(quote):
+            continue
+        explanation = short_explanation(FALSE_EXPLANATION.get(language, FALSE_EXPLANATION["tr"]).format(true=original))
+        return {**result, "question": candidate, "expected": "1", "explanation": explanation, "constructed_false": how}
+    return None
 
 
 def check_statement_key(statement: str, is_true: bool, quote: str) -> None:

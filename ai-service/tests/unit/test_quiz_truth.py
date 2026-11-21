@@ -172,3 +172,27 @@ def test_short_options_are_not_judged_as_facts():
     draft = mc("Java hangi kuruluşta geliştirildi?", ["Sun Microsystems", "Microsoft", "Oracle", "IBM"],
                "Sun Microsystems", sentence)
     assert check_question("MULTIPLE_CHOICE", draft, [{"text": sentence + " Oracle, Sun'ı sonradan satın aldı."}])
+
+
+TYPES_SENTENCE = "int tipi 32 bitlik tam sayıları, double tipi ise 64 bitlik ondalıklı sayıları tutar."
+
+
+def test_a_number_tied_to_the_wrong_part_of_the_sentence_is_a_conflict():
+    # 64 is in the sentence, but it is the double's size, not the int's.
+    fit = qt.fit("Java'da int tipi 64 bitlik tam sayıları tutar.", TYPES_SENTENCE)
+    assert not fit.states and any("belongs to another part" in c for c in fit.conflicts)
+    assert qt.misplaced_numbers("Java'da int tipi 64 bitlik tam sayıları tutar.", TYPES_SENTENCE) == ["64"]
+
+
+@pytest.mark.parametrize("statement", [
+    "Java'da int tipi 32 bitlik tam sayıları tutar.",
+    "double tipi 64 bitlik ondalıklı sayıları tutar.",
+    "Java'da double tipi ise 64 bitlik ondalıklı sayıları tutar.",
+    "int tipi 32 bitlik tam sayıları, double tipi ise 64 bitlik ondalıklı sayıları tutar.",
+])
+def test_a_number_beside_its_own_words_is_not_misplaced(statement):
+    assert qt.misplaced_numbers(statement, TYPES_SENTENCE) == []
+
+
+def test_a_number_with_too_few_words_around_it_is_not_judged():
+    assert qt.misplaced_numbers("1995 yılında.", "Java 1995 yılında yayımlandı.") == []

@@ -18,7 +18,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
-from knot_rag.text import content_tokens, fold
+from knot_rag.text import STOPWORDS, content_tokens, fold
 
 # A statement is "stated" by the sentence when it carries this share of its own content roots.
 SUPPORT_MIN = 0.6
@@ -48,6 +48,53 @@ _NUMBER = re.compile(r"(?<![\w])\d+(?:[.,]\d+)?")
 
 def numbers(text: str) -> set[str]:
     return {n.replace(",", ".") for n in _NUMBER.findall(text)}
+
+
+# ── a number that belongs to another part of the sentence ("int tipi 64 bit" when 64 is the double's) ──────
+NUMBER_WINDOW = 3     # content words on each side of a number that say what it counts
+NUMBER_SHARE = 0.75   # the share of those words that must stand around the same number in the sentence
+
+
+def _items(text: str) -> list[tuple[str, bool]]:
+    """Content words and numbers in order: (folded token, is_number)."""
+    out = []
+    for m in re.finditer(r"\d+(?:[.,]\d+)?|[^\W\d_]+", text):
+        raw = m.group(0)
+        if raw[0].isdigit():
+            out.append((raw.replace(",", "."), True))
+            continue
+        tok = fold(raw)
+        if tok in STOPWORDS or (len(tok) < 3 and not raw.isupper()):
+            continue
+        out.append((tok, False))
+    return out
+
+
+def misplaced_numbers(statement: str, sentence: str) -> list[str]:
+    """Numbers the statement has and the sentence has too, but around other words: the statement says
+    "int tipi 64 bitlik" where the sentence says "int tipi 32 bitlik … double tipi ise 64 bitlik". The words
+    around the number in the statement that the sentence has anywhere must mostly stand around the same
+    number in the sentence."""
+    s_items, q_items = _items(statement), _items(sentence)
+    q_words = [t for t, is_number in q_items if not is_number]
+    found = []
+    for i, (number, is_number) in enumerate(s_items):
+        if not is_number:
+            continue
+        places = [j for j, (t, n) in enumerate(q_items) if n and t == number]
+        if not places:
+            continue  # a number the sentence lacks is reported on its own
+        around = s_items[max(0, i - NUMBER_WINDOW): i + NUMBER_WINDOW + 1]
+        anchors = [t for t, n in around if not n and any(same_word(t, q) for q in q_words)]
+        if len(anchors) < 3:
+            continue
+        best = 0.0
+        for j in places:
+            window = [t for t, n in q_items[max(0, j - NUMBER_WINDOW): j + NUMBER_WINDOW + 1] if not n]
+            best = max(best, sum(any(same_word(a, w) for w in window) for a in anchors) / len(anchors))
+        if best < NUMBER_SHARE:
+            found.append(number)
+    return found
 
 
 # ── negation ────────────────────────────────────────────────────────────────────────────────
@@ -181,6 +228,9 @@ def fit(statement: str, sentence: str) -> Fit:
     missing_numbers = numbers(statement) - numbers(sentence)
     if missing_numbers:
         conflicts.append("number " + ", ".join(sorted(missing_numbers)))
+    elsewhere = misplaced_numbers(statement, sentence)
+    if elsewhere:
+        conflicts.append("number " + ", ".join(elsewhere) + " belongs to another part of the sentence")
     # A negation on one side only flips the meaning, but only when both are about the same thing.
     if coverage >= 0.5 and negations_near(statement, carried) % 2 != negations_near(sentence, carried) % 2:
         conflicts.append("negation")
