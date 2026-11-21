@@ -13,7 +13,7 @@ const EXAM = [
 test('profile counts formats from numbering, options, true/false and calculation wording', () => {
   const p = buildExamProfile(EXAM);
   expect(p.question_count).toBe(3);
-  expect(p.formats).toEqual({ MULTIPLE_CHOICE: 1, TRUE_FALSE: 1, CALCULATION: 1, OPEN: 0 });
+  expect(p.formats).toEqual({ MULTIPLE_CHOICE: 1, TRUE_FALSE: 1, CALCULATION: 1, SHORT_ANSWER: 0, CLOZE: 0, OPEN: 0 });
   expect(p.calculation_share).toBeCloseTo(0.33, 2);
   expect(p.sample_stems).toHaveLength(2);
   expect(p.topic_terms).toEqual(expect.arrayContaining(['grafta']));
@@ -88,7 +88,7 @@ const INLINE_EXAM = [
 test('options written on the question line make it a multiple-choice question', () => {
   const p = buildExamProfile(INLINE_EXAM);
   expect(p.question_count).toBe(6);
-  expect(p.formats).toEqual({ MULTIPLE_CHOICE: 2, TRUE_FALSE: 2, CALCULATION: 0, OPEN: 2 });
+  expect(p.formats).toEqual({ MULTIPLE_CHOICE: 2, TRUE_FALSE: 2, CALCULATION: 0, SHORT_ANSWER: 0, CLOZE: 0, OPEN: 2 });
 });
 
 test('inline options count only as an ordered run a, b, c', () => {
@@ -122,5 +122,27 @@ const PDF_SHAPED = [
 test('all options on the line under the question make it multiple choice (the extracted midterm PDF)', () => {
   const p = buildExamProfile(PDF_SHAPED);
   expect(p.question_count).toBe(6);
-  expect(p.formats).toEqual({ MULTIPLE_CHOICE: 2, TRUE_FALSE: 2, CALCULATION: 0, OPEN: 2 });
+  expect(p.formats).toEqual({ MULTIPLE_CHOICE: 2, TRUE_FALSE: 2, CALCULATION: 0, SHORT_ANSWER: 0, CLOZE: 0, OPEN: 2 });
+});
+
+// Short answers and blanks are told apart from open questions (they were all counted as "açık uçlu").
+const MORE_KINDS = [
+  '1. TCP hangi katmanda çalışır? (kısa yanıt)',
+  '2. Boşluğu doldurunuz: Veri iletiminde kayıp paketleri yeniden göndermek için ____ kullanılır.',
+  '3. Kaynak kodu bytecode a çeviren araca ne denir?',
+  '4. Çöp toplayıcının görevini kısaca açıklayınız.',
+  '5. Tıkanıklık denetiminin amacını açıklayınız.',
+  '6. Aşağıdaki cümleyi tamamlayınız: Java nesne ...... bir dildir.',
+].join('\n');
+
+test('short answers and blanks are counted on their own, "kısaca açıklayınız" stays open', () => {
+  const p = buildExamProfile(MORE_KINDS);
+  expect(p.formats).toEqual({
+    MULTIPLE_CHOICE: 0, TRUE_FALSE: 0, CALCULATION: 0, SHORT_ANSWER: 2, CLOZE: 2, OPEN: 2,
+  });
+});
+
+test('the hint names short answers and blanks only when the exam has them', () => {
+  expect(examStyleHint(buildExamProfile(MORE_KINDS))).toContain('kısa yanıt 2, boşluk doldurma 2, açık uçlu 2');
+  expect(examStyleHint(buildExamProfile(EXAM))).not.toContain('kısa yanıt');
 });

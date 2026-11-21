@@ -4,10 +4,14 @@
 export const EXAM_TEXT_MAX = 20000;
 export const EXAM_QUESTIONS_MAX = 60;
 
-export type ExamFormat = "MULTIPLE_CHOICE" | "TRUE_FALSE" | "CALCULATION" | "OPEN";
+type CoreFormat = "MULTIPLE_CHOICE" | "TRUE_FALSE" | "CALCULATION" | "OPEN";
+type LaterFormat = "SHORT_ANSWER" | "CLOZE";
+export type ExamFormat = CoreFormat | LaterFormat;
+/** A profile saved before short answers and blanks were told apart has no SHORT_ANSWER / CLOZE keys. */
+export type ExamFormats = Record<CoreFormat, number> & Partial<Record<LaterFormat, number>>;
 export type ExamProfile = {
   question_count: number;
-  formats: Record<ExamFormat, number>;
+  formats: ExamFormats;
   calculation_share: number;
   average_stem_chars: number;
   sample_stems: string[];
@@ -140,10 +144,18 @@ export function inlineOptionCount(text: string): number {
   return next;
 }
 
+/** A blank to fill: "______", "......" or "boşluğu doldurunuz / boşlukları tamamlayınız". */
+const BLANK = /_{3,}|\.{4,}|boşlu(?:ğ|k)\w*\s+(?:doldur|tamamla)/i;
+/** The paper asks for a short answer: "kısa yanıt", "tek sözcük", "ne denir". "Kısaca açıklayınız" is NOT one:
+ *  it asks for an explanation, so it stays an open question. */
+const SHORT = /kısa\s+(?:yanıt|cevap)|tek\s+(?:kelime|sözcük)|bir\s+(?:kelime|sözcük)le|ne\s+denir/i;
+
 function formatOf(q: { options: number; body: string }): ExamFormat {
   if (q.options >= 3 || inlineOptionCount(q.body) >= 3) return "MULTIPLE_CHOICE";
   if (/\b(doğru|yanlış|true|false)\b/i.test(q.body)) return "TRUE_FALSE";
+  if (BLANK.test(q.body)) return "CLOZE";
   if (/(hesapla|bulunuz|bulun|hesaplay|kaç|calculate|compute)/i.test(q.body)) return "CALCULATION";
+  if (SHORT.test(q.body)) return "SHORT_ANSWER";
   return "OPEN";
 }
 
@@ -153,7 +165,7 @@ export function buildExamProfile(text: string): ExamProfile {
   if (!questions.length) {
     throw new Error("NO_NUMBERED_QUESTIONS");
   }
-  const formats: Record<ExamFormat, number> = { MULTIPLE_CHOICE: 0, TRUE_FALSE: 0, CALCULATION: 0, OPEN: 0 };
+  const formats: Record<ExamFormat, number> = { ...NO_FORMATS };
   const counts = new Map<string, number>();
   let stemChars = 0;
   for (const q of questions) {
@@ -185,7 +197,11 @@ export const MERGED_TERMS_MAX = 12;
 export const MERGED_STEM_CHARS = 120;
 export const EXAM_HINT_MAX = 1200;
 const HINT_GUARD = "Olgular ve doğru cevap yalnızca verilen kaynak alıntısından gelsin.";
-const FORMATS: ExamFormat[] = ["MULTIPLE_CHOICE", "TRUE_FALSE", "CALCULATION", "OPEN"];
+const FORMATS: ExamFormat[] = ["MULTIPLE_CHOICE", "TRUE_FALSE", "CALCULATION", "SHORT_ANSWER", "CLOZE", "OPEN"];
+/** A profile saved before short answers and blanks were told apart has no such keys: they count as 0. */
+const NO_FORMATS: Record<ExamFormat, number> = {
+  MULTIPLE_CHOICE: 0, TRUE_FALSE: 0, CALCULATION: 0, SHORT_ANSWER: 0, CLOZE: 0, OPEN: 0,
+};
 
 /** Several saved profiles as one. `term_exams` tells in how many of the exams each topic term
  *  (lower-cased) appears; groundTopics uses it to keep terms shared by the exams first. */
@@ -219,7 +235,7 @@ export function mergeExamProfiles(profiles: ExamProfile[]): MergedExamProfile {
   if (profiles.length === 1)
     return { ...profiles[0], topic_terms: groups.map((g) => g.term), exam_count: 1, term_exams };
 
-  const formats: Record<ExamFormat, number> = { MULTIPLE_CHOICE: 0, TRUE_FALSE: 0, CALCULATION: 0, OPEN: 0 };
+  const formats: Record<ExamFormat, number> = { ...NO_FORMATS };
   let questions = 0;
   let stemChars = 0;
   for (const p of profiles) {
@@ -265,7 +281,11 @@ export function examStyleHint(profile: ExamProfile & { exam_count?: number }): s
     exams > 1
       ? `Sınav stili (yalnız üslup ve biçim için): ${exams} geçmiş sınav, toplam ${profile.question_count} soru;`
       : `Sınav stili (yalnız üslup ve biçim için): ${profile.question_count} soru;`,
-    `çoktan seçmeli ${f.MULTIPLE_CHOICE}, doğru/yanlış ${f.TRUE_FALSE}, hesaplama ${f.CALCULATION}, açık uçlu ${f.OPEN};`,
+    // Short answers and blanks are named only when the exam has them: the hint of an exam without them is unchanged.
+    `çoktan seçmeli ${f.MULTIPLE_CHOICE}, doğru/yanlış ${f.TRUE_FALSE}, hesaplama ${f.CALCULATION}, ` +
+      (f.SHORT_ANSWER ? `kısa yanıt ${f.SHORT_ANSWER}, ` : "") +
+      (f.CLOZE ? `boşluk doldurma ${f.CLOZE}, ` : "") +
+      `açık uçlu ${f.OPEN};`,
     `ortalama soru uzunluğu yaklaşık ${profile.average_stem_chars} karakter.`,
     terms.length ? `Sık geçen terimler: ${terms.join(", ")}.` : "",
   ].filter(Boolean);

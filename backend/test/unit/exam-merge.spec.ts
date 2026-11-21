@@ -62,11 +62,11 @@ describe('several past exams are combined into one profile', () => {
     const small = profile({ formats: { TRUE_FALSE: 2 } });
     const merged = mergeExamProfiles([big, small]);
     expect(merged.question_count).toBe(12);
-    expect(merged.formats).toEqual({ MULTIPLE_CHOICE: 10, TRUE_FALSE: 2, CALCULATION: 0, OPEN: 0 });
+    expect(merged.formats).toEqual({ MULTIPLE_CHOICE: 10, TRUE_FALSE: 2, CALCULATION: 0, SHORT_ANSWER: 0, CLOZE: 0, OPEN: 0 });
     expect(count(planExamKinds(merged, 6))).toEqual({ MULTIPLE_CHOICE: 5, TRUE_FALSE: 1 });
   });
   test('calculation share is recomputed over all questions', () => {
-    const merged = mergeExamProfiles([profile({ formats: { CALCULATION: 3, OPEN: 1 } }), profile({ formats: { OPEN: 4 } })]);
+    const merged = mergeExamProfiles([profile({ formats: { CALCULATION: 3, SHORT_ANSWER: 0, CLOZE: 0, OPEN: 1 } }), profile({ formats: { OPEN: 4 } })]);
     expect(merged.calculation_share).toBe(0.38);
   });
   test('average stem length is weighted by question count', () => {

@@ -10,6 +10,8 @@ export function describeExamStyle(profile, { withCount = true } = {}) {
     f.MULTIPLE_CHOICE ? `çoktan seçmeli ${f.MULTIPLE_CHOICE}` : null,
     f.TRUE_FALSE ? `doğru/yanlış ${f.TRUE_FALSE}` : null,
     f.CALCULATION ? `hesaplama ${f.CALCULATION}` : null,
+    f.SHORT_ANSWER ? `kısa yanıt ${f.SHORT_ANSWER}` : null,
+    f.CLOZE ? `boşluk doldurma ${f.CLOZE}` : null,
     f.OPEN ? `açık uçlu ${f.OPEN}` : null,
   ]
     .filter(Boolean)
