@@ -224,3 +224,39 @@ describe('calculation, short answers and numbering', () => {
     expect(one('1.a Which data type can handle both quantities?\na. int\nb. double\nc. float\nd. short')).toBe('MULTIPLE_CHOICE:1');
   });
 });
+
+describe('Problem N numaralaması ve kök biçimleri', () => {
+  const TEXT = [
+    'Problem 1 (20 points)',
+    'Which of the following is NOT a property of a stack?',
+    'a) LIFO',
+    'b) Push',
+    'c) Random access',
+    'Question 2: Justify why quicksort is faster in practice. Explain why.',
+    'Soru 3) Aşağıdakilerden hangisi en uygun tanımdır?',
+    'A) x',
+    'B) y',
+    'C) z',
+  ].join('\n');
+
+  it('Problem / Question / Soru numaralı sorular sayılır, soru metni sonraki satırdan alınır', () => {
+    const p = buildExamProfile(TEXT);
+    expect(p.question_count).toBe(3);
+    expect(p.formats.MULTIPLE_CHOICE).toBe(2);
+    expect(p.sample_stems[0]).toMatch(/NOT a property/);
+  });
+
+  it('kök biçimleri yalnızca açıkça yazılı kalıplardan sayılır', () => {
+    const p = buildExamProfile(TEXT);
+    expect(p.stem_styles).toEqual({ NEGATIVE: 1, BEST_ANSWER: 1, WHICH_OF: 2, JUSTIFY: 1 });
+  });
+
+  it('ipucu, soruların dörtte birinde ve en az iki kez geçen kökü söyler; tek tük kökü söylemez; eski profilde değişmez', () => {
+    const many = buildExamProfile(['1. Hangisi değildir? a) x b) y c) z', '2. Hangisi yanlıştır? a) x b) y c) z', '3. Bir şey yazınız.'].join('\n'));
+    expect(examStyleHint(many)).toContain('olumsuz kök');
+    const once = buildExamProfile('1. Hangisi değildir? a) x b) y c) z\n2. Bir şey yazınız.\n3. Başka.\n4. Daha.\n5. Son.');
+    expect(examStyleHint(once)).not.toContain('olumsuz kök');
+    const { stem_styles, ...old } = many;
+    expect(examStyleHint(old)).not.toContain('kök biçimleri');
+  });
+});

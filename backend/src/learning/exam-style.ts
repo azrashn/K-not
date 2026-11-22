@@ -16,9 +16,14 @@ export type ExamProfile = {
   average_stem_chars: number;
   sample_stems: string[];
   topic_terms: string[];
+  /** Wording counts; a profile saved before they were counted has none. */
+  stem_styles?: Record<StemStyle, number>;
 };
 
 const QUESTION_START = /^\s*(\d{1,2})(?:[.)]|\.[a-z](?=\s))\s+(.+)$/;
+/** "Problem 1.", "Question 2:", "Soru 3)", "Q4." — a word before the number; the question text may follow on the
+ *  next line ("Problem 1 (20 points)"), so it can be empty. */
+const WORD_QUESTION_START = /^\s*(?:problem|question|soru|q)\s*(\d{1,2})\s*[.):]?(?:\s+(.*))?$/i;
 const OPTION_LINE = /^\s*[A-Ea-e][.)]\s+\S/;
 /** Words of the question and of the exam paper, never a subject. Includes the list from
  *  origin/feature/quiz-quality-overhaul (Fatih): header and scoring words. */
@@ -123,12 +128,16 @@ function parseQuestions(text: string): ParsedQuestion[] {
   let current: ParsedQuestion | null = null;
   for (const raw of text.split(/\r?\n/)) {
     const start = raw.match(QUESTION_START);
-    if (start) {
-      current = { stem: start[2].trim(), options: 0, optionTexts: [], body: start[2] };
+    const wordStart = start ? null : raw.match(WORD_QUESTION_START);
+    if (start || wordStart) {
+      // A bare score ("Problem 1 (20 points)") is not the question text; that comes on the next line.
+      const first = ((start ? start[2] : wordStart![2]) ?? "").trim().replace(/^[(\[]\s*\d+\s*(?:puan|points?|pts?|p)\s*[)\]]$/i, "");
+      current = { stem: first, options: 0, optionTexts: [], body: first };
       questions.push(current);
       continue;
     }
     if (!current) continue;
+    if (!current.stem && raw.trim() && !OPTION_LINE.test(raw)) current.stem = raw.trim();
     // One option per line, or all of them on one line ("a) Microsoft b) Sun Microsystems c) Apple d) IBM").
     if (OPTION_LINE.test(raw)) {
       const items = labelledItems(raw);
@@ -215,6 +224,26 @@ function formatOf(q: ParsedQuestion): ExamFormat {
   return "OPEN";
 }
 
+/** How a question is worded, counted per exam. Only wording that is plainly there is counted; no guess. */
+export type StemStyle = "NEGATIVE" | "BEST_ANSWER" | "WHICH_OF" | "JUSTIFY";
+export const STEM_STYLES: StemStyle[] = ["NEGATIVE", "BEST_ANSWER", "WHICH_OF", "JUSTIFY"];
+const STEM_PATTERNS: Record<StemStyle, RegExp> = {
+  // "hangisi değildir", "hangisi yanlıştır", "except", "which … is NOT", "false about"
+  NEGATIVE: new RegExp(
+    "hangisi\\s+(?:de[ğg]ildir|yanl[ıi][şs]t[ıi]r)|(?<!\\p{L})(?:hariç|dışında|olmaz)(?!\\p{L})|\\bexcept\\b|\\bwhich\\b[^.?]{0,60}\\b(?:is|are)\\s+NOT\\b|\\b(?:incorrect|false)\\s+(?:statement|about)\\b",
+    "iu",
+  ),
+  // "en uygun", "en iyi açıklar", "best describes", "most likely"
+  BEST_ANSWER: /(?<!\p{L})en\s+(?:uygun|iyi|doğru|kapsamlı)|\bbest\s+(?:describes|answers|explains|description)|\bmost\s+(?:likely|appropriate)\b/iu,
+  // "aşağıdakilerden hangisi", "which of the following"
+  WHICH_OF: /aşağıdakilerden\s+hangisi|aşağıdaki(?:ler)?\s+(?:ifadelerden|önermelerden)\s+hangisi|which\s+of\s+the\s+following/iu,
+  // "nedenini açıklayınız", "justify", "explain why"
+  JUSTIFY: /nedenini\s+(?:açıklay|belirt|yaz)|gerekçe(?:ni|sini)?\s+(?:açıklay|yaz|belirt)|\bjustify\b|\bexplain\s+(?:why|your)\b/iu,
+};
+export function stemStylesOf(body: string): StemStyle[] {
+  return STEM_STYLES.filter((k) => STEM_PATTERNS[k].test(body));
+}
+
 export function buildExamProfile(text: string): ExamProfile {
   const clean = String(text || "").slice(0, EXAM_TEXT_MAX);
   const questions = parseQuestions(clean);
@@ -223,9 +252,11 @@ export function buildExamProfile(text: string): ExamProfile {
   }
   const formats: Record<ExamFormat, number> = { ...NO_FORMATS };
   const counts = new Map<string, number>();
+  const stem_styles: Record<StemStyle, number> = { NEGATIVE: 0, BEST_ANSWER: 0, WHICH_OF: 0, JUSTIFY: 0 };
   let stemChars = 0;
   for (const q of questions) {
     formats[formatOf(q)] += 1;
+    for (const k of stemStylesOf(q.body)) stem_styles[k] += 1;
     stemChars += q.stem.length;
     for (const word of q.body.toLocaleLowerCase("tr").match(/\p{L}{5,}/gu) ?? []) {
       if (isTopicTerm(word)) counts.set(word, (counts.get(word) ?? 0) + 1);
@@ -242,6 +273,7 @@ export function buildExamProfile(text: string): ExamProfile {
     average_stem_chars: Math.round(stemChars / questions.length),
     sample_stems: questions.slice(0, 2).map((q) => q.stem.slice(0, 160)),
     topic_terms,
+    stem_styles,
   };
 }
 
@@ -292,9 +324,11 @@ export function mergeExamProfiles(profiles: ExamProfile[]): MergedExamProfile {
     return { ...profiles[0], topic_terms: groups.map((g) => g.term), exam_count: 1, term_exams };
 
   const formats: Record<ExamFormat, number> = { ...NO_FORMATS };
+  const stem_styles: Record<StemStyle, number> = { NEGATIVE: 0, BEST_ANSWER: 0, WHICH_OF: 0, JUSTIFY: 0 };
   let questions = 0;
   let stemChars = 0;
   for (const p of profiles) {
+    for (const k of STEM_STYLES) stem_styles[k] += p.stem_styles?.[k] ?? 0;
     for (const f of FORMATS) formats[f] += p.formats?.[f] ?? 0;
     questions += p.question_count ?? 0;
     stemChars += (p.average_stem_chars ?? 0) * (p.question_count ?? 0);
@@ -320,9 +354,26 @@ export function mergeExamProfiles(profiles: ExamProfile[]): MergedExamProfile {
     average_stem_chars: questions ? Math.round(stemChars / questions) : 0,
     sample_stems,
     topic_terms,
+    stem_styles,
     exam_count: profiles.length,
     term_exams,
   };
+}
+
+const STEM_STYLE_TEXT: Record<StemStyle, string> = {
+  NEGATIVE: "olumsuz kök (“hangisi değildir”)",
+  BEST_ANSWER: "“en uygun / en iyi” kökü",
+  WHICH_OF: "“aşağıdakilerden hangisi” kökü",
+  JUSTIFY: "gerekçe isteyen kök (“nedenini açıklayınız”)",
+};
+/** The wording the exam really uses, named only when at least a quarter of its questions have it (and at
+ *  least two): a single stray question is not a style. Empty for a profile that has no counts. */
+function stemStyleSentence(profile: ExamProfile): string {
+  const counts = profile.stem_styles;
+  const total = profile.question_count || 0;
+  if (!counts || !total) return "";
+  const used = STEM_STYLES.filter((k) => (counts[k] ?? 0) >= 2 && (counts[k] ?? 0) * 4 >= total);
+  return used.length ? `Sorularda sık görülen kök biçimleri: ${used.map((k) => STEM_STYLE_TEXT[k]).join(", ")}.` : "";
 }
 
 /** Server-built guidance for the question writer. It shapes phrasing and format only; facts still
@@ -344,6 +395,7 @@ export function examStyleHint(profile: ExamProfile & { exam_count?: number }): s
       `açık uçlu ${f.OPEN};`,
     `ortalama soru uzunluğu yaklaşık ${profile.average_stem_chars} karakter.`,
     terms.length ? `Sık geçen terimler: ${terms.join(", ")}.` : "",
+    stemStyleSentence(profile),
   ].filter(Boolean);
   for (let k = stems.length; k >= 0; k--) {
     const sample = k ? `Örnek soru kalıpları: ${stems.slice(0, k).map((s) => `“${s}”`).join(" ")}.` : "";
