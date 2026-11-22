@@ -4,17 +4,26 @@
 export const EXAM_TEXT_MAX = 20000;
 export const EXAM_QUESTIONS_MAX = 60;
 
-export type ExamFormat = "MULTIPLE_CHOICE" | "TRUE_FALSE" | "CALCULATION" | "OPEN";
+type CoreFormat = "MULTIPLE_CHOICE" | "TRUE_FALSE" | "CALCULATION" | "OPEN";
+type LaterFormat = "SHORT_ANSWER" | "CLOZE";
+export type ExamFormat = CoreFormat | LaterFormat;
+/** A profile saved before short answers and blanks were told apart has no SHORT_ANSWER / CLOZE keys. */
+export type ExamFormats = Record<CoreFormat, number> & Partial<Record<LaterFormat, number>>;
 export type ExamProfile = {
   question_count: number;
-  formats: Record<ExamFormat, number>;
+  formats: ExamFormats;
   calculation_share: number;
   average_stem_chars: number;
   sample_stems: string[];
   topic_terms: string[];
+  /** Wording counts; a profile saved before they were counted has none. */
+  stem_styles?: Record<StemStyle, number>;
 };
 
-const QUESTION_START = /^\s*(\d{1,2})[.)]\s+(.+)$/;
+const QUESTION_START = /^\s*(\d{1,2})(?:[.)]|\.[a-z](?=\s))\s+(.+)$/;
+/** "Problem 1.", "Question 2:", "Soru 3)", "Q4." — a word before the number; the question text may follow on the
+ *  next line ("Problem 1 (20 points)"), so it can be empty. */
+const WORD_QUESTION_START = /^\s*(?:problem|question|soru|q)\s*(\d{1,2})\s*[.):]?(?:\s+(.*))?$/i;
 const OPTION_LINE = /^\s*[A-Ea-e][.)]\s+\S/;
 /** Words of the question and of the exam paper, never a subject. Includes the list from
  *  origin/feature/quiz-quality-overhaul (Fatih): header and scoring words. */
@@ -112,28 +121,127 @@ function groupByRoot(counts: Map<string, number>): [string, number][] {
   });
 }
 
-function parseQuestions(text: string): { stem: string; options: number; body: string }[] {
-  const questions: { stem: string; options: number; body: string }[] = [];
-  let current: { stem: string; options: number; body: string } | null = null;
+type ParsedQuestion = { stem: string; options: number; optionTexts: string[]; body: string };
+
+function parseQuestions(text: string): ParsedQuestion[] {
+  const questions: ParsedQuestion[] = [];
+  let current: ParsedQuestion | null = null;
   for (const raw of text.split(/\r?\n/)) {
     const start = raw.match(QUESTION_START);
-    if (start) {
-      current = { stem: start[2].trim(), options: 0, body: start[2] };
+    const wordStart = start ? null : raw.match(WORD_QUESTION_START);
+    if (start || wordStart) {
+      // A bare score ("Problem 1 (20 points)") is not the question text; that comes on the next line.
+      const first = ((start ? start[2] : wordStart![2]) ?? "").trim().replace(/^[(\[]\s*\d+\s*(?:puan|points?|pts?|p)\s*[)\]]$/i, "");
+      current = { stem: first, options: 0, optionTexts: [], body: first };
       questions.push(current);
       continue;
     }
     if (!current) continue;
-    if (OPTION_LINE.test(raw)) current.options += 1;
-    else if (raw.trim()) current.body += " " + raw.trim();
+    if (!current.stem && raw.trim() && !OPTION_LINE.test(raw)) current.stem = raw.trim();
+    // One option per line, or all of them on one line ("a) Microsoft b) Sun Microsystems c) Apple d) IBM").
+    if (OPTION_LINE.test(raw)) {
+      const items = labelledItems(raw);
+      const texts = items.length ? items : [raw.replace(/^\s*[A-Ea-e][.)]\s+/, "").trim()];
+      current.options += texts.length;
+      current.optionTexts.push(...texts);
+    } else if (raw.trim()) current.body += " " + raw.trim();
   }
   return questions.slice(0, EXAM_QUESTIONS_MAX);
 }
 
-function formatOf(q: { options: number; body: string }): ExamFormat {
-  if (q.options >= 3) return "MULTIPLE_CHOICE";
-  if (/\b(doğru|yanlış|true|false)\b/i.test(q.body)) return "TRUE_FALSE";
-  if (/(hesapla|bulunuz|bulun|hesaplay|kaç|calculate|compute)/i.test(q.body)) return "CALCULATION";
+/** The texts after the labels a, b, c, … of a line, in order. Labels count only as an ordered run starting at a,
+ *  so "A) " elsewhere in a sentence is not one. */
+export function labelledItems(text: string): string[] {
+  const marks: { at: number; end: number }[] = [];
+  for (const m of text.matchAll(/(?:^|\s)\(?([A-Ea-e])[.)]\s*(?=\S)/g)) {
+    if (m[1].toLowerCase() === String.fromCharCode(97 + marks.length))
+      marks.push({ at: m.index ?? 0, end: (m.index ?? 0) + m[0].length });
+  }
+  return marks.map((m, i) => text.slice(m.end, marks[i + 1]?.at ?? text.length).trim());
+}
+
+/** Options written on the question's own line, as a PDF often has them: "… hangi şirket? a) Microsoft b) Sun
+ *  c) Apple d) IBM". */
+export function inlineOptionCount(text: string): number {
+  return labelledItems(text).length;
+}
+
+// A labelled item that is a question or an instruction of its own ("(a) Find all frequent itemsets …",
+// "a) Fermanın ilan edilmesinde etkili olan bir gelişmeyi yazınız. (10 Puan)"), not an option: an English
+// instruction starts the item, a Turkish one ends it, or it ends in "?" or carries points. A verb inside a
+// descriptive option ("Allows a programmer to write a subclass …") does not make it one.
+const SUB_QUESTION_START = new RegExp(
+  "^(?:find|list|show|explain|describe|compute|calculate|write|justify|state|draw|compare|prove|give|identify|" +
+    "determine|discuss|name|define|what|why|how|which|who|when)(?!\\p{L})",
+  "iu",
+);
+const SUB_QUESTION_END = new RegExp(
+  "(?<!\\p{L})(?:yazınız|açıklayınız|hesaplayınız|bulunuz|belirtiniz|listeleyiniz|karşılaştırınız|gösteriniz|" +
+    "çiziniz|yorumlayınız|veriniz|sayınız)[.:]?\\s*(?:\\([^)]*\\)|\\[[^\\]]*\\])?\\s*$|\\?\\s*$",
+  "iu",
+);
+const POINTS = /\(\s*\d+\s*(?:puan|points?|pts?)\s*\)|\[\s*\d+\s*p\s*\]/i;
+const isSubQuestion = (item: string) => SUB_QUESTION_START.test(item.trim()) || SUB_QUESTION_END.test(item.trim()) || POINTS.test(item);
+/** Labelled items that are mostly questions or instructions are sub-questions of one written question. */
+function isSubQuestionList(items: string[]): boolean {
+  return items.length >= 2 && items.filter(isSubQuestion).length * 2 >= items.length;
+}
+
+/** "Identify each statement as true or false", "başına doğru ise (D), yanlış ise (Y) yazınız": the labelled lines
+ *  below are statements to mark, not options. */
+const TF_INSTRUCTION =
+  /(?:identify|mark|circle|indicate|decide|state)\b.{0,60}\b(?:true|false)\b|(?:doğru|yanlış)\s+ise\s*\(?[DY]\)?/i;
+/** Markers of a true/false item: "T F", "TRUE FALSE", "TRUE/FALSE", "YES NO" (capitals, as printed on the paper),
+ *  "true … false", "(D) / (Y)", "doğru / yanlış". A "Yes No" circled in a question that asks for a justification
+ *  is not one. */
+const TF_CAPS = /(?<![A-Za-z])T\s+F(?![A-Za-z])|(?<![A-Za-z])YES\s+NO(?![A-Za-z])/;
+const TF_MARK = new RegExp(
+  "\\b(?:true|false)\\b.{0,30}\\b(?:true|false)\\b|(?<!\\p{L})(?:doğru|yanlış)(?!\\p{L}).{0,25}(?<!\\p{L})(?:doğru|yanlış)(?!\\p{L})" +
+    "|\\(\\s*[DY]\\s*\\)|\\[\\s*D\\s*\\]\\s*/?\\s*\\[\\s*Y\\s*\\]",
+  "isu",
+);
+
+/** A blank to fill: "______", "......" or "boşluğu doldurunuz / boşlukları tamamlayınız". */
+const BLANK = /_{3,}|\.{4,}|boşlu(?:ğ|k)\w*\s+(?:doldur|tamamla)/i;
+/** The paper asks for a short answer: "kısa yanıt", "tek sözcük", "ne denir". "Kısaca açıklayınız" is NOT one:
+ *  it asks for an explanation, so it stays an open question. */
+const SHORT = /kısa\s+(?:yanıt|cevap)|tek\s+(?:kelime|sözcük)|bir\s+(?:kelime|sözcük)le|ne\s+denir/i;
+
+/** A question that asks what a program prints, with no options: a short answer. */
+const PRINTS = /what\s+does\s+(?:this|the)\s+(?:program|code|method)\s+print|ekran\s+çıktısı\s+(?:ne|nedir)|çıktısı\s+nedir/i;
+const CALCULATE =
+  /(hesapla|bulunuz|bulun|hesaplay|kaç|calculate|compute|find\s+all|show\s+your\s+work|how\s+many)/i;
+
+function formatOf(q: ParsedQuestion): ExamFormat {
+  // Statements to mark true or false come first: their (a), (b), (c) labels are not options.
+  if (TF_INSTRUCTION.test(q.body)) return "TRUE_FALSE";
+  const items = [...q.optionTexts, ...labelledItems(q.body)];
+  if (items.length >= 3 && !isSubQuestionList(items)) return "MULTIPLE_CHOICE";
+  if (TF_CAPS.test(q.body) || TF_MARK.test(q.body)) return "TRUE_FALSE";
+  if (BLANK.test(q.body)) return "CLOZE";
+  if (CALCULATE.test(q.body)) return "CALCULATION";
+  if (SHORT.test(q.body) || PRINTS.test(q.body)) return "SHORT_ANSWER";
   return "OPEN";
+}
+
+/** How a question is worded, counted per exam. Only wording that is plainly there is counted; no guess. */
+export type StemStyle = "NEGATIVE" | "BEST_ANSWER" | "WHICH_OF" | "JUSTIFY";
+export const STEM_STYLES: StemStyle[] = ["NEGATIVE", "BEST_ANSWER", "WHICH_OF", "JUSTIFY"];
+const STEM_PATTERNS: Record<StemStyle, RegExp> = {
+  // "hangisi değildir", "hangisi yanlıştır", "except", "which … is NOT", "false about"
+  NEGATIVE: new RegExp(
+    "hangisi\\s+(?:de[ğg]ildir|yanl[ıi][şs]t[ıi]r)|(?<!\\p{L})(?:hariç|dışında|olmaz)(?!\\p{L})|\\bexcept\\b|\\bwhich\\b[^.?]{0,60}\\b(?:is|are)\\s+NOT\\b|\\b(?:incorrect|false)\\s+(?:statement|about)\\b",
+    "iu",
+  ),
+  // "en uygun", "en iyi açıklar", "best describes", "most likely"
+  BEST_ANSWER: /(?<!\p{L})en\s+(?:uygun|iyi|doğru|kapsamlı)|\bbest\s+(?:describes|answers|explains|description)|\bmost\s+(?:likely|appropriate)\b/iu,
+  // "aşağıdakilerden hangisi", "which of the following"
+  WHICH_OF: /aşağıdakilerden\s+hangisi|aşağıdaki(?:ler)?\s+(?:ifadelerden|önermelerden)\s+hangisi|which\s+of\s+the\s+following/iu,
+  // "nedenini açıklayınız", "justify", "explain why"
+  JUSTIFY: /nedenini\s+(?:açıklay|belirt|yaz)|gerekçe(?:ni|sini)?\s+(?:açıklay|yaz|belirt)|\bjustify\b|\bexplain\s+(?:why|your)\b/iu,
+};
+export function stemStylesOf(body: string): StemStyle[] {
+  return STEM_STYLES.filter((k) => STEM_PATTERNS[k].test(body));
 }
 
 export function buildExamProfile(text: string): ExamProfile {
@@ -142,11 +250,13 @@ export function buildExamProfile(text: string): ExamProfile {
   if (!questions.length) {
     throw new Error("NO_NUMBERED_QUESTIONS");
   }
-  const formats: Record<ExamFormat, number> = { MULTIPLE_CHOICE: 0, TRUE_FALSE: 0, CALCULATION: 0, OPEN: 0 };
+  const formats: Record<ExamFormat, number> = { ...NO_FORMATS };
   const counts = new Map<string, number>();
+  const stem_styles: Record<StemStyle, number> = { NEGATIVE: 0, BEST_ANSWER: 0, WHICH_OF: 0, JUSTIFY: 0 };
   let stemChars = 0;
   for (const q of questions) {
     formats[formatOf(q)] += 1;
+    for (const k of stemStylesOf(q.body)) stem_styles[k] += 1;
     stemChars += q.stem.length;
     for (const word of q.body.toLocaleLowerCase("tr").match(/\p{L}{5,}/gu) ?? []) {
       if (isTopicTerm(word)) counts.set(word, (counts.get(word) ?? 0) + 1);
@@ -163,6 +273,7 @@ export function buildExamProfile(text: string): ExamProfile {
     average_stem_chars: Math.round(stemChars / questions.length),
     sample_stems: questions.slice(0, 2).map((q) => q.stem.slice(0, 160)),
     topic_terms,
+    stem_styles,
   };
 }
 
@@ -174,7 +285,11 @@ export const MERGED_TERMS_MAX = 12;
 export const MERGED_STEM_CHARS = 120;
 export const EXAM_HINT_MAX = 1200;
 const HINT_GUARD = "Olgular ve doğru cevap yalnızca verilen kaynak alıntısından gelsin.";
-const FORMATS: ExamFormat[] = ["MULTIPLE_CHOICE", "TRUE_FALSE", "CALCULATION", "OPEN"];
+const FORMATS: ExamFormat[] = ["MULTIPLE_CHOICE", "TRUE_FALSE", "CALCULATION", "SHORT_ANSWER", "CLOZE", "OPEN"];
+/** A profile saved before short answers and blanks were told apart has no such keys: they count as 0. */
+const NO_FORMATS: Record<ExamFormat, number> = {
+  MULTIPLE_CHOICE: 0, TRUE_FALSE: 0, CALCULATION: 0, SHORT_ANSWER: 0, CLOZE: 0, OPEN: 0,
+};
 
 /** Several saved profiles as one. `term_exams` tells in how many of the exams each topic term
  *  (lower-cased) appears; groundTopics uses it to keep terms shared by the exams first. */
@@ -208,10 +323,12 @@ export function mergeExamProfiles(profiles: ExamProfile[]): MergedExamProfile {
   if (profiles.length === 1)
     return { ...profiles[0], topic_terms: groups.map((g) => g.term), exam_count: 1, term_exams };
 
-  const formats: Record<ExamFormat, number> = { MULTIPLE_CHOICE: 0, TRUE_FALSE: 0, CALCULATION: 0, OPEN: 0 };
+  const formats: Record<ExamFormat, number> = { ...NO_FORMATS };
+  const stem_styles: Record<StemStyle, number> = { NEGATIVE: 0, BEST_ANSWER: 0, WHICH_OF: 0, JUSTIFY: 0 };
   let questions = 0;
   let stemChars = 0;
   for (const p of profiles) {
+    for (const k of STEM_STYLES) stem_styles[k] += p.stem_styles?.[k] ?? 0;
     for (const f of FORMATS) formats[f] += p.formats?.[f] ?? 0;
     questions += p.question_count ?? 0;
     stemChars += (p.average_stem_chars ?? 0) * (p.question_count ?? 0);
@@ -237,9 +354,26 @@ export function mergeExamProfiles(profiles: ExamProfile[]): MergedExamProfile {
     average_stem_chars: questions ? Math.round(stemChars / questions) : 0,
     sample_stems,
     topic_terms,
+    stem_styles,
     exam_count: profiles.length,
     term_exams,
   };
+}
+
+const STEM_STYLE_TEXT: Record<StemStyle, string> = {
+  NEGATIVE: "olumsuz kök (“hangisi değildir”)",
+  BEST_ANSWER: "“en uygun / en iyi” kökü",
+  WHICH_OF: "“aşağıdakilerden hangisi” kökü",
+  JUSTIFY: "gerekçe isteyen kök (“nedenini açıklayınız”)",
+};
+/** The wording the exam really uses, named only when at least a quarter of its questions have it (and at
+ *  least two): a single stray question is not a style. Empty for a profile that has no counts. */
+function stemStyleSentence(profile: ExamProfile): string {
+  const counts = profile.stem_styles;
+  const total = profile.question_count || 0;
+  if (!counts || !total) return "";
+  const used = STEM_STYLES.filter((k) => (counts[k] ?? 0) >= 2 && (counts[k] ?? 0) * 4 >= total);
+  return used.length ? `Sorularda sık görülen kök biçimleri: ${used.map((k) => STEM_STYLE_TEXT[k]).join(", ")}.` : "";
 }
 
 /** Server-built guidance for the question writer. It shapes phrasing and format only; facts still
@@ -254,9 +388,14 @@ export function examStyleHint(profile: ExamProfile & { exam_count?: number }): s
     exams > 1
       ? `Sınav stili (yalnız üslup ve biçim için): ${exams} geçmiş sınav, toplam ${profile.question_count} soru;`
       : `Sınav stili (yalnız üslup ve biçim için): ${profile.question_count} soru;`,
-    `çoktan seçmeli ${f.MULTIPLE_CHOICE}, doğru/yanlış ${f.TRUE_FALSE}, hesaplama ${f.CALCULATION}, açık uçlu ${f.OPEN};`,
+    // Short answers and blanks are named only when the exam has them: the hint of an exam without them is unchanged.
+    `çoktan seçmeli ${f.MULTIPLE_CHOICE}, doğru/yanlış ${f.TRUE_FALSE}, hesaplama ${f.CALCULATION}, ` +
+      (f.SHORT_ANSWER ? `kısa yanıt ${f.SHORT_ANSWER}, ` : "") +
+      (f.CLOZE ? `boşluk doldurma ${f.CLOZE}, ` : "") +
+      `açık uçlu ${f.OPEN};`,
     `ortalama soru uzunluğu yaklaşık ${profile.average_stem_chars} karakter.`,
     terms.length ? `Sık geçen terimler: ${terms.join(", ")}.` : "",
+    stemStyleSentence(profile),
   ].filter(Boolean);
   for (let k = stems.length; k >= 0; k--) {
     const sample = k ? `Örnek soru kalıpları: ${stems.slice(0, k).map((s) => `“${s}”`).join(" ")}.` : "";

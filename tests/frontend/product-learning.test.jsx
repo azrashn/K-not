@@ -134,7 +134,8 @@ test('quiz grade and exact source navigation use persisted server result', async
   await screen.findByText('Review the exact source')
   expect(api.answerQuiz).toHaveBeenCalledWith('c', 'q', 'wrong')
   await user.click(screen.getByRole('button', { name: 'İlgili kaynağı aç →' }))
-  expect(nav).toHaveBeenCalledWith('/dersler/c/ogrenme', { openSource: source })
+  // The quoted sentence travels with the source, so the viewer can mark it.
+  expect(nav).toHaveBeenCalledWith('/dersler/c/ogrenme', { openSource: { ...source, quote: 'Water evaporates' } })
 })
 test('home displays missing-data state instead of sample exams or mastery', async () => {
   api.learningOverview.mockResolvedValue({

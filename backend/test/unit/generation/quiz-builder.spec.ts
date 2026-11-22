@@ -15,6 +15,7 @@ function world(materials = [NOTES, VIDEO], fail: (r: any, call: number) => strin
   const rows: any[] = [];
   const prisma = {
     learningQuiz: { findFirst: jest.fn(async ({ where }: any) => rows.find((r) => r.id === where.id) ?? null) },
+    learningQuizAttempt: { findMany: jest.fn().mockResolvedValue([]) },
     generatedExam: {
       count: jest.fn().mockResolvedValue(0),
       create: jest.fn(async ({ data }: any) => ({ ...data, createdAt: new Date(), finishedAt: null })),
@@ -113,11 +114,18 @@ describe('a quiz set of 2-10 questions', () => {
     expect(done.items).toHaveLength(4);
   });
 
-  test('more questions than the topic\'s sources carry: a smaller set that says so', async () => {
+  test('more questions than the topic\'s sources carry: the rest come from the other parts of the course, and it says so', async () => {
     const { builder } = world();
     const row = await builder.startSet(u, 'c', { topic: 'final', kind: 'OPEN', count: 5 }, 240);
-    expect(row.requested).toBe(1);
-    expect(row.note).toBe('Bu konu için kaynaklar yaklaşık 1 soruya yetiyor; 5 soru istendi.');
+    expect(row.requested).toBe(5); // the student asked for 5 and gets 5
+    expect(row.note).toMatch(/^Bu konu için kaynaklar yaklaşık \d+ soruya yetiyor; kalan \d+ soru dersin diğer bölümlerinden tamamlandı\.$/);
+  });
+
+  test('when even the whole course cannot carry the request, the note says how many are still missing', async () => {
+    const { builder } = world();
+    const row = await builder.startSet(u, 'c', { topic: 'final', kind: 'OPEN', count: 10 }, 240);
+    expect(row.requested).toBeLessThan(10);
+    expect(row.note).toMatch(/dersin diğer bölümlerinden tamamlandı\. Yine de \d+ soru için yeterli kaynak yok\.$/);
   });
 
   test('one set per course at a time', async () => {
@@ -152,6 +160,26 @@ describe('POST /quizzes and GET /quiz-sets/:id through LearningService', () => {
     expect(w.prisma.generatedExam.findFirst.mock.calls[0][0].where).toEqual({ id: 's', courseId: 'c', userId: 'u', purpose: 'PRACTICE' });
     w.prisma.generatedExam.findFirst.mockResolvedValueOnce(null);
     await expect(learning.quizSet(u, 'c', 'exam1')).rejects.toMatchObject({ code: 'NOT_FOUND' });
+  });
+
+  test('a set comes with the student\'s latest answer to each question, as it was graded', async () => {
+    const w = world();
+    const learning = service(w);
+    (learning as any).quiz = jest.fn(async (_u: any, _c: any, id: string) => ({ id, kind: 'MULTIPLE_CHOICE' }));
+    w.prisma.generatedExam.findFirst.mockResolvedValueOnce({ id: 's', title: 'nesne', status: 'READY', requested: 2, note: null, failures: [],
+      items: [{ quiz_id: 'q1', kind: 'MULTIPLE_CHOICE', topic: 'nesne' }, { quiz_id: 'q2', kind: 'MULTIPLE_CHOICE', topic: 'nesne' }] });
+    const at = new Date('2026-11-21T10:00:00Z');
+    w.prisma.learningQuizAttempt.findMany.mockResolvedValueOnce([
+      { id: 'a1', quizId: 'q1', response: '2', outcome: 'REVIEW_SOURCE', score: 0, createdAt: at,
+        feedback: { message: 'İncele.', expected: 'Kuyruk', quote: 'BFS kuyruk kullanır.', explanation: 'FIFO.', source: { id: 's1' } } },
+    ]);
+    const set = await learning.quizSet(u, 'c', 's');
+    expect(set.questions[0].last_answer).toEqual({ id: 'a1', response: '2', outcome: 'REVIEW_SOURCE', score: 0, answered_at: at,
+      message: 'İncele.', expected: 'Kuyruk', quote: 'BFS kuyruk kullanır.', explanation: 'FIFO.', source: { id: 's1' } });
+    expect(set.questions[1].last_answer).toBeNull();
+    // Only this student's answers, the newest per question.
+    expect(w.prisma.learningQuizAttempt.findMany).toHaveBeenCalledWith({
+      where: { userId: 'u', quizId: { in: ['q1', 'q2'] } }, orderBy: { createdAt: 'desc' }, distinct: ['quizId'] });
   });
 
   test('the legacy engine keeps one question of one kind', async () => {

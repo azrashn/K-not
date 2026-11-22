@@ -249,7 +249,7 @@ export class ExamsService implements OnModuleInit {
           cursor++;
           attempts++;
           try {
-            const quiz = await this.learning.start(u, c, { topic, kind, scope, exam_style_id: styleId });
+            const quiz = await this.learning.start(u, c, { topic, kind, scope, exam_style_id: styleId, purpose: "EXAM" });
             items.push({ quiz_id: quiz.id, kind, topic });
             produced = true;
             await save("GENERATING");
@@ -283,9 +283,10 @@ export class ExamsService implements OnModuleInit {
       title: row.title,
       status: row.status,
       requested: row.requested,
-      produced: (row.items as Item[]).length,
-      topics: row.topics,
-      failures: row.failures,
+      // An older row may hold JSON null or another shape here; it is listed, not a 500.
+      produced: Array.isArray(row.items) ? row.items.length : 0,
+      topics: Array.isArray(row.topics) ? row.topics : [],
+      failures: Array.isArray(row.failures) ? row.failures : [],
       note: row.note,
       style_id: row.styleId,
       // Exams made before several styles could be combined only have styleId.
@@ -325,7 +326,8 @@ export class ExamsService implements OnModuleInit {
         questions.push({ id: item.quiz_id, kind: item.kind, topic: item.topic, available: false });
       }
     }
-    return { ...this.summary(row), questions };
+    // Earlier answers come with their questions, so the page reopens a half-solved exam as it was.
+    return { ...this.summary(row), questions: await this.learning.withLastAnswers(u, questions) };
   }
 
   /** Answer key for printing: correct answer, explanation and the source passage of each question. */

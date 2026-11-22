@@ -1,5 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import RichText, { RichInline } from "../components/RichText";
+import QuizQuestionCard from "../components/QuizQuestionCard";
+import QuestionNav from "../components/QuestionNav";
+import { hashParam, hashWith, rememberInHash } from "../lib/page-query";
+import { LAST, clearResume, finished, loadResume, positionOf, recordedResults, saveResume } from "../lib/resume";
 import { api } from "../api/endpoints";
 import { useResource } from "../hooks/useApi";
 import { useApp } from "../app/store";
@@ -7,15 +10,12 @@ import { PageFrame, Btn } from "../components/ui";
 import { MobileBar } from "../components/PageBits";
 import { PageTitle, EmptyState } from "../components/ProductUI";
 import { videoErrorText } from "../lib/video";
-import { locatorOf, openLabel, sourceBadgeText } from "../lib/review";
-import { HISTORY_FILTERS, filterHistory, historyLabel, summarizeHistory } from "../lib/quiz-history";
-const labels = {
-  MULTIPLE_CHOICE: "Çoktan seçmeli",
-  TRUE_FALSE: "Doğru / yanlış",
-  CLOZE: "Boşluk doldurma",
-  SHORT_ANSWER: "Kısa yanıt",
-  OPEN: "Açık uçlu yansıtma",
-};
+import { KIND_LABELS } from "../lib/quiz-history";
+import QuizHistory from "../components/QuizHistory";
+import { cleanTitle } from "../lib/topic-title";
+const labels = KIND_LABELS;
+/** The form also offers "Karışık": the kinds in turn (one question is a multiple-choice one). */
+const kindChoices = { ...labels, MIXED: "Karışık (türler sırayla)" };
 // Sohbetteki sorunun tamamı konu alanına yazılmasın: ilk cümle, en fazla 80 karakter, kelime sınırında.
 function shortTopic(text) {
   const first = String(text).trim().split(/(?<=[.?!])\s/)[0].replace(/[?!.]+$/, "");
@@ -23,9 +23,6 @@ function shortTopic(text) {
   const cut = first.slice(0, 80);
   return cut.slice(0, cut.lastIndexOf(" ") > 40 ? cut.lastIndexOf(" ") : 80) + "…";
 }
-
-/** The form also offers "Karışık": the kinds in turn (one question is a multiple-choice one). */
-const kindChoices = { ...labels, MIXED: "Karışık (türler sırayla)" };
 /** 1 question comes back at once; 2-15 are a set written in the background (GET /quiz-sets/:id). */
 const QUIZ_COUNTS = Array.from({ length: 15 }, (_, i) => i + 1);
 const SET_POLL_MS = 2000;
@@ -42,10 +39,15 @@ export default function CourseQuiz({ courseId }) {
     [setIndex, setSetIndex] = useState(0);
   const [materials, setMaterials] = useState([]),
     [history, setHistory] = useState([]),
-    [historyFilter, setHistoryFilter] = useState("all"),
+    // The course's practice list has arrived (an empty one too): until then no "no practice yet" text.
+    [historyLoaded, setHistoryLoaded] = useState(false),
+    // Questions of generated exams: not practice, shown only under the "Sınavdan" filter.
+    [examHistory, setExamHistory] = useState([]),
+    // Short topics from the course sources (GET /quiz-topics); null until they arrive or when unavailable.
+    [sourceTopics, setSourceTopics] = useState(null),
     [quiz, setQuiz] = useState(null),
-    [answer, setAnswer] = useState(""),
-    [result, setResult] = useState(null),
+    // Feedback per question id: going back in a set shows the answer given there.
+    [results, setResults] = useState({}),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
   const [scopeMode, setScopeMode] = useState("course"),
@@ -57,20 +59,24 @@ export default function CourseQuiz({ courseId }) {
     [scopeNote, setScopeNote] = useState(""),
     [elapsed, setElapsed] = useState(0);
   const abortRef = useRef(null);
-  const summary = summarizeHistory(history);
-  // Yanlış cevapta kaynak konumu: yalnızca kayıtlı kaynaktan; konum yoksa rozet gösterilmez, sayfa uydurulmaz.
-  const resultLoc = result?.source ? locatorOf(result.source.kind, result.source.location) : null;
-  const visibleHistory = filterHistory(history, historyFilter);
-  const consumed = useRef(false), requestEpoch = useRef(0);
-  // Topic ideas: what was practised before and what the course materials are called.
+  const consumed = useRef(false), requestEpoch = useRef(0), intentRef = useRef(null);
+  // The open set lives in the address ("?set=<id>&q=<question id>", plus "course=" on the general /quiz
+  // page), so leaving the page and coming back reopens it at the same question. Not written before the
+  // address has been read, or the first render would erase it.
+  const addressRead = useRef(false);
+  const base = courseId ? `#/dersler/${courseId}/quiz` : "#/quiz";
+  const result = quiz ? results[quiz.id] ?? null : null;
+  // Topic ideas: what was practised before, then short topics from the sources (headings, subject words).
+  // Only when the server has none: the material titles, cut to their subject ("2 Dakikada Java   Java
+  // Nedir, …" → "Java Nedir"). The topic field itself starts empty.
   const suggestions = useMemo(() => {
-    const names = materials
-      .filter((m) => m.status === "READY")
-      .map((m) => String(m.title || "").replace(/\.[A-Za-z0-9]+$/, ""));
-    return [...new Set([...history.slice(0, 3).map((h) => h.topic), ...names.slice(0, 3)].map((t) => String(t || "").trim()).filter(Boolean))]
+    const fromSources = sourceTopics?.length
+      ? sourceTopics
+      : materials.filter((m) => m.status === "READY").map((m) => cleanTitle(m.title)).slice(0, 3);
+    return [...new Set([...history.slice(0, 3).map((h) => h.topic), ...fromSources].map((t) => String(t || "").trim()).filter(Boolean))]
       .filter((t) => t !== topic.trim())
       .slice(0, 5);
-  }, [history, materials, topic]);
+  }, [history, materials, sourceTopics, topic]);
   const advancedSummary = [
     scopeMode === "course" ? "Tüm ders kaynakları" : scopeMode === "active" ? "Bir materyal" : `${selectedMaterials.length} materyal`,
     watchedOnly ? "izlenen bölümler" : null,
@@ -102,6 +108,8 @@ export default function CourseQuiz({ courseId }) {
         const next = await api.quizSet(course, quizSet.id);
         if (stopped) return;
         setQuizSet(next);
+        // Answers given meanwhile stay; the server's record fills in the rest.
+        setResults((rs) => ({ ...recordedResults(next?.questions), ...rs }));
         if (next.status !== "GENERATING") api.quizzes(course).then((h) => !stopped && setHistory(h)).catch(() => {});
       } catch (e) {
         if (!stopped) setError(videoErrorText(e));
@@ -116,33 +124,119 @@ export default function CourseQuiz({ courseId }) {
   useEffect(() => {
     if (quizSet && !quiz && setQuestions[setIndex]) setQuiz(setQuestions[setIndex]);
   }, [quizSet, setIndex]); // eslint-disable-line react-hooks/exhaustive-deps
+  // The position follows the open question, not the other way round: if the list order ever changes while the
+  // set is written, "Sonraki soru" must not open the question the student just answered.
+  useEffect(() => {
+    if (!quizSet || !quiz) return;
+    const i = setQuestions.findIndex((q) => q.id === quiz.id);
+    if (i >= 0 && i !== setIndex) setSetIndex(i);
+  }, [quizSet]); // eslint-disable-line react-hooks/exhaustive-deps
   function openSetQuestion(i) {
     setSetIndex(i);
     setQuiz(setQuestions[i]);
-    setResult(null);
-    setAnswer("");
   }
+  // The address ("?set=<id>&q=2", q counted from 1) and this tab's record follow the open set.
+  const openQ = quizSet?.id && quiz ? setIndex + 1 : null;
   useEffect(() => {
-    if (consumed.current) return;
-    consumed.current = true;
-    const intent = takeIntent?.();
-    if (intent?.topic) setTopic(shortTopic(intent.topic));
-    if (intent?.materialId) {
-      // Started from the study screen: keep the quiz on the material the student was looking at.
-      setScopeMode("active");
-      setMaterial(intent.materialId);
-      setAdvancedOpen(true);
-      setScopeNote(`Çalışma ekranındaki materyalden başlatıldı${intent.materialTitle ? `: ${intent.materialTitle}` : ""}. Kapsamı “Gelişmiş ayarlar” içinden değiştirebilirsin.`);
+    if (!addressRead.current) return;
+    rememberInHash(base, quizSet?.id ? { ...(courseId ? {} : { course }), set: quizSet.id, q: openQ } : {});
+    if (quizSet?.id) {
+      saveResume("quiz", course, { id: quizSet.id, q: openQ ?? 1 });
+      saveResume("quiz", LAST, { id: quizSet.id, q: openQ ?? 1, course });
     }
-    if (intent?.quizId && courseId)
+  }, [base, courseId, course, quizSet?.id, openQ]);
+  /** The set is closed by the student: neither this course's record nor the tab's last set points to it. */
+  function forgetSet(c) {
+    clearResume("quiz", c);
+    if (loadResume("quiz", LAST)?.course === c) clearResume("quiz", LAST);
+  }
+  // Where "← Soruya dön" brings the student back: built from what is open, not read back from the address.
+  const returnTo = quizSet?.id
+    ? hashWith(base.slice(1), { ...(courseId ? {} : { course }), set: quizSet.id, q: openQ ?? 1 })
+    : undefined;
+  useEffect(() => {
+    // The intent is taken once (it is gone after takeIntent); the restore below runs on every mount. In
+    // development React mounts, unmounts and mounts again (StrictMode): the restore used to run only on the
+    // first mount, whose answer the unmount then marked stale, so the page stayed empty ("Ders seç").
+    if (!consumed.current) {
+      consumed.current = true;
+      const taken = takeIntent?.() ?? null;
+      intentRef.current = taken;
+      if (taken?.topic) setTopic(shortTopic(taken.topic));
+      if (taken?.materialId) {
+        // Started from the study screen: keep the quiz on the material the student was looking at.
+        setScopeMode("active");
+        setMaterial(taken.materialId);
+        setAdvancedOpen(true);
+        setScopeNote(`Çalışma ekranındaki materyalden başlatıldı${taken.materialTitle ? `: ${taken.materialTitle}` : ""}. Kapsamı “Gelişmiş ayarlar” içinden değiştirebilirsin.`);
+      }
+    }
+    const intent = intentRef.current;
+    let cancelled = false;
+    const epoch = requestEpoch.current; // a request the student starts meanwhile wins over the restore
+    const stale = () => cancelled || epoch !== requestEpoch.current;
+    if (intent?.quizId && courseId) {
+      addressRead.current = true;
       api
         .quiz(courseId, intent.quizId)
-        .then(setQuiz)
-        .catch((e) => setError(videoErrorText(e)));
-  }, [takeIntent, courseId]);
+        .then((q) => !stale() && setQuiz(q))
+        .catch((e) => !stale() && setError(videoErrorText(e)));
+      return () => {
+        cancelled = true;
+      };
+    }
+    // Which set to reopen, at which question: the one in the address (back from another page, a reload),
+    // else the one this tab left open (from the menu, or "← Soruya dön" when the address lost it). Not when
+    // the student came to start something new (a topic or material from the study screen).
+    const hash = window.location.hash;
+    const back = Boolean(intent?.returnToQuestion);
+    const addressCourse = courseId || hashParam(hash, "course");
+    const fromAddress = hashParam(hash, "set");
+    let record = null;
+    if (!fromAddress && !intent?.topic && !intent?.materialId) {
+      record = loadResume("quiz", addressCourse);
+      // The general quiz page does not know the course: the last set open in this tab names it.
+      const last = record || courseId ? null : loadResume("quiz", LAST);
+      if (last?.course && (!addressCourse || last.course === addressCourse)) record = last;
+    }
+    const setCourseId = addressCourse || record?.course;
+    const setId = fromAddress || record?.id;
+    const q = fromAddress ? hashParam(hash, "q") : record?.q;
+    if (!setId || !setCourseId) {
+      addressRead.current = true;
+      return undefined;
+    }
+    Promise.resolve(api.quizSet(setCourseId, setId))
+      .then((s) => {
+        if (stale()) return;
+        addressRead.current = true;
+        if (!s) return;
+        // Every question answered: nothing to go back to from the menu (but "← Soruya dön" still goes back).
+        if (record && !back && finished(s)) return forgetSet(setCourseId);
+        if (!courseId) setCourse(setCourseId);
+        const questions = (s.questions ?? []).filter((x) => x.available);
+        const i = positionOf(q, questions.length);
+        setQuizSet(s);
+        setSetIndex(i);
+        setResults(recordedResults(s.questions));
+        if (questions[i]) setQuiz(questions[i]);
+      })
+      .catch(() => {
+        if (stale()) return;
+        addressRead.current = true;
+        forgetSet(setCourseId);
+        rememberInHash(base, {}); // removed meanwhile: the page opens without it
+      });
+    return () => {
+      cancelled = true;
+    };
+    // Only on mount and when the course page changes: not when takeIntent's identity does (a new
+    // function would rerun the restore and put the saved set back over the one just started).
+  }, [courseId]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!course) return;
     const abort = new AbortController();
+    setHistoryLoaded(false);
     Promise.all([
       api.knowledgeMaterials(course, abort.signal),
       api.quizzes(course, abort.signal),
@@ -151,10 +245,27 @@ export default function CourseQuiz({ courseId }) {
         if (abort.signal.aborted) return;
         setMaterials(m.materials);
         setHistory(h);
+        setHistoryLoaded(true);
       })
       .catch((e) => {
-        if (e.name !== "AbortError") setError(videoErrorText(e));
+        if (e.name === "AbortError" || abort.signal.aborted) return;
+        setError(videoErrorText(e));
+        setHistoryLoaded(true);
       });
+    // Topic suggestions are optional: without them the material titles are used.
+    setSourceTopics(null);
+    Promise.resolve(api.quizTopics(course, abort.signal))
+      .then((r) => {
+        if (!abort.signal.aborted) setSourceTopics(Array.isArray(r?.topics) ? r.topics : null);
+      })
+      .catch(() => {});
+    // A missing exam list only hides the "Sınavdan" rows; practice still works.
+    api
+      .quizzes(course, abort.signal, "EXAM")
+      .then((h) => {
+        if (!abort.signal.aborted) setExamHistory(Array.isArray(h) ? h : []);
+      })
+      .catch(() => {});
     return () => abort.abort();
   }, [course]);
   useEffect(() => {
@@ -168,6 +279,35 @@ export default function CourseQuiz({ courseId }) {
       .catch(() => {});
     return () => abort.abort();
   }, [course]);
+  /** Opens a question of the history. A practice set opens as a set, so "Sonraki soru" goes on through it;
+   *  an exam question or a single question opens on its own (also when the set cannot be read). */
+  async function openHistoryQuestion(card, item) {
+    const epoch = ++requestEpoch.current;
+    setError("");
+    try {
+      if (card.setId && !card.exam) {
+        const s = await api.quizSet(course, card.setId).catch(() => null);
+        if (epoch !== requestEpoch.current) return;
+        const questions = (s?.questions ?? []).filter((q) => q.available);
+        const i = questions.findIndex((q) => q.id === item.id);
+        if (i >= 0) {
+          setQuizSet(s);
+          setSetIndex(i);
+          setQuiz(questions[i]);
+          setResults(recordedResults(s.questions));
+          return;
+        }
+      }
+      const saved = await api.quiz(course, item.id);
+      if (epoch !== requestEpoch.current) return;
+      setQuizSet(null);
+      forgetSet(course); // a single question now: the set is no longer the place to return to
+      setQuiz(saved);
+      setResults({});
+    } catch (e) {
+      if (epoch === requestEpoch.current) setError(videoErrorText(e));
+    }
+  }
   async function start(e) {
     e?.preventDefault?.();
     const epoch = ++requestEpoch.current;
@@ -176,8 +316,8 @@ export default function CourseQuiz({ courseId }) {
     setQuizSet(null);
     setSetIndex(0);
     setError("");
-    setResult(null);
-    setAnswer("");
+    setResults({});
+    forgetSet(course); // a new practice replaces the one left open
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
@@ -246,13 +386,13 @@ export default function CourseQuiz({ courseId }) {
                   requestEpoch.current += 1;
                   setCourse(e.target.value);
                   setBusy(false);
-                  setAnswer("");
                   setMaterials([]);
                   setHistory([]);
+                  setExamHistory([]);
                   setSelectedMaterials([]);
                   setQuiz(null);
                   setQuizSet(null);
-                  setResult(null);
+                  setResults({});
                   setMaterial("");
                 }}
               >
@@ -448,54 +588,15 @@ export default function CourseQuiz({ courseId }) {
           <div className="section-heading mt-6">
             <h2>Önceki alıştırmalar</h2>
           </div>
-          {history.length > 0 && (
-            <p className="product-note" aria-live="polite">
-              {summary.total} soru · {summary.answered} yanıtlandı · {summary.unanswered} yanıt bekliyor
-            </p>
-          )}
-          {history.length > 0 && (
-            <div role="group" aria-label="Alıştırma filtresi" className="flex gap-2 flex-wrap mb-3">
-              {HISTORY_FILTERS.map((f) => (
-                <button
-                  key={f.id}
-                  type="button"
-                  aria-pressed={historyFilter === f.id}
-                  className="source-badge"
-                  onClick={() => setHistoryFilter(f.id)}
-                >
-                  {f.label}
-                </button>
-              ))}
-            </div>
-          )}
-          {history.length > 0 && visibleHistory.length === 0 && (
-            <p className="product-note">Bu filtrede alıştırma yok.</p>
-          )}
-          {visibleHistory.map((q) => (
-            <button
-              key={q.id}
-              className="resume-row"
-              disabled={busy}
-              onClick={async () => {
-                const epoch = ++requestEpoch.current;
-                try {
-                  const saved = await api.quiz(course, q.id);
-                  if (epoch !== requestEpoch.current) return;
-                  setQuizSet(null);
-                  setQuiz(saved);
-                  setResult(null);
-                  setAnswer("");
-                } catch (e) {
-                  if (epoch === requestEpoch.current) setError(videoErrorText(e));
-                }
-              }}
-            >
-              <strong>{q.topic}</strong>
-              <small>
-                {labels[q.kind]} · {historyLabel(q)}
-              </small>
-            </button>
-          ))}
+          <QuizHistory
+            key={course || "none"}
+            course={course}
+            history={history}
+            examHistory={examHistory}
+            loaded={historyLoaded}
+            busy={busy}
+            onOpen={openHistoryQuestion}
+          />
         </aside>
         <section>
           {error && (
@@ -539,146 +640,53 @@ export default function CourseQuiz({ courseId }) {
               alıştırman burada açılır.
             </EmptyState>
           ) : (
-            <article className="quiz-question product-panel">
-              {quizSet && setQuestions.length > 0 && (
-                <span className="source-badge">
-                  Soru {setIndex + 1} / {setRunning ? quizSet.requested : setQuestions.length}
-                </span>
-              )}{" "}
-              <span className="source-badge">{labels[quiz.kind]}</span>
-              {quiz.question_style === "SOURCE_COMPLETION" && <p className="product-note">Kaynakta geçen kavramı hatırlama sorusu</p>}
-              {quiz.objective && (
-                <p className="product-note">Öğrenme hedefi: {quiz.objective}</p>
-              )}
-              {quiz.quality_state === "LEGACY_NOT_REVIEWED" && (
-                <p className="product-note">
-                  Bu eski alıştırma yeni kalite kontrolünden geçmemiştir.
-                </p>
-              )}
-              <h2><RichInline text={quiz.question} /></h2>
-              {quiz.note && <p className="product-note mb-5">{quiz.note}</p>}
-              <form
-                className="product-form"
-                onSubmit={async (e) => {
-                  e.preventDefault();
-                  const epoch = ++requestEpoch.current;
-                  setBusy(true);
-                  try {
-                    const result = await api.answerQuiz(course, quiz.id, answer);
-                    if (epoch !== requestEpoch.current) return;
-                    setResult(result);
-                    const history = await api.quizzes(course);
-                    if (epoch === requestEpoch.current) setHistory(history);
-                  } catch (err) {
-                    if (epoch === requestEpoch.current) setError(videoErrorText(err));
-                  } finally {
-                    if (epoch === requestEpoch.current) setBusy(false);
-                  }
-                }}
-              >
-                {quiz.options?.length ? (
-                  <fieldset>
-                    <legend className="sr-only">Yanıt seçenekleri</legend>
-                    {quiz.options.map((option, i) => (
-                      <label
-                        key={i}
-                        className={`quiz-option ${answer === String(i) ? "selected" : ""}`}
-                      >
-                        <input
-                          type="radio"
-                          name="quiz-answer"
-                          value={i}
-                          checked={answer === String(i)}
-                          onChange={() => setAnswer(String(i))}
-                        />
-                        <span><RichInline text={option} /></span>
-                      </label>
-                    ))}
-                  </fieldset>
-                ) : (
-                  <label>
-                    Yanıtın
-                    <textarea
-                      value={answer}
-                      onChange={(e) => setAnswer(e.target.value)}
-                      maxLength={2000}
-                      rows={5}
-                    />
-                  </label>
-                )}
-                <Btn type="submit" disabled={busy || !answer.trim()}>
-                  {busy ? "Yanıt kaydediliyor…" : "Yanıtı değerlendir"}
-                </Btn>
-              </form>
-              {result && (
-                <section
-                  className="quiz-feedback"
-                  aria-label="Alıştırma geri bildirimi"
-                >
+            <>
+            <QuizQuestionCard
+              key={quiz.id}
+              courseId={course}
+              returnTo={returnTo}
+              quiz={quiz}
+              result={result}
+              disabled={busy}
+              onResult={async (saved) => {
+                const epoch = requestEpoch.current;
+                const id = quiz.id;
+                setResults((rs) => ({ ...rs, [id]: saved }));
+                try {
+                  const next = await api.quizzes(course);
+                  if (epoch === requestEpoch.current) setHistory(next);
+                } catch {
+                  /* the history is refreshed again after the next answer */
+                }
+              }}
+              onRetry={() =>
+                setResults((rs) => {
+                  const next = { ...rs };
+                  delete next[quiz.id];
+                  return next;
+                })
+              }
+              onError={(err) => setError(videoErrorText(err))}
+              badge={
+                quizSet && setQuestions.length > 0 ? (
                   <span className="source-badge">
-                    {result.score === 1
-                      ? "Cevap anahtarıyla eşleşti"
-                      : result.score === 0
-                        ? "Kaynağı tekrar incele"
-                        : "Yanıtın kaydedildi"}
+                    Soru {setIndex + 1} / {setRunning ? quizSet.requested : setQuestions.length}
                   </span>
-                  <p>{result.message}</p>
-                  {result.objective && <p>Öğrenme hedefi: {result.objective}</p>}
-                  {result.explanation && result.explanation !== result.quote && <RichText text={result.explanation} />}
-                  {result.selected_option_feedback && (
-                    <p>Seçtiğin yanıt: {result.selected_option_feedback}</p>
-                  )}
-                  {result.expected && (
-                    <p>
-                      <strong>Kaynakla eşleştirilen yanıt:</strong>{" "}
-                      {result.expected}
-                    </p>
-                  )}
-                  <blockquote>{result.quote}</blockquote>
-                  {result.score === 0 && resultLoc && (
-                    <span className="review-quiz-source">
-                      <span className="source-badge">{sourceBadgeText(result.source.title, resultLoc)}</span>
-                    </span>
-                  )}
-                  <div className="product-actions">
-                    {quizSet && setIndex + 1 < setQuestions.length && (
-                      <Btn onClick={() => openSetQuestion(setIndex + 1)}>
-                        Sonraki soru →
-                      </Btn>
-                    )}
-                    {quizSet && setIndex + 1 >= setQuestions.length && setRunning && (
-                      <span className="product-note" role="status">Sonraki soru hazırlanıyor…</span>
-                    )}
-                    {result.source && (
-                      <Btn
-                        onClick={() =>
-                          navigate(`/dersler/${course}/ogrenme`, {
-                            openSource: result.source,
-                          })
-                        }
-                      >
-                        {result.score === 0 && resultLoc ? openLabel(resultLoc) : "İlgili kaynağı aç →"}
-                      </Btn>
-                    )}
-                    <button
-                      className="product-link"
-                      onClick={() => {
-                        setResult(null);
-                        setAnswer("");
-                      }}
-                    >
-                      Tekrar dene
-                    </button>
-                    <button
-                      className="product-link"
-                      onClick={() => navigate("/analitik")}
-                    >
-                      Çalışmalarımı incele
-                    </button>
-                  </div>
-                </section>
-              )}
-            </article>
+                ) : null
+              }
+            />
+            {quizSet && setQuestions.length > 0 && (
+              <QuestionNav
+                at={setIndex}
+                total={setQuestions.length}
+                onGo={openSetQuestion}
+                prevLabel="← Önceki soru"
+                nextLabel="Sonraki soru →"
+                label="Setteki sorular arasında gezin"
+                last={setRunning ? <span className="product-note" role="status">Sonraki soru hazırlanıyor…</span> : null}
+              />
+            )}
+            </>
           )}
         </section>
       </div>

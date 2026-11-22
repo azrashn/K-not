@@ -31,6 +31,39 @@ describe('quiz topic: the parts that are about it', () => {
   });
 });
 
+describe('a chosen quiz topic stays inside its sections ("Veri tipleri" gave inheritance and Java history)', () => {
+  const BOOK = { id: 'pdf_java', kind: 'PDF', title: 'Java programlama', status: 'READY', version: 'v1' };
+  const pages = [
+    { id: 'p1', text: '1. Java Tarihçesi\nJava 1995 yılında Sun Microsystems tarafından geliştirildi. İlk sürümü 1996 yılında yayımlandı.', location: { kind: 'page', page: 1 } },
+    { id: 'p2', text: '2. Veri Tipleri\nJava dilinde veri tipleri ilkel ve referans olarak ikiye ayrılır. İlkel veri tipleri sekiz tanedir.', location: { kind: 'page', page: 2 } },
+    { id: 'p3', text: 'int tamsayıları dört baytta tutar. double ondalıklı sayıları sekiz baytta tutar. boolean yalnızca true ya da false değerini alır.', location: { kind: 'page', page: 3 } },
+    { id: 'p4', text: '3. Kalıtım\nKalıtım bir sınıfın başka bir sınıfın özelliklerini devralmasıdır. Alt sınıf üst sınıfın metotlarını kullanır.', location: { kind: 'page', page: 4 } },
+  ];
+  const book = buildPool([BOOK], new Map([[BOOK.id, pages]]));
+  // The search returns its top hits whatever they are about.
+  const searched = ['p4', 'p1', 'p2', 'p3'];
+
+  test('only the section of the topic, also its following page without the words; search hits elsewhere are left out', () => {
+    expect(ids(quizTopic('Veri tipleri', book, searched).parts)).toEqual(['p2', 'p3']);
+  });
+
+  test('3 questions over a section that carries 2: two are planned and the existing note says so', () => {
+    const plan = planQuestions(quizItems('MULTIPLE_CHOICE', 3), [quizTopic('Veri tipleri', book, searched)], true);
+    expect(plan.slots.map((s) => s.part.key)).toEqual(['p2', 'p3']);
+    expect(plan.note).toBe('Bu konu için kaynaklar yaklaşık 2 soruya yetiyor; 3 soru istendi.');
+    expect(plan.spare).toEqual([]); // a retry does not go to another section either
+  });
+
+  test('a part holding only one common word of a two-word topic is not part of it when another holds both', () => {
+    const extra = buildPool([BOOK], new Map([[BOOK.id, [...pages, { id: 'p5', text: 'Kapsülleme veri gizlemedir. Alanlara metotlar üzerinden erişilir.', location: { kind: 'page', page: 5 } }]]]));
+    expect(ids(quizTopic('Veri tipleri', extra, [...searched, 'p5']).parts)).not.toContain('p5');
+  });
+
+  test('a topic in other words (no part holds them) still uses what the search found', () => {
+    expect(ids(quizTopic('data types', book, ['p2']).parts)).toEqual(['p2']);
+  });
+});
+
 describe('exam topics (Azra: one topic "object" for a whole exam)', () => {
   test('past-exam terms the notes hold come first; terms they lack and question words are left out', () => {
     const topics = examTopics(['object', 'hangi', 'kalıtım', 'bellek'], pool);
@@ -60,7 +93,7 @@ describe('exam topics (Azra: one topic "object" for a whole exam)', () => {
   test('labels: a heading, else the most frequent subject words, never a sentence', () => {
     expect(heading('Kapsülleme\nVeri gizlenir.')).toBe('Kapsülleme');
     expect(heading('Java bir dildir.')).toBeNull();
-    expect(partLabel(pool.parts[2].text)).toBe('Final, sınıftan'); // final ×3, sınıf- ×2 (sınıftan, sınıflarda)
+    expect(partLabel(pool.parts[2].text)).toBe('Final'); // final ×3; no phrase holds it twice
     expect(partLabel(pool.parts[3].text)).toMatch(/^Nesne|^Bellek/);
   });
 });

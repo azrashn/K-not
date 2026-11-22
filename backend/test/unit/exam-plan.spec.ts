@@ -1,4 +1,4 @@
-import { examTopics, planExamKinds } from '../../src/learning/exam-plan';
+import { examTopics, planExamItems, planExamKinds } from '../../src/learning/exam-plan';
 import type { ExamProfile } from '../../src/learning/exam-style';
 import { matchAnswer, normalizeAnswer, rubricCoverage, rubricTerms } from '../../src/learning/answer-match';
 
@@ -115,5 +115,24 @@ describe('answer() uses safe equivalents for typed answers', () => {
     const r = await svc.answer(u, 'c', 'q', 'fifo');
     expect(r.outcome).toBe('CORRECT');
     expect(r.rubric).toBeNull();
+  });
+});
+
+describe('short answers and blanks in the plan', () => {
+  const profile = (formats: Record<string, number>, total: number) => ({
+    question_count: total, formats, calculation_share: 0, average_stem_chars: 50, sample_stems: [], topic_terms: [],
+  }) as any;
+
+  test('a short answer is a plain SHORT_ANSWER and a blank is CLOZE; only a calculation gets its variant', () => {
+    const items = planExamItems(profile({ SHORT_ANSWER: 1, CLOZE: 1, CALCULATION: 1, MULTIPLE_CHOICE: 1 }, 4), 4);
+    expect(items).toEqual(expect.arrayContaining([
+      { kind: 'SHORT_ANSWER' }, { kind: 'CLOZE' }, { kind: 'SHORT_ANSWER', variant: 'CALCULATION' }, { kind: 'MULTIPLE_CHOICE' },
+    ]));
+    expect(items).toHaveLength(4);
+  });
+
+  test('a profile saved before these kinds (no such keys) plans as before', () => {
+    const kinds = planExamKinds(profile({ MULTIPLE_CHOICE: 2, TRUE_FALSE: 1, CALCULATION: 0, OPEN: 1 }, 4), 4);
+    expect([...kinds].sort()).toEqual(['MULTIPLE_CHOICE', 'MULTIPLE_CHOICE', 'OPEN', 'TRUE_FALSE']);
   });
 });

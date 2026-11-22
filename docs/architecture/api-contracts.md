@@ -175,8 +175,11 @@ Python never widens a scope and never reads MySQL.
 NestJS calls `GET /ready` at startup and every 60 s, and compares it with the `ACTIVE`
 `IndexVersion`:
 
-- **After C-1:** `/ready` reports `index: { collection, embedding_fingerprint, index_version_id }`.
-  NestJS compares all three.
+- **After C-1:** `/ready` reports `index: { collection, embedding_fingerprint, index_version_id, stamp }`.
+  NestJS compares the first three. `stamp` is `full`, `legacy` or `unknown`; `unknown` means the
+  collection could not be read (Chroma unreachable or not built yet; `checks.index_reason` says why),
+  so `index_version_id` is `null`. `unknown` with no `embedding_fingerprint` is treated as
+  unavailable, never as a mismatch.
 - **Before C-1:** NestJS compares `checks.embedding_model` with `IndexVersion.embeddingModel`.
   The collection name is guaranteed only by deployment configuration (known gap, R4).
 - **On mismatch:** answers return `503 INDEX_VERSION_MISMATCH`, ingestion dispatch pauses, and

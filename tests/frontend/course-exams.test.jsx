@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event'
 import CourseExams from '../../src/pages/CourseExams'
 import { api } from '../../src/api/endpoints'
 import { ApiError } from '../../src/api/client'
-import { averageExamCount, examFormProblem, examStatusText, fileProblem, topicsFromText } from '../../src/lib/exam'
+import { averageExamCount, examFormProblem, examFromHash, examHash, examStatusText, fileProblem, rememberExam, topicsFromText } from '../../src/lib/exam'
 
 vi.mock('../../src/api/endpoints')
 const nav = vi.hoisted(() => vi.fn())
@@ -17,6 +17,7 @@ const ready = { id: 'x1', title: 'Final 2025 — yeni sınav', status: 'READY', 
 
 beforeEach(() => {
   vi.resetAllMocks()
+  sessionStorage.clear()
   api.examStyles.mockResolvedValue([style])
   api.exams.mockResolvedValue([])
   window.print = vi.fn()
@@ -125,7 +126,7 @@ test('printing with the key loads the answer key once and opens the print dialog
   expect(api.examKey).toHaveBeenCalledTimes(1)
 })
 
-test('a question whose source was removed is not shown, and a question can be solved from the exam', async () => {
+test('a question whose source was removed is not shown, and a question is solved on the exam page', async () => {
   const user = userEvent.setup()
   api.exams.mockResolvedValue([{ ...ready, questions: undefined }])
   api.exam.mockResolvedValue({ ...ready, questions: [q('q1'), { id: 'q2', kind: 'OPEN', available: false }] })
@@ -133,7 +134,228 @@ test('a question whose source was removed is not shown, and a question can be so
   await user.click(await screen.findByRole('button', { name: /Final 2025 — yeni sınav Hazır/ }))
   expect(await screen.findByText(/kaynağı kaldırıldı/)).toBeInTheDocument()
   await user.click(screen.getByRole('button', { name: 'Bu soruyu çöz' }))
-  expect(nav).toHaveBeenCalledWith('/dersler/c/quiz', { quizId: 'q1' })
+  // Not the practice page: the removed question is left out of the count.
+  expect(nav).not.toHaveBeenCalled()
+  const solver = screen.getByRole('region', { name: 'Sınavı çöz' })
+  expect(within(solver).getByText('Soru 1 / 1')).toBeInTheDocument()
+  expect(within(solver).getByRole('heading', { name: 'Soru q1?' })).toBeInTheDocument()
+})
+
+describe('solving the exam on its page', () => {
+  const three = { ...ready, requested: 3, produced: 3, questions: [q('q1'), q('q2'), q('q3', { kind: 'OPEN', options: [] })] }
+  const graded = { q1: { score: 0, message: 'Kaynağı tekrar incele.', quote: 'Kuyruk FIFO çalışır.', explanation: 'Kuyrukta ilk giren ilk çıkar.', source: { id: 's1', material_id: 'pdf_a' } },
+    q2: { score: 1, message: 'Doğru.', quote: 'Yığın LIFO çalışır.', source: { id: 's2', material_id: 'pdf_a' } },
+    q3: { score: null, message: 'Yanıtın kaydedildi.', quote: 'Ağaç hiyerarşiktir.' } }
+
+  beforeEach(() => {
+    api.exams.mockResolvedValue([{ ...three, questions: undefined }])
+    api.exam.mockResolvedValue(three)
+    api.answerQuiz.mockImplementation(async (_c, id) => graded[id])
+  })
+
+  test('one question at a time with Önceki / Sonraki, feedback with explanation and source, then a summary', async () => {
+    const user = userEvent.setup()
+    render(<CourseExams courseId="c" />)
+    await user.click(await screen.findByRole('button', { name: /Final 2025 — yeni sınav Hazır/ }))
+    await user.click(await screen.findByRole('button', { name: 'Sınavı çöz' }))
+    const solver = () => screen.getByRole('region', { name: 'Sınavı çöz' })
+    expect(within(solver()).getByText('Soru 1 / 3')).toBeInTheDocument()
+    expect(within(solver()).getByRole('button', { name: '← Önceki' })).toBeDisabled()
+    // The print buttons stay while solving.
+    expect(screen.getByRole('button', { name: 'Yazdır / PDF olarak kaydet' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Cevap anahtarıyla yazdır' })).toBeInTheDocument()
+
+    await user.click(within(solver()).getByLabelText('Kuyruk'))
+    await user.click(within(solver()).getByRole('button', { name: 'Yanıtı değerlendir' }))
+    // Saved on the exam question itself: its purpose (EXAM) puts it under "Sınavdan".
+    expect(api.answerQuiz).toHaveBeenCalledWith('c', 'q1', '1')
+    const feedback = await within(solver()).findByLabelText('Alıştırma geri bildirimi')
+    expect(within(feedback).getByText('Kuyrukta ilk giren ilk çıkar.')).toBeInTheDocument()
+    expect(within(feedback).getByText('Kuyruk FIFO çalışır.')).toBeInTheDocument()
+    await user.click(within(feedback).getByRole('button', { name: 'İlgili kaynağı aç →' }))
+    // The way back is built from the open exam and question, not read from the address.
+    expect(nav).toHaveBeenCalledWith('/dersler/c/ogrenme', {
+      openSource: { id: 's1', material_id: 'pdf_a', quote: 'Kuyruk FIFO çalışır.' },
+      returnTo: '/dersler/c/sinavlar?exam=x1&mode=solve&q=1',
+    })
+
+    await user.click(within(solver()).getByRole('button', { name: 'Sonraki →' }))
+    expect(within(solver()).getByText('Soru 2 / 3')).toBeInTheDocument()
+    await user.click(within(solver()).getByLabelText('Yığın'))
+    await user.click(within(solver()).getByRole('button', { name: 'Yanıtı değerlendir' }))
+    await within(solver()).findByText('Doğru.')
+    await user.click(within(solver()).getByRole('button', { name: '← Önceki' }))
+    // Going back keeps the earlier result.
+    expect(within(solver()).getByText('Kaynağı tekrar incele.')).toBeInTheDocument()
+    await user.click(within(solver()).getByRole('button', { name: 'Sonraki →' }))
+    await user.click(within(solver()).getByRole('button', { name: 'Sonraki →' }))
+    expect(within(solver()).getByText('Soru 3 / 3')).toBeInTheDocument()
+    await user.type(within(solver()).getByLabelText('Yanıtın'), 'Hiyerarşik yapı')
+    await user.click(within(solver()).getByRole('button', { name: 'Yanıtı değerlendir' }))
+    await within(solver()).findByText('Yanıtın kaydedildi.')
+
+    await user.click(within(solver()).getByRole('button', { name: 'Özeti gör' }))
+    const summary = screen.getByRole('region', { name: 'Sınav özeti' })
+    expect(summary).toHaveTextContent('3 sorudan 3 tanesi yanıtlandı; 1 tanesi cevap anahtarıyla eşleşti.')
+    expect(summary).toHaveTextContent('1 yanıt kaydedildi ama otomatik puanlanmadı (açık uçlu).')
+    await user.click(within(summary).getByRole('button', { name: 'Soru 1: Soru q1?' }))
+    expect(within(solver()).getByText('Soru 1 / 3')).toBeInTheDocument()
+    expect(within(solver()).getByText('Kaynağı tekrar incele.')).toBeInTheDocument()
+  })
+
+  test('the summary counts unanswered questions and lists none as wrong when nothing was graded wrong', async () => {
+    const user = userEvent.setup()
+    render(<CourseExams courseId="c" />)
+    await user.click(await screen.findByRole('button', { name: /Final 2025 — yeni sınav Hazır/ }))
+    await user.click(await screen.findByRole('button', { name: 'Sınavı çöz' }))
+    for (let i = 0; i < 2; i++) await user.click(screen.getByRole('button', { name: 'Sonraki →' }))
+    await user.click(screen.getByRole('button', { name: 'Özeti gör' }))
+    const summary = screen.getByRole('region', { name: 'Sınav özeti' })
+    expect(summary).toHaveTextContent('3 sorudan 0 tanesi yanıtlandı; 0 tanesi cevap anahtarıyla eşleşti.')
+    expect(summary).toHaveTextContent('3 soru yanıtlanmadı.')
+    expect(within(summary).queryByText('Yanlış yanıtlananlar')).toBeNull()
+  })
+})
+
+describe('the open exam is kept in the address', () => {
+  afterEach(() => window.history.replaceState(null, '', '#'))
+
+  test('coming back or reloading with ?exam= opens the same exam', async () => {
+    window.history.replaceState(null, '', '#/dersler/c/sinavlar?exam=x1')
+    api.exams.mockResolvedValue([{ ...ready, questions: undefined }])
+    api.exam.mockResolvedValue(ready)
+    render(<CourseExams courseId="c" />)
+    expect(await screen.findByText('Soru q1?')).toBeInTheDocument()
+    expect(api.exam).toHaveBeenCalledWith('c', 'x1', expect.any(AbortSignal))
+  })
+
+  test('opening an exam writes it into the address; deleting it removes it', async () => {
+    const user = userEvent.setup()
+    window.history.replaceState(null, '', '#/dersler/c/sinavlar')
+    api.exams.mockResolvedValue([{ ...ready, questions: undefined }])
+    api.exam.mockResolvedValue(ready)
+    api.deleteExam.mockResolvedValue({ deleted: true })
+    render(<CourseExams courseId="c" />)
+    await user.click(await screen.findByRole('button', { name: /Final 2025 — yeni sınav Hazır/ }))
+    await screen.findByText('Soru q1?')
+    expect(window.location.hash).toBe('#/dersler/c/sinavlar?exam=x1')
+    await user.click(screen.getByRole('button', { name: /sınavını sil/ }))
+    await waitFor(() => expect(window.location.hash).toBe('#/dersler/c/sinavlar'))
+  })
+
+  test('an exam in the address that no longer exists opens nothing and is dropped', async () => {
+    window.history.replaceState(null, '', '#/dersler/c/sinavlar?exam=gone')
+    api.exam.mockRejectedValue(new ApiError({ status: 404, code: 'NOT_FOUND', message: 'Exam not found' }))
+    render(<CourseExams courseId="c" />)
+    await waitFor(() => expect(window.location.hash).toBe('#/dersler/c/sinavlar'))
+    expect(screen.getByText('Henüz sınav seçilmedi')).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
+
+  describe('back to the question being solved', () => {
+    const recorded = {
+      q1: { id: 'a1', score: 0, response: '1', message: 'Kaynağı tekrar incele.', explanation: 'Kuyruk FIFO çalışır.',
+        quote: 'BFS bekleyen düğümleri\nkuyrukta tutar.', source: { id: 's1', material_id: 'pdf_a' } },
+      q3: { id: 'a3', score: 1, response: '0', message: 'Doğru.', quote: 'Ağaç hiyerarşiktir.' },
+    }
+    const three = (answers = recorded) => ({ ...ready, requested: 3, produced: 3,
+      questions: ['q1', 'q2', 'q3'].map((id) => q(id, { last_answer: answers[id] ?? null })) })
+
+    test('the address in solve mode reopens that question; earlier answers come from the server with their feedback', async () => {
+      const user = userEvent.setup()
+      window.history.replaceState(null, '', '#/dersler/c/sinavlar?exam=x1&mode=solve&q=2')
+      api.exams.mockResolvedValue([{ ...ready, questions: undefined }])
+      api.exam.mockResolvedValue(three())
+      render(<CourseExams courseId="c" />)
+      const solver = await screen.findByRole('region', { name: 'Sınavı çöz' })
+      expect(within(solver).getByText('Soru 2 / 3')).toBeInTheDocument()
+      expect(within(solver).queryByLabelText('Alıştırma geri bildirimi')).toBeNull() // q2 not answered yet
+      await user.click(within(solver).getByRole('button', { name: '← Önceki' }))
+      const feedback = within(screen.getByRole('region', { name: 'Sınavı çöz' })).getByLabelText('Alıştırma geri bildirimi')
+      expect(within(feedback).getByText('Kaynağı tekrar incele.')).toBeInTheDocument()
+      expect(within(feedback).getByText('Kuyruk FIFO çalışır.')).toBeInTheDocument()
+      // The stored quote keeps the PDF line break (it must match the source); it is shown on one line.
+      expect(within(feedback).getByText('BFS bekleyen düğümleri kuyrukta tutar.')).toBeInTheDocument()
+      expect(screen.getByLabelText('Kuyruk')).toBeChecked() // the answer given
+      expect(window.location.hash).toBe('#/dersler/c/sinavlar?exam=x1&mode=solve&q=1')
+      // The summary counts the recorded answers, so a reload does not reset it.
+      await user.click(screen.getByRole('button', { name: 'Sonraki →' }))
+      await user.click(screen.getByRole('button', { name: 'Sonraki →' }))
+      await user.click(screen.getByRole('button', { name: 'Özeti gör' }))
+      expect(screen.getByRole('region', { name: 'Sınav özeti' })).toHaveTextContent('3 sorudan 2 tanesi yanıtlandı; 1 tanesi cevap anahtarıyla eşleşti.')
+    })
+
+    test('solving writes mode and question into the address and the tab record; "Sınav kâğıdına dön" clears the record', async () => {
+      const user = userEvent.setup()
+      window.history.replaceState(null, '', '#/dersler/c/sinavlar')
+      api.exams.mockResolvedValue([{ ...ready, questions: undefined }])
+      api.exam.mockResolvedValue(three({}))
+      render(<CourseExams courseId="c" />)
+      await user.click(await screen.findByRole('button', { name: /Final 2025 — yeni sınav Hazır/ }))
+      await user.click(await screen.findByRole('button', { name: 'Sınavı çöz' }))
+      await user.click(screen.getByRole('button', { name: 'Sonraki →' }))
+      expect(window.location.hash).toBe('#/dersler/c/sinavlar?exam=x1&mode=solve&q=2')
+      expect(JSON.parse(sessionStorage.getItem('knot.resume.exam.c'))).toEqual({ id: 'x1', q: 2 })
+      await user.click(screen.getAllByRole('button', { name: 'Sınav kâğıdına dön' })[0])
+      expect(window.location.hash).toBe('#/dersler/c/sinavlar?exam=x1')
+      expect(sessionStorage.getItem('knot.resume.exam.c')).toBeNull()
+    })
+
+    test('opened from the menu (no exam in the address): the unfinished exam of this tab, at its question', async () => {
+      window.history.replaceState(null, '', '#/dersler/c/sinavlar')
+      sessionStorage.setItem('knot.resume.exam.c', JSON.stringify({ id: 'x1', q: 2 }))
+      api.exams.mockResolvedValue([{ ...ready, questions: undefined }])
+      api.exam.mockResolvedValue(three())
+      render(<CourseExams courseId="c" />)
+      const solver = await screen.findByRole('region', { name: 'Sınavı çöz' })
+      expect(within(solver).getByText('Soru 2 / 3')).toBeInTheDocument()
+      expect(api.exam).toHaveBeenCalledWith('c', 'x1', expect.any(AbortSignal))
+      await waitFor(() => expect(window.location.hash).toBe('#/dersler/c/sinavlar?exam=x1&mode=solve&q=2'))
+    })
+
+    test('a finished exam (every question answered) is not reopened from the record', async () => {
+      window.history.replaceState(null, '', '#/dersler/c/sinavlar')
+      sessionStorage.setItem('knot.resume.exam.c', JSON.stringify({ id: 'x1', q: 3 }))
+      api.exams.mockResolvedValue([{ ...ready, questions: undefined }])
+      api.exam.mockResolvedValue(three({ ...recorded, q2: { score: 1, message: 'Doğru.' } }))
+      render(<CourseExams courseId="c" />)
+      await waitFor(() => expect(sessionStorage.getItem('knot.resume.exam.c')).toBeNull())
+      expect(screen.getByText('Henüz sınav seçilmedi')).toBeInTheDocument()
+    })
+
+    test('storage that cannot be read is no error: nothing is reopened', async () => {
+      const spy = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('blocked') })
+      window.history.replaceState(null, '', '#/dersler/c/sinavlar')
+      api.exams.mockResolvedValue([])
+      render(<CourseExams courseId="c" />)
+      expect(await screen.findByText('Henüz sınav seçilmedi')).toBeInTheDocument()
+      expect(api.exam).not.toHaveBeenCalled()
+      spy.mockRestore()
+    })
+
+    test('"İlgili kaynağı aç" carries the way back to this question', async () => {
+      const user = userEvent.setup()
+      window.history.replaceState(null, '', '#/dersler/c/sinavlar?exam=x1&mode=solve&q=1')
+      api.exams.mockResolvedValue([{ ...ready, questions: undefined }])
+      api.exam.mockResolvedValue(three())
+      render(<CourseExams courseId="c" />)
+      const solver = await screen.findByRole('region', { name: 'Sınavı çöz' })
+      await user.click(within(solver).getByRole('button', { name: 'İlgili kaynağı aç →' }))
+      expect(nav).toHaveBeenCalledWith('/dersler/c/ogrenme', {
+        openSource: { id: 's1', material_id: 'pdf_a', quote: 'BFS bekleyen düğümleri\nkuyrukta tutar.' },
+        returnTo: '/dersler/c/sinavlar?exam=x1&mode=solve&q=1',
+      })
+    })
+  })
+
+  test('on another page the address is left alone', () => {
+    window.history.replaceState(null, '', '#/dersler/c/quiz')
+    rememberExam('c', 'x1')
+    expect(window.location.hash).toBe('#/dersler/c/quiz')
+    expect(examFromHash('#/dersler/c/sinavlar?exam=x1')).toBe('x1')
+    expect(examFromHash('#/dersler/c/sinavlar?exam=<script>')).toBeNull()
+    expect(examHash('c', null)).toBe('#/dersler/c/sinavlar')
+  })
 })
 
 test('a running exam is picked up again when the page is reopened', async () => {

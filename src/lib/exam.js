@@ -1,4 +1,6 @@
 // Exam builder helpers. The server decides what is a valid exam; these only describe and bound input.
+import { hashParam, hashWith, rememberInHash } from './page-query'
+
 export const EXAM_MAX_QUESTIONS = 20
 export const EXAM_TEXT_LIMIT = 20000
 export const EXAM_FILE_LIMIT = 5 * 1024 * 1024
@@ -65,3 +67,28 @@ export function fileProblem(file) {
 }
 
 export const OPTION_LETTERS = ['A', 'B', 'C', 'D', 'E']
+
+// ── The open exam in the address ("#/dersler/<id>/sinavlar?exam=<id>") ───────────
+/** The exam id in a hash, or null. */
+export const examFromHash = (hash) => hashParam(hash, 'exam')
+
+/** The exam page address for a course, with the open exam when there is one. */
+export const examHash = (courseId, examId) => hashWith(`#/dersler/${courseId}/sinavlar`, { exam: examId })
+
+/** Writes the open exam into the address (only on this course's exam page); see rememberInHash. */
+export const rememberExam = (courseId, examId) => rememberInHash(examHash(courseId, null), { exam: examId })
+
+/** Summary after the last question: only what was recorded (honest-evidence rule). Open answers are saved
+ *  but not graded, so they count as answered, not as right or wrong. */
+export function examSummary(questions, results) {
+  const answered = questions.filter((q) => results[q.id])
+  const correct = answered.filter((q) => results[q.id].score === 1)
+  const wrong = answered.filter((q) => results[q.id].score === 0)
+  return {
+    total: questions.length,
+    answered: answered.length,
+    correct: correct.length,
+    ungraded: answered.length - correct.length - wrong.length,
+    wrong: wrong.map((q) => ({ id: q.id, index: questions.indexOf(q), question: q.question })),
+  }
+}

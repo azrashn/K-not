@@ -5,16 +5,97 @@ import { useApp } from "../app/store";
 import { PageFrame, Btn } from "../components/ui";
 import { MobileBar } from "../components/PageBits";
 import { PageTitle, EmptyState } from "../components/ProductUI";
+import QuizQuestionCard from "../components/QuizQuestionCard";
+import QuestionNav from "../components/QuestionNav";
 import { videoErrorText } from "../lib/video";
 import { describeExamStyle, examStyleProblem } from "../lib/exam-style";
 import {
-  EXAM_STYLES_MAX, KIND_LABELS, OPTION_LETTERS, averageExamCount, examFormProblem, examStatusText, fileProblem,
-  topicsFromText,
+  EXAM_STYLES_MAX, KIND_LABELS, OPTION_LETTERS, averageExamCount, examFormProblem, examFromHash, examHash,
+  examStatusText, examSummary, fileProblem, topicsFromText,
 } from "../lib/exam";
+import { hashParam, hashWith, rememberInHash } from "../lib/page-query";
+import { clearResume, finished, loadResume, positionOf, recordedResults, saveResume } from "../lib/resume";
+
+/** The questions that can be solved: a question whose source was removed is left out. */
+const solvable = (exam) => (exam?.questions || []).filter((q) => q.available !== false);
+
+// Solving the exam on its own page, one question at a time, with the practice page's question component.
+// Answers are saved on each question (purpose EXAM), so they appear under "Sınavdan" in the history.
+function ExamSolver({ exam, courseId, results, setResults, pos, setPos, showSummary, setShowSummary, onClose, onError }) {
+  const questions = solvable(exam);
+  const n = questions.length;
+  if (showSummary) {
+    const s = examSummary(questions, results);
+    return (
+      <section className="exam-summary" aria-label="Sınav özeti">
+        <h3>Özet</h3>
+        <p>
+          {s.total} sorudan {s.answered} tanesi yanıtlandı; {s.correct} tanesi cevap anahtarıyla eşleşti.
+        </p>
+        {s.answered < s.total && <p className="product-note">{s.total - s.answered} soru yanıtlanmadı.</p>}
+        {s.ungraded > 0 && (
+          <p className="product-note">{s.ungraded} yanıt kaydedildi ama otomatik puanlanmadı (açık uçlu).</p>
+        )}
+        {s.wrong.length > 0 && (
+          <>
+            <h4>Yanlış yanıtlananlar</h4>
+            <ol className="exam-summary-wrong">
+              {s.wrong.map((w) => (
+                <li key={w.id}>
+                  <button
+                    type="button"
+                    className="product-link"
+                    onClick={() => {
+                      setPos(w.index);
+                      setShowSummary(false);
+                    }}
+                  >
+                    Soru {w.index + 1}: {w.question}
+                  </button>
+                </li>
+              ))}
+            </ol>
+          </>
+        )}
+        <div className="product-actions">
+          <Btn variant="soft" onClick={() => setShowSummary(false)}>Sorulara dön</Btn>
+          <button type="button" className="product-link" onClick={onClose}>Sınav kâğıdına dön</button>
+        </div>
+      </section>
+    );
+  }
+  const q = questions[Math.min(pos, n - 1)];
+  if (!q) return null;
+  const at = questions.indexOf(q);
+  return (
+    <section className="exam-solver" aria-label="Sınavı çöz">
+      <QuizQuestionCard
+        key={q.id}
+        courseId={courseId}
+        quiz={q}
+        result={results[q.id] || null}
+        onResult={(r) => setResults((rs) => ({ ...rs, [q.id]: r }))}
+        onRetry={() =>
+          setResults((rs) => {
+            const next = { ...rs };
+            delete next[q.id];
+            return next;
+          })
+        }
+        onError={onError}
+        returnTo={hashWith(`/dersler/${courseId}/sinavlar`, { exam: exam.id, mode: "solve", q: at + 1 })}
+        badge={<span className="source-badge">Soru {at + 1} / {n}</span>}
+      />
+      <QuestionNav at={at} total={n} onGo={setPos} last={<Btn onClick={() => setShowSummary(true)}>Özeti gör</Btn>}>
+        <button type="button" className="product-link" onClick={onClose}>Sınav kâğıdına dön</button>
+      </QuestionNav>
+    </section>
+  );
+}
 
 // The exam as printed paper. The same component is shown on screen and, while printing, as a copy
 // outside the app shell (the shell clips content to the window, which would cut the paper).
-function ExamSheet({ exam, answerKey, courseId, navigate, printOnly = false }) {
+function ExamSheet({ exam, answerKey, onSolve, printOnly = false }) {
   return (
     <div className={printOnly ? "exam-print-sheet" : "exam-sheet"}>
       <h1 className="exam-sheet-title">{exam.title}</h1>
@@ -41,9 +122,11 @@ function ExamSheet({ exam, answerKey, courseId, navigate, printOnly = false }) {
                   <p className="exam-meta">
                     <span className="source-badge">{KIND_LABELS[q.kind] || q.kind}</span>
                     {q.source?.title && <span className="source-badge"> · {q.source.title}</span>}
-                    <button type="button" className="product-link" onClick={() => navigate(`/dersler/${courseId}/quiz`, { quizId: q.id })}>
-                      Bu soruyu çöz
-                    </button>
+                    {onSolve && (
+                      <button type="button" className="product-link" onClick={() => onSolve(q.id)}>
+                        Bu soruyu çöz
+                      </button>
+                    )}
                   </p>
                 )}
               </>
@@ -78,7 +161,9 @@ function ExamSheet({ exam, answerKey, courseId, navigate, printOnly = false }) {
 // Past exam → saved style → a new source-bound exam. Questions that no course source supports are
 // not written; the exam lists what could not be prepared and why.
 export default function CourseExams({ courseId, pollMs = 2500 }) {
-  const { navigate } = useApp();
+  const { navigate, takeIntent } = useApp();
+  // Taken once; kept in a ref so that the second mount of StrictMode sees it too.
+  const intentRef = useRef(undefined);
   const [styles, setStyles] = useState([]),
     [exams, setExams] = useState([]),
     [exam, setExam] = useState(null),
@@ -87,6 +172,11 @@ export default function CourseExams({ courseId, pollMs = 2500 }) {
     [printing, setPrinting] = useState(false),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false);
+  // Solving the open exam on this page: which question, the results so far (by question id), the summary.
+  const [solving, setSolving] = useState(false),
+    [pos, setPos] = useState(0),
+    [results, setResults] = useState({}),
+    [showSummary, setShowSummary] = useState(false);
   const [mode, setMode] = useState("file"),
     [file, setFile] = useState(null),
     [name, setName] = useState(""),
@@ -98,12 +188,10 @@ export default function CourseExams({ courseId, pollMs = 2500 }) {
     [topicsText, setTopicsText] = useState("");
   const alive = useRef(true);
   const selected = styles.filter((s) => styleIds.includes(s.id));
-
-  useEffect(() => {
-    if (countTouched) return;
-    const suggested = averageExamCount(styles.filter((s) => styleIds.includes(s.id)).map((s) => s.profile));
-    if (suggested) setCount(suggested);
-  }, [styleIds, styles, countTouched]);
+  // Derived while rendering, not copied by an effect: an effect left one render where the new selection
+  // was already shown with the previous size (e.g. 5 before 4), which a fast submit or a test could catch.
+  const suggestedCount = averageExamCount(selected.map((s) => s.profile));
+  const shownCount = countTouched || !suggestedCount ? count : suggestedCount;
 
   function toggleStyle(id) {
     setStyleIds((ids) =>
@@ -123,26 +211,78 @@ export default function CourseExams({ courseId, pollMs = 2500 }) {
     };
   }, []);
 
+  /** An exam is open: with the answers the server recorded, on its paper or (solveAt) solving that question. */
+  const show = useCallback((next, solveAt = null) => {
+    setExam(next);
+    setKey(null);
+    setShowKey(false);
+    setSolving(solveAt !== null);
+    setPos(solveAt ?? 0);
+    setResults(recordedResults(next?.questions));
+    setShowSummary(false);
+  }, []);
+
+  // The address and the tab's record follow the open exam: "?exam=…" on its paper,
+  // "?exam=…&mode=solve&q=2" while solving. Not before the address has been read, or it would be erased.
+  const addressRead = useRef(false);
+  useEffect(() => {
+    if (!addressRead.current) return;
+    rememberInHash(examHash(courseId, null), exam?.id ? { exam: exam.id, ...(solving ? { mode: "solve", q: pos + 1 } : {}) } : {});
+    if (exam?.id && solving) saveResume("exam", courseId, { id: exam.id, q: pos + 1 });
+  }, [courseId, exam?.id, solving, pos]);
+
   useEffect(() => {
     alive.current = true;
     const abort = new AbortController();
+    // Which exam to reopen: the one in the address (back from another page, a reload), else the one this
+    // tab was solving and has not finished (opened from the menu, without an address).
+    if (intentRef.current === undefined) intentRef.current = takeIntent?.() ?? null;
+    // "← Soruya dön": back to the exam even when every question is answered.
+    const back = Boolean(intentRef.current?.returnToQuestion);
+    const hash = window.location.hash;
+    const fromAddress = examFromHash(hash);
+    const record = fromAddress ? null : loadResume("exam", courseId);
+    const wanted = fromAddress || record?.id;
+    const solveQ = fromAddress ? (hashParam(hash, "mode") === "solve" ? hashParam(hash, "q") || "1" : null) : record?.q;
     Promise.all([api.examStyles(courseId, abort.signal), api.exams(courseId, abort.signal)])
-      .then(([s, e]) => {
+      .then(async ([s, e]) => {
         if (abort.signal.aborted) return;
         setStyles(s);
         setExams(e);
         setStyleIds((cur) => (cur.length ? cur : s[0] ? [s[0].id] : []));
+        if (wanted) {
+          try {
+            const detail = await api.exam(courseId, wanted, abort.signal);
+            if (abort.signal.aborted) return;
+            addressRead.current = true;
+            if (record && !back && finished(detail)) {
+              clearResume("exam", courseId); // every question answered: nothing to go back to
+            } else {
+              const at = solveQ != null && solvable(detail).length ? positionOf(solveQ, solvable(detail).length) : null;
+              show(detail, at);
+              return;
+            }
+          } catch (err) {
+            if (abort.signal.aborted || err.name === "AbortError") return;
+            // Deleted meanwhile: the page opens without it.
+            clearResume("exam", courseId);
+            rememberInHash(examHash(courseId, null), {});
+          }
+        }
+        addressRead.current = true;
         const running = e.find((x) => x.status === "GENERATING");
         if (running) setExam({ ...running, questions: [] });
       })
       .catch((err) => {
-        if (err.name !== "AbortError") setError(videoErrorText(err));
+        if (err.name === "AbortError") return;
+        addressRead.current = true;
+        setError(videoErrorText(err));
       });
     return () => {
       alive.current = false;
       abort.abort();
     };
-  }, [courseId]);
+  }, [courseId, show, takeIntent]);
 
   const refreshList = useCallback(async () => {
     try {
@@ -215,7 +355,7 @@ export default function CourseExams({ courseId, pollMs = 2500 }) {
     const topics = topicsFromText(topicsText);
     const problem = examFormProblem({
       styleIds,
-      count,
+      count: shownCount,
       hasStyleTopics: selected.some((s) => s.profile?.topic_terms?.length),
       topics,
     });
@@ -224,13 +364,12 @@ export default function CourseExams({ courseId, pollMs = 2500 }) {
     try {
       const created = await api.createExam(courseId, {
         exam_style_ids: styleIds,
-        count: Number(count),
+        count: Number(shownCount),
         ...(topics.length ? { topics } : {}),
       });
       setExams((list) => [created, ...list]);
-      setExam({ ...created, questions: [] });
-      setKey(null);
-      setShowKey(false);
+      clearResume("exam", courseId);
+      show({ ...created, questions: [] });
     } catch (err) {
       setError(videoErrorText(err));
     } finally {
@@ -241,9 +380,10 @@ export default function CourseExams({ courseId, pollMs = 2500 }) {
   async function open(id) {
     setError("");
     try {
-      setExam(await api.exam(courseId, id));
-      setKey(null);
-      setShowKey(false);
+      const detail = await api.exam(courseId, id);
+      // Another exam chosen by hand: the record of the one solved before no longer applies.
+      if (loadResume("exam", courseId)?.id !== id) clearResume("exam", courseId);
+      show(detail);
     } catch (err) {
       setError(videoErrorText(err));
     }
@@ -253,10 +393,18 @@ export default function CourseExams({ courseId, pollMs = 2500 }) {
     try {
       await api.deleteExam(courseId, id);
       setExams((list) => list.filter((x) => x.id !== id));
-      if (exam?.id === id) setExam(null);
+      if (loadResume("exam", courseId)?.id === id) clearResume("exam", courseId);
+      if (exam?.id === id) show(null);
     } catch (err) {
       setError(videoErrorText(err));
     }
+  }
+
+  function startSolving(at) {
+    setError("");
+    setPos(at);
+    setShowSummary(false);
+    setSolving(true);
   }
 
   async function print(withKey) {
@@ -381,7 +529,7 @@ export default function CourseExams({ courseId, pollMs = 2500 }) {
                 type="number"
                 min={1}
                 max={20}
-                value={count}
+                value={shownCount}
                 disabled={busy}
                 onChange={(e) => {
                   setCountTouched(true);
@@ -438,24 +586,44 @@ export default function CourseExams({ courseId, pollMs = 2500 }) {
                 )}
                 {exam.questions?.length > 0 && (
                   <div className="product-actions">
+                    {!solving && exam.status !== "GENERATING" && solvable(exam).length > 0 && (
+                      <Btn onClick={() => startSolving(0)}>Sınavı çöz</Btn>
+                    )}
                     <button type="button" className="exam-print" onClick={() => print(false)}>Yazdır / PDF olarak kaydet</button>
                     <button type="button" className="exam-print" onClick={() => print(true)}>Cevap anahtarıyla yazdır</button>
                   </div>
                 )}
               </div>
-              <ExamSheet
-                exam={exam}
-                answerKey={showKey ? key : null}
-                courseId={courseId}
-                navigate={navigate}
-              />
+              {solving ? (
+                <ExamSolver
+                  exam={exam}
+                  courseId={courseId}
+                  results={results}
+                  setResults={setResults}
+                  pos={pos}
+                  setPos={setPos}
+                  showSummary={showSummary}
+                  setShowSummary={setShowSummary}
+                  onClose={() => {
+                    clearResume("exam", courseId); // back on the paper: nothing to reopen from the menu
+                    setSolving(false);
+                  }}
+                  onError={(err) => setError(videoErrorText(err))}
+                />
+              ) : (
+                <ExamSheet
+                  exam={exam}
+                  answerKey={showKey ? key : null}
+                  onSolve={(id) => startSolving(Math.max(0, solvable(exam).findIndex((q) => q.id === id)))}
+                />
+              )}
             </article>
           )}
         </section>
       </div>
       {printing && exam && createPortal(
         <div className="exam-print-root">
-          <ExamSheet exam={exam} answerKey={showKey ? key : null} courseId={courseId} navigate={navigate} printOnly />
+          <ExamSheet exam={exam} answerKey={showKey ? key : null} printOnly />
         </div>,
         document.body,
       )}

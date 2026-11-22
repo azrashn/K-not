@@ -132,6 +132,13 @@ test("a new exam follows the style's mix, is source-bound, hides answers and pri
   expect([200, 201]).toContain(answer.status);
   const list = await h.http().get(`${course()}/exams`).set(await h.as("ayse")).expect(200);
   expect(list.body[0]).toMatchObject({ id: created.body.id, status: "READY", produced: 4 });
+  // Exam questions stay out of the practice history and are listed under purpose=EXAM.
+  const ids = exam.questions.map((q: any) => q.id).sort();
+  const practice = await h.http().get(`${course()}/quizzes`).set(await h.as("ayse")).expect(200);
+  expect(practice.body.map((q: any) => q.id)).not.toEqual(expect.arrayContaining([ids[0]]));
+  const examList = await h.http().get(`${course()}/quizzes?purpose=EXAM`).set(await h.as("ayse")).expect(200);
+  expect(examList.body.map((q: any) => q.id).sort()).toEqual(ids);
+  await h.http().get(`${course()}/quizzes?purpose=OTHER`).set(await h.as("ayse")).expect(422);
 });
 
 test("a topic with no supporting source is reported, never invented", async () => {

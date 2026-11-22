@@ -1,6 +1,10 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { configure, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, test } from 'vitest'
+
+// Every test here renders the whole App. Alone the file always passes; in the full parallel suite the first
+// render can take longer than Testing Library's default 1 s wait, so findBy/waitFor get more time here only.
+configure({ asyncUtilTimeout: 5000 })
 import App from '../../src/App'
 import { COURSE, doc, envelope, fakeApi, signIn } from './fake-api'
 import { DOC, grounded } from './answer-fixtures'

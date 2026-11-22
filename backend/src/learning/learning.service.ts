@@ -8,14 +8,15 @@ import { KnowledgeService } from "../knowledge/knowledge.service";
 import { AiServiceClient } from "../ai/ai-client";
 import { APP_CONFIG, AppConfig, QuizEngine } from "../config/config";
 import { validSourceCompletion } from "./quiz-validation";
-import { quizHistoryItem } from "./quiz-history";
+import { quizHistoryItem, setsByQuiz } from "./quiz-history";
 import { buildExamProfile, examStyleHint, ExamProfile } from "./exam-style";
 import { matchAnswer, rubricCoverage, rubricTerms } from "./answer-match";
 import { findQuizSources } from "./quiz-sources";
 import { publicQuiz } from "./quiz-public";
 import { QuizGenerator } from "./quiz-generator";
 import { QuizBuilder } from "./generation/quiz-builder";
-import { TRANSCRIPT_WARNING } from "./generation/source-pool";
+import { loadPool, TRANSCRIPT_WARNING } from "./generation/source-pool";
+import { suggestTopics } from "./generation/topic-planner";
 
 /** Model time for one question from POST /quizzes: first call plus one repair (see quiz_engine.py). */
 export const SINGLE_QUIZ_BUDGET_SECONDS = 130;
@@ -144,7 +145,8 @@ export class LearningService {
         outcome: a.outcome,
         score: a.score,
         created_at: a.createdAt,
-        source: (a.quiz.data as any).source,
+        // An older question may hold JSON null as its data: listed without a source, not a 500.
+        source: (a.quiz.data as any)?.source ?? null,
       })),
       quiz_count: quizzes,
       graded_count: graded.length,
@@ -162,7 +164,7 @@ export class LearningService {
         ? {
             course_id: review.quiz.courseId,
             topic: review.quiz.topic,
-            source: (review.quiz.data as any).source,
+            source: (review.quiz.data as any)?.source ?? null,
           }
         : null,
       mastery_estimated: false,
@@ -212,7 +214,24 @@ export class LearningService {
     };
   }
 
-  /** GET /quiz-sets/:id: the set with its questions as students see them (no answers, no quotes). */
+  /**
+   * GET /quiz-topics: up to five short topics from the course sources (headings, then subject words), by the
+   * same document-first rule as the questions. A course with nothing usable gives an empty list, not an error:
+   * the form then works without suggestions.
+   */
+  async quizTopics(u: AuthUser, c: string): Promise<{ topics: string[] }> {
+    await this.access.requireMember(u, c);
+    try {
+      const pool = await loadPool(this.knowledge, u, c, {}, this.config?.quizTranscriptPolicy ?? "documents_first");
+      return { topics: suggestTopics(pool) };
+    } catch (e: any) {
+      if (e?.code === "VALIDATION_ERROR") return { topics: [] };
+      throw e;
+    }
+  }
+
+  /** GET /quiz-sets/:id: the set with its questions as students see them (no answer key, no quotes), and
+   *  for a question the student has answered, that answer as it was graded (`last_answer`). */
   async quizSet(u: AuthUser, c: string, id: string) {
     await this.access.requireMember(u, c);
     const row = await this.prisma.generatedExam.findFirst({ where: { id, courseId: c, userId: u.id, purpose: "PRACTICE" } });
@@ -226,7 +245,37 @@ export class LearningService {
         questions.push({ id: item.quiz_id, kind: item.kind, topic: item.topic, available: false });
       }
     }
-    return { ...this.quizSetSummary(row), questions };
+    return { ...this.quizSetSummary(row), questions: await this.withLastAnswers(u, questions) };
+  }
+
+  /**
+   * Each available question with the student's latest answer (`last_answer`, the same shape POST …/answers
+   * returned: score, message, expected, explanation, quote, source, plus the response), or null. The answer
+   * key and quote are shown only for what the student already answered, as after answering. Read-only.
+   */
+  async withLastAnswers<T extends { id: string; available?: boolean }>(
+    u: AuthUser,
+    questions: T[],
+  ): Promise<(T & { last_answer?: Record<string, unknown> | null })[]> {
+    const ids = questions.filter((q) => q.available !== false).map((q) => q.id);
+    const rows = ids.length
+      ? await this.prisma.learningQuizAttempt.findMany({
+          where: { userId: u.id, quizId: { in: ids } },
+          orderBy: { createdAt: "desc" },
+          distinct: ["quizId"],
+        })
+      : [];
+    const latest = new Map(rows.map((r) => [r.quizId, r]));
+    return questions.map((q) => {
+      if (q.available === false) return q;
+      const r = latest.get(q.id);
+      return {
+        ...q,
+        last_answer: r
+          ? { ...((r.feedback as object) ?? {}), id: r.id, outcome: r.outcome, score: r.score, response: r.response, answered_at: r.createdAt }
+          : null,
+      };
+    });
   }
 
   /** The original engine (ai-service quiz_quality.py) with its original acceptance rules. */
@@ -310,6 +359,8 @@ export class LearningService {
         materialId: source.material_id,
         segmentId: source.id,
         version: source.version,
+        // Set only by the legacy exam run (an internal call): the public body has no purpose field.
+        purpose: b.purpose === "EXAM" ? "EXAM" : "PRACTICE",
         data: {
           ...q,
           source,
@@ -399,7 +450,7 @@ export class LearningService {
     const row = await this.prisma.learningQuizAttempt.create({
       data: { quizId: id, userId: u.id, response, outcome, feedback, score },
     });
-    return { id: row.id, outcome, score, ...feedback };
+    return { id: row.id, outcome, score, response, ...feedback };
   }
   private async styleHintFor(u: AuthUser, c: string, id?: string) {
     if (!id) return null;
@@ -450,15 +501,17 @@ export class LearningService {
     if (!removed.count) throw notFound("Exam style");
     return { deleted: true };
   }
-  async quizzes(u: AuthUser, c: string) {
+  /** Quiz history: practice by default; the questions of generated exams only when asked for (EXAM). */
+  async quizzes(u: AuthUser, c: string, purpose: "PRACTICE" | "EXAM" = "PRACTICE") {
     await this.access.requireMember(u, c);
-    const rows = await this.prisma.learningQuiz.findMany({
-      where: { userId: u.id, courseId: c, redacted: false },
+    const [rows, sets] = await Promise.all([this.prisma.learningQuiz.findMany({
+      where: { userId: u.id, courseId: c, redacted: false, purpose },
       select: {
         id: true,
         kind: true,
         topic: true,
         createdAt: true,
+        data: true,
         attempts: {
           select: { outcome: true, score: true, createdAt: true },
           orderBy: { createdAt: "desc" },
@@ -468,7 +521,15 @@ export class LearningService {
       },
       orderBy: { createdAt: "desc" },
       take: 100,
-    });
-    return rows.map((row) => quizHistoryItem(row));
+    }),
+    // Quiz sets (PRACTICE) or generated exams (EXAM): which card each question belongs to.
+    this.prisma.generatedExam.findMany({
+      where: { userId: u.id, courseId: c, purpose },
+      select: { id: true, title: true, items: true },
+      orderBy: { createdAt: "desc" },
+      take: 200,
+    })]);
+    const bySet = setsByQuiz(sets);
+    return rows.map((row) => quizHistoryItem(row, bySet.get(row.id) ?? null));
   }
 }

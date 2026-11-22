@@ -3,6 +3,7 @@ import { QuizGenerator } from '../../../src/learning/quiz-generator';
 import { generationNote, NOTE_MAX, possessive, possessiveIn } from '../../../src/learning/generation/generation-note';
 import { MAX_TRIES, runPlan } from '../../../src/learning/generation/generation-run';
 import { planQuestions, quizItems } from '../../../src/learning/generation/question-plan';
+import { outsideParts } from '../../../src/learning/generation/quiz-builder';
 import { RepeatGuard } from '../../../src/learning/generation/repeat-guard';
 import { buildPool, TRANSCRIPT_WARNING } from '../../../src/learning/generation/source-pool';
 import { examTopics } from '../../../src/learning/generation/topic-planner';
@@ -55,7 +56,7 @@ describe('running a plan', () => {
     expect(generationNote({ requested: 6, planned: 6, produced: 6, unresolved: [], stopped: null })).toBeNull();
   });
 
-  test('a failed question is tried once more with a spare part, never more than twice', async () => {
+  test('a failed question is tried again with a spare part, never more than five times', async () => {
     const plan = planQuestions(quizItems('OPEN', 4), topics); // n1..n4 used once; n5 and n4's second use are spare
     const generator = fakeGenerator((_req, call) => (call === 0 ? 'BAD_FORMAT' : 'ok'));
     const result = await runPlan(plan, options(generator));
@@ -63,7 +64,25 @@ describe('running a plan', () => {
     const retry = generator.generate.mock.calls[4][2];
     expect(retry.sources[0].id).toBe(plan.spare[0].part.id);
     expect(result.tries).toEqual([expect.objectContaining({ slot: 0, code: 'BAD_FORMAT', try: 1 })]);
-    expect(MAX_TRIES).toBe(2);
+    expect(MAX_TRIES).toBe(5);
+  });
+
+  test('a question refused twice gets a third try, then stops', async () => {
+    const plan = planQuestions(quizItems('OPEN', 1), topics);
+    let refused = 0;
+    const generator = fakeGenerator(() => (refused++ < 2 ? 'KEY_NOT_SUPPORTED' : 'ok'));
+    const result = await runPlan(plan, options(generator));
+    expect(generator.generate).toHaveBeenCalledTimes(3);
+    expect(result.produced).toHaveLength(1);
+    expect(result.tries.map((t) => t.try)).toEqual([1, 2]);
+  });
+
+  test('a question refused on every try is asked MAX_TRIES times and then reported', async () => {
+    const plan = planQuestions(quizItems('OPEN', 1), topics);
+    const generator = fakeGenerator(() => 'KEY_NOT_SUPPORTED');
+    const result = await runPlan(plan, options(generator));
+    expect(generator.generate).toHaveBeenCalledTimes(MAX_TRIES);
+    expect(result.unresolved).toEqual([expect.objectContaining({ slot: 0, code: 'KEY_NOT_SUPPORTED', tries: MAX_TRIES })]);
   });
 
   test('without a spare part the retry uses the question\'s own part', async () => {
@@ -84,9 +103,9 @@ describe('running a plan', () => {
     const generator = fakeGenerator((req) => (req.sources[0].id === 'p3' ? 'NOT_SELF_CONTAINED' : 'ok'));
     const result = await runPlan(plan, options(generator));
     expect(result.produced.length / plan.slots.length).toBeGreaterThanOrEqual(0.8);
-    expect(result.unresolved).toEqual([expect.objectContaining({ slot: 3, code: 'NOT_SELF_CONTAINED', tries: 2 })]);
+    expect(result.unresolved).toEqual([expect.objectContaining({ slot: 3, code: 'NOT_SELF_CONTAINED', tries: 5 })]);
     expect(generationNote({ requested: 10, planned: 10, produced: result.produced.length, unresolved: result.unresolved, stopped: null }))
-      .toBe('10 sorudan 9\'u hazırlandı. Hazırlanamayan 1 sorunun 1\'inde neden: Soru, görülmeyen bir önceki cümleye bağlı başlıyordu (ör. "Bu", "Ardından"); tek başına anlaşılmıyordu. Her soru en fazla 2 kez denendi.');
+      .toBe('10 sorudan 9\'u hazırlandı. Hazırlanamayan 1 sorunun 1\'inde neden: Soru, görülmeyen bir önceki cümleye bağlı başlıyordu (ör. "Bu", "Ardından"); tek başına anlaşılmıyordu. Her soru en fazla 5 kez denendi.');
   });
 
   test('an unreachable model stops the run at once', async () => {
@@ -191,5 +210,90 @@ describe('quiz generator inside a run', () => {
     const earlier = new RepeatGuard({ stems: ['Java bytecode hangi ortamlarda çalışabilir?'] });
     const again = await asked.generator.generate(u, 'c', { topic: 'JVM', items: [{ kind: 'OPEN' }], budgetSeconds: 60, sources: [evidence], guard: earlier });
     expect(again.failures.map((f) => f.code)).toEqual(['DUPLICATE_STEM']);
+  });
+
+  test('a question built by the ai-service from a true statement may repeat the template stem', async () => {
+    const stem = 'Java ile ilgili aşağıdakilerden hangisi doğrudur?';
+    const built = question({ kind: 'MULTIPLE_CHOICE', question: stem, options: ['a', 'b', 'c', 'd'], expected: '1', constructed_choice: true });
+    const earlier = new RepeatGuard({ stems: [stem] });
+    const ok = await setup([built]).generator.generate(u, 'c', { topic: 'JVM', items: [{ kind: 'MULTIPLE_CHOICE' }], budgetSeconds: 60, sources: [evidence], guard: earlier });
+    expect(ok.failures).toEqual([]);
+    expect(ok.quizzes).toHaveLength(1);
+    // the same stem on an ordinary question is still a repeat
+    const plain = question({ kind: 'MULTIPLE_CHOICE', question: stem, options: ['a', 'b', 'c', 'd'], expected: '1' });
+    const refused = await setup([plain]).generator.generate(u, 'c', { topic: 'JVM', items: [{ kind: 'MULTIPLE_CHOICE' }], budgetSeconds: 60, sources: [evidence], guard: new RepeatGuard({ stems: [stem] }) });
+    expect(refused.failures.map((f) => f.code)).toEqual(['DUPLICATE_STEM']);
+  });
+
+  test('a relaxed request lets a used sentence carry another question and says so to the ai-service', async () => {
+    const { generator, ai, prisma } = setup([question({ question: 'JVM bytecode u nasıl çalıştırır, açıklayınız?' })]);
+    const guard = new RepeatGuard({ quotes: [QUOTE] });
+    const r = await generator.generate(u, 'c', { topic: 'JVM', items: [{ kind: 'OPEN' }], budgetSeconds: 60, sources: [evidence], guard, relaxed: true });
+    expect(r.failures).toEqual([]);
+    expect(prisma.learningQuiz.create).toHaveBeenCalled();
+    expect(ai.call.mock.calls[0][2].body.relaxed).toBe(true);
+  });
+});
+
+describe('completing a plan from the rest of the course', () => {
+  const own = pool.parts.slice(0, 1);
+  const topic = { label: 'konu', parts: own };
+
+  test('the topic\'s own parts come first; the rest are marked outside and the note says how many', () => {
+    const plan = planQuestions(quizItems('OPEN', 4), [topic], true, outsideParts(pool, own));
+    expect(plan.slots).toHaveLength(4);
+    const outside = plan.slots.filter((s) => s.outside);
+    const inside = plan.slots.filter((s) => !s.outside);
+    expect(inside.length).toBeGreaterThanOrEqual(1);
+    expect(inside.every((s) => own.some((p) => p.key === s.part.key))).toBe(true);
+    expect(outside.every((s) => !own.some((p) => p.key === s.part.key))).toBe(true);
+    expect(plan.note).toBe(`Bu konu için kaynaklar yaklaşık ${inside.length} soruya yetiyor; kalan ${outside.length} soru dersin diğer bölümlerinden tamamlandı.`);
+    expect(plan.slots.map((s) => s.topic)).toEqual(Array(4).fill('konu'));
+  });
+
+  test('without outside parts the plan stays smaller, as before (an exam passes none)', () => {
+    const plan = planQuestions(quizItems('OPEN', 4), [topic], true);
+    expect(plan.slots.length).toBeLessThan(4);
+    expect(plan.note).toBe(`Bu konu için kaynaklar yaklaşık ${plan.slots.length} soruya yetiyor; 4 soru istendi.`);
+  });
+
+  test('outside parts are the topic\'s own material first and the nearest pages first', () => {
+    const near = outsideParts(pool, own);
+    expect(near.some((p) => own.some((o) => o.key === p.key))).toBe(false);
+    const distances = near.filter((p) => p.material_id === own[0].material_id).map((p) => Math.abs(p.order - own[0].order));
+    expect([...distances].sort((a, b) => a - b)).toEqual(distances);
+  });
+
+  test('a question that is outside the topic reaches the generator with a part of its own', async () => {
+    const plan = planQuestions(quizItems('OPEN', 3), [topic], true, outsideParts(pool, own));
+    const generator = fakeGenerator(() => 'ok');
+    const result = await runPlan(plan, options(generator));
+    expect(result.produced).toHaveLength(3);
+    const used = generator.generate.mock.calls.map((c: any[]) => c[2].sources[0].id);
+    expect(new Set(used).size).toBe(used.length);
+  });
+});
+
+describe('the relaxed balance of the later tries', () => {
+  test('the first two requests of a question are strict; from the third on the ai-service is told to relax', async () => {
+    const plan = planQuestions(quizItems('MULTIPLE_CHOICE', 1), topics);
+    const generator = fakeGenerator((_req, call) => (call < 3 ? 'BAD_FORMAT' : 'ok'));
+    const result = await runPlan(plan, options(generator));
+    const flags = generator.generate.mock.calls.map((c: any[]) => Boolean(c[2].relaxed));
+    expect(flags).toEqual([false, false, true, true]);
+    expect(result.produced).toHaveLength(1);
+  });
+});
+
+describe('reusing a sentence in the relaxed tries', () => {
+  test('the used sentences are sent to the ai-service in the first two requests, not from the third', async () => {
+    const plan = planQuestions(quizItems('OPEN', 1), topics);
+    const guard = new RepeatGuard({ quotes: ['Daha önce kullanılan bir cümle burada.'] });
+    const generator = fakeGenerator((_req, call) => (call < 2 ? 'BAD_FORMAT' : 'ok'));
+    await runPlan(plan, options(generator, { guard }));
+    const sent = generator.generate.mock.calls.map((c: any[]) => c[2].avoidQuotes);
+    expect(sent[0]).toEqual(['Daha önce kullanılan bir cümle burada.']);
+    expect(sent[1]).toEqual(['Daha önce kullanılan bir cümle burada.']);
+    expect(sent[2]).toEqual([]);
   });
 });

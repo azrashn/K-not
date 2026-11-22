@@ -1,11 +1,12 @@
-import { afterEach, beforeEach, expect, test, vi } from 'vitest'
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import CourseQuiz from '../../src/pages/CourseQuiz'
 import { api } from '../../src/api/endpoints'
 
 vi.mock('../../src/api/endpoints')
-vi.mock('../../src/app/store', () => ({ useApp: () => ({ navigate: vi.fn(), takeIntent: () => null }) }))
+const nav = vi.hoisted(() => vi.fn())
+vi.mock('../../src/app/store', () => ({ useApp: () => ({ navigate: nav, takeIntent: () => null }) }))
 
 const WARNING = 'Sorular videonun otomatik transkriptinden hazırlanıyor; yazım hataları olabilir.'
 const question = (id, text) => ({ id, topic: 'nesne', kind: 'OPEN', question: text, options: [], available: true })
@@ -14,6 +15,7 @@ const set = (over) => ({ id: 's1', type: 'quiz_set', topic: 'nesne', status: 'GE
 
 beforeEach(() => {
   vi.resetAllMocks()
+  sessionStorage.clear()
   api.courses.mockResolvedValue([{ id: 'c', name: 'Java' }])
   api.knowledgeMaterials.mockResolvedValue({ materials: [] })
   api.quizzes.mockResolvedValue([])
@@ -67,8 +69,11 @@ test('several questions: the set is followed, its first question opens at once, 
   await user.click(await screen.findByRole('button', { name: 'Sonraki soru →' }))
   expect(await screen.findByText('Sınıf nedir?')).toBeInTheDocument()
   expect(screen.getByText('Soru 2 / 3')).toBeInTheDocument()
-  // first load, after the request (as for one question), when the set is done, after the answer
-  await waitFor(() => expect(api.quizzes).toHaveBeenCalledTimes(4))
+  // The practice list (no purpose): first load, after the request (as for one question), when the set is done,
+  // after the answer. The exam list ("Sınavdan") is read once on load.
+  const practiceCalls = () => api.quizzes.mock.calls.filter((c) => !c[2]).length
+  await waitFor(() => expect(practiceCalls()).toBe(4))
+  expect(api.quizzes.mock.calls.filter((c) => c[2] === 'EXAM')).toHaveLength(1)
 })
 
 test('the transcript warning is shown for one question and for a set', async () => {
@@ -93,4 +98,144 @@ test('a set that ended without questions says so instead of an empty screen', as
   await fill(user, { count: 2 })
   expect(await screen.findByText('Alıştırma seti boş kaldı')).toBeInTheDocument()
   expect(screen.getByText('Kaynaklara dayalı soru hazırlanamadı.')).toBeInTheDocument()
+})
+
+test('the next question follows the open one, even if the list order changed meanwhile (Mac: 2nd = 3rd)', async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true })
+  const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+  api.createQuiz.mockResolvedValue(set())
+  const q1 = question('q1', 'Nesne nedir?'), q2 = question('q2', 'Sınıf nedir?'), q3 = question('q3', 'Kalıtım nedir?')
+  api.quizSet
+    .mockResolvedValueOnce(set({ produced: 2, questions: [q1, q3] }))
+    // An older server sorted the finished set: q3 moved from the 2nd to the 3rd place.
+    .mockResolvedValue(set({ status: 'READY', produced: 3, questions: [q1, q2, q3] }))
+  api.answerQuiz.mockResolvedValue({ score: null, message: 'Yanıtın kaydedildi.', quote: 'Kalıtım devralmadır.' })
+  render(<CourseQuiz courseId="c" />)
+  await fill(user, { count: 3 })
+  expect(await screen.findByText('3 sorudan 0 tanesi hazır; diğerleri hazırlanıyor…')).toBeInTheDocument()
+  await act(async () => { vi.advanceTimersByTime(2000) })
+  expect(await screen.findByText('Nesne nedir?')).toBeInTheDocument()
+  await user.type(screen.getByLabelText('Yanıtın'), 'Bir örnek')
+  await user.click(screen.getByRole('button', { name: 'Yanıtı değerlendir' }))
+  await user.click(await screen.findByRole('button', { name: 'Sonraki soru →' }))
+  expect(await screen.findByText('Kalıtım nedir?')).toBeInTheDocument()
+  expect(screen.getByText('Soru 2 / 3')).toBeInTheDocument()
+
+  await act(async () => { vi.advanceTimersByTime(2000) })
+  expect(await screen.findByText('3 sorudan 3 tanesi hazırlandı.')).toBeInTheDocument()
+  expect(screen.getByText('Soru 3 / 3')).toBeInTheDocument() // the open question's new place
+  expect(screen.queryByRole('button', { name: 'Sonraki soru →' })).not.toBeInTheDocument()
+})
+
+describe('going back in a set and keeping it in the address', () => {
+  const qs = [question('q1', 'Nesne nedir?'), question('q2', 'Sınıf nedir?'), question('q3', 'Kalıtım nedir?')]
+  const ready = set({ status: 'READY', produced: 3, questions: qs })
+  afterEach(() => window.history.replaceState(null, '', '#'))
+
+  test('"← Önceki soru" goes back and shows the answer given there; the first question has no way back', async () => {
+    const user = userEvent.setup()
+    api.createQuiz.mockResolvedValue(ready)
+    api.answerQuiz.mockResolvedValue({ score: null, message: 'Yanıtın kaydedildi.', quote: 'Nesne, sınıfın örneğidir.' })
+    render(<CourseQuiz courseId="c" />)
+    await fill(user, { count: 3 })
+    expect(await screen.findByText('Nesne nedir?')).toBeInTheDocument()
+    const nav = screen.getByRole('navigation', { name: 'Setteki sorular arasında gezin' })
+    expect(within(nav).getByRole('button', { name: '← Önceki soru' })).toBeDisabled()
+    await user.type(screen.getByLabelText('Yanıtın'), 'Bir örnek')
+    await user.click(screen.getByRole('button', { name: 'Yanıtı değerlendir' }))
+    await screen.findByText('Yanıtın kaydedildi.')
+    await user.click(screen.getByRole('button', { name: 'Sonraki soru →' }))
+    expect(await screen.findByText('Sınıf nedir?')).toBeInTheDocument()
+    expect(screen.queryByText('Yanıtın kaydedildi.')).toBeNull() // a new question starts unanswered
+    await user.click(screen.getByRole('button', { name: '← Önceki soru' }))
+    expect(await screen.findByText('Nesne nedir?')).toBeInTheDocument()
+    expect(screen.getByText('Soru 1 / 3')).toBeInTheDocument()
+    expect(screen.getByText('Yanıtın kaydedildi.')).toBeInTheDocument()
+  })
+
+  test('the open set and question are written into the address', async () => {
+    const user = userEvent.setup()
+    window.history.replaceState(null, '', '#/dersler/c/quiz')
+    api.createQuiz.mockResolvedValue(ready)
+    render(<CourseQuiz courseId="c" />)
+    await fill(user, { count: 3 })
+    await screen.findByText('Nesne nedir?')
+    await waitFor(() => expect(window.location.hash).toBe('#/dersler/c/quiz?set=s1&q=1'))
+    await user.click(screen.getByRole('button', { name: 'Sonraki soru →' }))
+    await waitFor(() => expect(window.location.hash).toBe('#/dersler/c/quiz?set=s1&q=2'))
+  })
+
+  test('coming back to the page opens the same set at the question left', async () => {
+    window.history.replaceState(null, '', '#/dersler/c/quiz?set=s1&q=2')
+    api.quizSet.mockResolvedValue(ready)
+    render(<CourseQuiz courseId="c" />)
+    expect(await screen.findByText('Sınıf nedir?')).toBeInTheDocument()
+    expect(screen.getByText('Soru 2 / 3')).toBeInTheDocument()
+    expect(api.quizSet).toHaveBeenCalledWith('c', 's1')
+    expect(window.location.hash).toBe('#/dersler/c/quiz?set=s1&q=2')
+  })
+
+  test('on the general quiz page the course comes back from the address too', async () => {
+    window.history.replaceState(null, '', '#/quiz?course=c&set=s1&q=3')
+    api.quizSet.mockResolvedValue(ready)
+    render(<CourseQuiz />)
+    expect(await screen.findByText('Kalıtım nedir?')).toBeInTheDocument()
+    expect(screen.getByLabelText('Ders')).toHaveValue('c')
+    expect(screen.queryByRole('button', { name: 'Sonraki soru →' })).toBeNull() // the last question
+  })
+
+  test('back on the set, answered questions show the recorded answer and feedback', async () => {
+    window.history.replaceState(null, '', '#/dersler/c/quiz?set=s1&q=1')
+    const answered = { score: null, response: 'Sınıfın örneği', message: 'Yanıtın kaydedildi.', quote: 'Nesne,\nsınıfın örneğidir.' }
+    api.quizSet.mockResolvedValue(set({ status: 'READY', produced: 3, questions: [{ ...qs[0], last_answer: answered }, qs[1], qs[2]] }))
+    render(<CourseQuiz courseId="c" />)
+    expect(await screen.findByText('Yanıtın kaydedildi.')).toBeInTheDocument()
+    expect(screen.getByText('Nesne, sınıfın örneğidir.')).toBeInTheDocument()
+    expect(screen.getByLabelText('Yanıtın')).toHaveValue('Sınıfın örneği')
+  })
+
+  test('opened from the menu (no set in the address): the unfinished set of this tab, at its question', async () => {
+    window.history.replaceState(null, '', '#/dersler/c/quiz')
+    sessionStorage.setItem('knot.resume.quiz.c', JSON.stringify({ id: 's1', q: 2 }))
+    api.quizSet.mockResolvedValue(ready)
+    render(<CourseQuiz courseId="c" />)
+    expect(await screen.findByText('Sınıf nedir?')).toBeInTheDocument()
+    expect(screen.getByText('Soru 2 / 3')).toBeInTheDocument()
+    await waitFor(() => expect(window.location.hash).toBe('#/dersler/c/quiz?set=s1&q=2'))
+  })
+
+  test('a finished set is not reopened from the record, and a new practice clears the record', async () => {
+    const user = userEvent.setup()
+    window.history.replaceState(null, '', '#/dersler/c/quiz')
+    sessionStorage.setItem('knot.resume.quiz.c', JSON.stringify({ id: 's1', q: 3 }))
+    api.quizSet.mockResolvedValue(set({ status: 'READY', produced: 3, questions: qs.map((x) => ({ ...x, last_answer: { score: null, message: 'ok' } })) }))
+    render(<CourseQuiz courseId="c" />)
+    await waitFor(() => expect(sessionStorage.getItem('knot.resume.quiz.c')).toBeNull())
+    expect(screen.getByText('Öğrendiklerini dene')).toBeInTheDocument()
+    // A record from earlier is dropped when a new practice starts.
+    sessionStorage.setItem('knot.resume.quiz.c', JSON.stringify({ id: 'old', q: 1 }))
+    api.createQuiz.mockReturnValue(new Promise(() => undefined))
+    await fill(user)
+    expect(sessionStorage.getItem('knot.resume.quiz.c')).toBeNull()
+  })
+
+  test('"İlgili kaynağı aç" from a set carries the way back to the question', async () => {
+    const user = userEvent.setup()
+    window.history.replaceState(null, '', '#/dersler/c/quiz?set=s1&q=2')
+    const answered = { score: 0, response: 'x', message: 'İncele.', quote: 'Sınıf şablondur.', source: { id: 'seg', material_id: 'pdf_a' } }
+    api.quizSet.mockResolvedValue(set({ status: 'READY', produced: 3, questions: [qs[0], { ...qs[1], last_answer: answered }, qs[2]] }))
+    render(<CourseQuiz courseId="c" />)
+    await user.click(await screen.findByRole('button', { name: 'İlgili kaynağı aç →' }))
+    expect(nav).toHaveBeenCalledWith('/dersler/c/ogrenme', {
+      openSource: { id: 'seg', material_id: 'pdf_a', quote: 'Sınıf şablondur.' }, returnTo: '/dersler/c/quiz?set=s1&q=2',
+    })
+  })
+
+  test('a set that no longer exists opens nothing and leaves the address', async () => {
+    window.history.replaceState(null, '', '#/dersler/c/quiz?set=gone&q=1')
+    api.quizSet.mockRejectedValue(new Error('404'))
+    render(<CourseQuiz courseId="c" />)
+    await waitFor(() => expect(window.location.hash).toBe('#/dersler/c/quiz'))
+    expect(screen.getByText('Öğrendiklerini dene')).toBeInTheDocument()
+  })
 })

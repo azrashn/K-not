@@ -29,8 +29,24 @@ class GoodModel:
     def __init__(self, clock, output_tokens=120, broken=False):
         self.clock, self.output_tokens, self.broken, self.calls = clock, output_tokens, broken, 0
 
+    def verify(self, request):
+        """The key check (a second reading of the sentence): reads the option the sentence contains, or says a
+        statement that is the sentence itself is true. It costs the same kind of time as any other call."""
+        user = json.loads(request.user)
+        sentence = user["sentence"].lower()
+        if "options" in user:
+            fitting = [o["n"] for o in user["options"] if o["text"].lower() in sentence]
+            reply = {"choice": fitting[0] if fitting else 0}
+        else:
+            reply = {"verdict": "true" if user["statement"].lower() in sentence else "false"}
+        input_tokens = (len(request.system) + len(request.user)) // 3
+        self.clock.now += 2 + input_tokens / 50 + 12 / 8
+        return LLMResponse(text=json.dumps(reply), input_tokens=input_tokens, output_tokens=12)
+
     def complete(self, request):
         self.calls += 1
+        if "questions" not in request.response_schema["properties"]:
+            return self.verify(request)
         fields = request.response_schema["properties"]["questions"]["items"]["properties"]
         count = request.response_schema["properties"]["questions"]["minItems"]
         text = json.loads(request.user)["sources"][0]["text"]
@@ -46,7 +62,11 @@ class GoodModel:
             draft = {**ref, "question": "Bir araç 120 km yolu 2 saatte alıyor. Sonuç kaçtır?",
                      "expression": "120 / 2", "answer": "60", "explanation": explanation}
         elif "statement" in fields:
-            draft = {**ref, "statement": quote, "is_true": True, "explanation": explanation}
+            wanted = json.loads(request.user).get("truth", [True])[0]
+            # a false statement changes one fact of the sentence: its longest-but-one word is swapped
+            changed = quote.replace(word, "bambaşka", 1)
+            draft = {**ref, "statement": quote if wanted else changed, "is_true": wanted,
+                     "explanation": explanation}
         elif "options" in fields:
             answer = "Bambaşka bir şey" if self.broken else word
             draft = {**ref, "question": "Kaynakta anlatılan kavram hangisidir?", "answer": answer,
@@ -99,7 +119,8 @@ def test_full_run_with_a_good_model_passes_every_kind(tmp_path, capsys):
     assert report["questions_requested"] == 12 and report["questions_passed"] == 12 and report["pass_rate"] == 1.0
     assert set(report["by_kind"]) == {"MC", "TF", "CLOZE", "SA", "OPEN", "CALC"}
     assert report["failure_codes"] == {} and report["first_try"] == 12
-    assert len(report["calls"]) == model.calls == 12
+    # 12 questions, plus one key check for each of the 2 multiple-choice and 2 true/false ones
+    assert len(report["calls"]) == model.calls == 16
     printed = capsys.readouterr().out
     assert "passed 12/12" in printed and "QUIZ_DECODE_TPS=" in printed
 

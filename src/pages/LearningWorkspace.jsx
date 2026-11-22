@@ -20,6 +20,7 @@ import SelfCheck from "../components/SelfCheck";
 import { ClipboardText } from "@phosphor-icons/react";
 import WorkspaceStart from "../components/WorkspaceStart";
 import RichText from "../components/RichText";
+import MarkedText from "../components/MarkedText";
 import { lastMaterial, rememberMaterial } from "../lib/last-material";
 import { mb, useLimits } from "../lib/limits";
 import StepBoard from "../components/board/StepBoard";
@@ -296,6 +297,10 @@ export default function LearningWorkspace({ courseId }) {
   useEffect(() => {
     setTab("sayfa");
   }, [selected?.id]);
+  // The sentence a question rests on, opened from "İlgili kaynağı aç": marked on the page and in the text.
+  const [highlight, setHighlight] = useState(null);
+  // The question the source was opened from ("/dersler/c/sinavlar?exam=…&mode=solve&q=2"), for "← Soruya dön".
+  const [returnTo, setReturnTo] = useState(null);
   const input = useRef(null),
     player = useRef(null),
     activeRequest = useRef(null),
@@ -347,7 +352,7 @@ export default function LearningWorkspace({ courseId }) {
     if (!materials.length || !intent.current) return;
     const next = intent.current;
     intent.current = null;
-    if (next.openSource) void openEvidence(next.openSource);
+    if (next.openSource) void openEvidence(next.openSource, next.returnTo);
     else if (next.openPage?.materialId) {
       const m = materials.find((m) => m.id === next.openPage.materialId);
       if (m) void select(m, { page: next.openPage.page });
@@ -452,12 +457,16 @@ export default function LearningWorkspace({ courseId }) {
     return () => clearInterval(timer);
   }, [materials, refresh]);
   async function select(material, target) {
+    setHighlight(null);
     previewRequest.current?.abort();
     const abort = new AbortController();
     previewRequest.current = abort;
     if (selected?.id !== material.id) {
       setUrl(null);
       initialSeek.current = false;
+      // Set here, not in an effect on the selection: an effect could run after openEvidence switched to
+      // "metin" (when the preview arrives before React renders the selection) and undo it.
+      setTab("sayfa");
     }
     setSelected(material);
     rememberMaterial(courseId, material.id);
@@ -514,12 +523,20 @@ export default function LearningWorkspace({ courseId }) {
       if (e.name !== "AbortError") setError(videoErrorText(e));
     }
   }
-  async function openEvidence(e) {
+  async function openEvidence(e, from = null) {
+    // Only a quiz or exam page of this app is a place to return to.
+    if (typeof from === "string" && /^\/(dersler\/[^/?#]+\/(quiz|sinavlar)|quiz)(\?|$)/.test(from)) setReturnTo(from);
     try {
       const actual = await api.knowledgeSource(courseId, e.material_id, e.id);
       const material = materials.find((m) => m.id === e.material_id);
       if (!material) throw new Error("Material missing");
       await select(material, actual);
+      if (e.quote) {
+        const loc = actual?.location || {};
+        setHighlight({ materialId: material.id, segmentId: actual?.id ?? e.id, quote: e.quote, page: loc.page || loc.slide || null });
+        // A material without a page view (text file, document) shows the marked sentence in its text.
+        if (!["PDF", "PPTX", "VIDEO"].includes(material.kind)) setTab("metin");
+      }
     } catch {
       setError(
         "Bu kaynak kaldırılmış veya güncellenmiş olabilir. Soruyu yeniden gönder.",
@@ -827,9 +844,18 @@ export default function LearningWorkspace({ courseId }) {
       <MobileBar />
       <header className="workspace-heading">
         <div>
-          <button className="product-link" onClick={() => navigate("/dersler")}>
-            ← Derslerin
-          </button>
+          {returnTo ? (
+            // Opened from a question ("İlgili kaynağı aç"): back to that question, with its answer.
+            // The intent tells the page it is a way back: if the address lost the set or exam, the tab's
+            // record of the last one open is used, also when every question is already answered.
+            <button className="product-link" onClick={() => navigate(returnTo, { returnToQuestion: true })}>
+              ← Soruya dön
+            </button>
+          ) : (
+            <button className="product-link" onClick={() => navigate("/dersler")}>
+              ← Derslerin
+            </button>
+          )}
           <h1>{course?.name || "Ders çalışma alanı"}</h1>
           {hasReadyMaterial && <span className="title-note" aria-hidden>masan hazır</span>}
           <p>Materyalini incele. Aynı bağlamda sor, öğren ve uygula.</p>
@@ -1585,6 +1611,7 @@ export default function LearningWorkspace({ courseId }) {
                     />
                   ) : null
                 }
+                highlight={highlight?.materialId === selected.id && highlight.page ? { page: highlight.page, quote: highlight.quote } : null}
                 marks={tab === "sayfa" && selected && (() => {
                             const seen = new Set();
                             const marks = turns
@@ -1702,7 +1729,10 @@ export default function LearningWorkspace({ courseId }) {
                   }));
                 }}
               >
-                {source.text}
+                <MarkedText
+                  text={source.text}
+                  quote={highlight?.materialId === selected?.id && highlight.segmentId === source.id ? highlight.quote : null}
+                />
               </p>
               {selected?.kind !== "TXT" && (
                 <p className="viewer-note">

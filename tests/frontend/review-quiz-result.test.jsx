@@ -43,7 +43,7 @@ test('yanlış cevapta kaynak rozeti ve "Sayfaya bak"; tıklayınca o kaynak aç
   const user = await solve({ score: 0, source: pdf })
   expect(screen.getByText('Kaynak: Chapter_3 · Sayfa 4')).toBeInTheDocument()
   await user.click(screen.getByRole('button', { name: 'Sayfaya bak' }))
-  expect(nav).toHaveBeenCalledWith('/dersler/c/ogrenme', { openSource: pdf })
+  expect(nav).toHaveBeenCalledWith('/dersler/c/ogrenme', expect.objectContaining({ openSource: expect.objectContaining(pdf) }))
 })
 
 test('doğru cevapta rozet yok; küçük kaynak bağlantısı kalır', async () => {

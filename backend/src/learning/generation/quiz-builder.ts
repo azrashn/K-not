@@ -17,8 +17,19 @@ import { runPlan } from "./generation-run";
 import { planQuestions, quizItems, type QuestionPlan, type QuizKindChoice } from "./question-plan";
 import { RepeatGuard } from "./repeat-guard";
 import { runInBackground, startNote } from "./set-runner";
-import { loadPool, type SourcePool } from "./source-pool";
+import { loadPool, type SourcePart, type SourcePool } from "./source-pool";
 import { quizTopic } from "./topic-planner";
+
+/** The pool's parts that are not the topic's own, nearest first: the topic's materials before the others, and
+ *  within a material the pages next to the topic's pages first. Used to complete a quiz the topic cannot carry. */
+export function outsideParts(pool: SourcePool, own: SourcePart[]): SourcePart[] {
+  const keys = new Set(own.map((p) => p.key));
+  const materials = new Set(own.map((p) => p.material_id));
+  const distance = (p: SourcePart) => Math.min(...own.map((o) => Math.abs(o.order - p.order)));
+  return pool.parts
+    .filter((p) => !keys.has(p.key))
+    .sort((a, b) => Number(!materials.has(a.material_id)) - Number(!materials.has(b.material_id)) || distance(a) - distance(b));
+}
 
 export const NOTHING_TO_ASK = "Bu konuda soru hazırlamaya uygun kaynak metni bulunamadı.";
 export const NOT_WATCHED =
@@ -73,7 +84,8 @@ export class QuizBuilder {
     const pool = await loadPool(
       this.knowledge, u, c, { scope: b.scope, material_id: b.material_id, watched_only: b.watched_only }, this.policy, eligible,
     );
-    const plan = planQuestions(items, [quizTopic(b.topic, pool, retrieved)], true);
+    const topic = quizTopic(b.topic, pool, retrieved);
+    const plan = planQuestions(items, [topic], true, outsideParts(pool, topic.parts));
     if (!plan.slots.length) throw new ApiError("VALIDATION_ERROR", NOTHING_TO_ASK);
     return { pool, plan };
   }

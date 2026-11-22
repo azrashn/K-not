@@ -239,6 +239,14 @@ export class KnowledgeController {
     res.setHeader("X-Content-Type-Options", "nosniff");
     res.send(image.bytes);
   }
+  @Get("materials/:materialId/visual/:page/text") visualText(
+    @CurrentUser() u: AuthUser,
+    @Param("courseId") c: string,
+    @Param("materialId") id: string,
+    @Param("page", ParseIntPipe) page: number,
+  ) {
+    return this.knowledge.visualText(u, c, id, page);
+  }
   @Get("materials/:materialId/file")
   async file(
     @CurrentUser() u: AuthUser,

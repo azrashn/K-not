@@ -4,7 +4,7 @@ $root = Split-Path $PSScriptRoot -Parent
 Set-Location -LiteralPath $root
 New-Item -ItemType Directory -Force (Join-Path $root 'logs') | Out-Null
 function Env-Value([string]$Path, [string]$Key) {
-    foreach ($line in Get-Content -LiteralPath $Path) {
+    foreach ($line in Get-Content -LiteralPath $Path -Encoding UTF8) {
         if ($line -match "^\s*$Key=(.*)$") { return $Matches[1].Trim().Trim('"').Trim("'") }
     }
     throw "Missing $Key in local configuration."

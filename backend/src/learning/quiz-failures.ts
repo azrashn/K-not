@@ -23,6 +23,8 @@ export const FAILURE_MESSAGES: Record<string, string> = {
   BUDGET_EXHAUSTED: "Yerel model için ayrılan süre bu soruya yetmedi.",
   TRUNCATED: "Modelin yanıtı izin verilen uzunluğa ulaştığı için yarıda kesildi.",
   NOT_SELF_CONTAINED: "Soru, görülmeyen bir önceki cümleye bağlı başlıyordu (ör. \"Bu\", \"Ardından\"); tek başına anlaşılmıyordu.",
+  KEY_NOT_SUPPORTED: "Cevap anahtarı, alıntılanan kaynak cümlenin söylediğiyle uyuşmuyordu.",
+  WRONG_LANGUAGE: "Soru, istenen dilde yazılmamıştı.",
   // backend
   NO_SOURCE: "Soru yazmaya uygun kaynak metni bulunamadı.",
   ENGINE_DISABLED: "Yapay zekâ servisinde yeni soru motoru kapalı (QUIZ_ENGINE=legacy).",

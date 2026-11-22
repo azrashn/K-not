@@ -22,46 +22,205 @@ export const TOPIC_NOT_IN_SOURCES =
 const STOP = new Set(
   ("ve veya ile ama fakat ancak çünkü için gibi kadar sonra önce olarak olan olur bir bu şu o her çok daha " +
    "en ise de da mi mı ne nedir nasıl hangi tüm bütün bazı diğer başka aynı yani ayrıca sadece yalnızca " +
-   "bunu buna bunun şimdi vardır yoktur eder edilir yapılır the and or of to in on for with from that this " +
-   "is are was be by as an a it its into also which when").split(/\s+/).map(fold),
+   "bunu buna bunun şimdi vardır yoktur eder edilir yapılır " +
+   // Postpositions and helpers: "Java, tarafından" is not a topic.
+   "tarafından üzerinde üzerinden sayesinde boyunca arasında içinde dışında yerine göre karşı doğru değil " +
+   "değildir zorunda hale halde şekilde durumda sırasında artık hiçbir " +
+   "the and or of to in on for with from that this " +
+   "is are was be by as an a it its into also which when " +
+   // More English function words: a label is never "There" or "Using".
+   "can could will would should may might must not only all any each more most such than then there " +
+   "these those they them their what where who how why use used uses using have has had been being do does " +
+   "done one two other same very just so if but at we you our your about over under between through").split(/\s+/).map(fold),
 );
+
+// An inflected verb or a verbal noun, on folded words (ı → i): "çevrilir", "alınır", "çalışır", "yapamaz",
+// "çalışabilmesinin", "kullanarak", "kullanılan", "tanımlanan", "derlenmesi", "geliyor", "derlemek".
+// Only endings a noun rarely has: "durum", "değer", "satır", "kültür", "yumuşak" and "grup" are not matched
+// (the copula "-tır" counts only after a voiceless consonant: "basittir", "yoktur").
+export const VERB_FORM =
+  /(?:[iuü]l[iuü]r|[iuü]n[iuü]r|[şç][iuü]r|[ae]maz|[ae]mez|[ae]bil\p{L}*|[iuü]yor\p{L}*|m[ae]si\p{L}*|m[ae]k|m[ae]kt[ae]\p{L}*|d[iuü]r|[çfhkpsşt]t[iuü]r|d[iuü]rl[ae]r|[ae]c[ae]k\p{L}*|m[iuü]ş(?:t[iuü]r)?|[ae]r[ae]k|[iuü]l[ae]n|l[ae]n[ae]n|n[ae]n)$/u;
+
+/** A word that can name a topic: not a function word, a number or an inflected verb. */
+const nounLike = (folded: string, min = 4) =>
+  folded.length >= min && !STOP.has(folded) && !/^\d+$/.test(folded) && !VERB_FORM.test(folded);
 
 const contentWords = (text: string) => [...new Set(words(text).filter((w) => w.length >= 3 && !STOP.has(w)))];
 
-/** A heading worth asking about: the first line of a slide/section, short and mostly letters. */
-export function heading(text: string): string | null {
-  const line = (String(text).split(/\r?\n/).map((l) => l.trim()).find(Boolean) ?? "").replace(/[\s:;,.–-]+$/, "");
-  if (line.length < 4 || line.length > 80 || line.split(/\s+/).length > 10) return null;
-  const letters = [...line].filter((ch) => /\p{L}/u.test(ch)).length;
-  if (letters / line.length < 0.6) return null;
-  if (/[.!?]/.test(line) || /^(chapter|bölüm|ünite|unit|lecture|ders)\s*\d+$/i.test(line)) return null;
-  // A heading is followed by more text; a one-line part is a sentence, not a heading.
-  return String(text).trim().includes("\n") ? line : null;
+// Leading section numbers: "4. ", "4.2 ", "1 ", "IV. ", "3) ", "Bölüm 4: ".
+const NUMBERING = /^(?:(?:bölüm|ünite|kısım|chapter|unit|section)\s+)?(?:\d+(?:\.\d+)*\s*[.):–-]?|[ivxlc]+[.)])\s+/iu;
+// A numbered line inside a part: "4. Veri Tipleri", "3.1 Sınıflar". A heading need not open the page.
+const NUMBERED_LINE = /^\d+(?:\.\d+)*[.)]?\s+\p{Lu}/u;
+// Running headers and exam papers, not subjects ("1 JAVA PROGRAMLAMA - VİZE SINAVI", "Ders Notları").
+// Matched on folded text; "final" alone is a Java keyword, only "final sınavı" is boilerplate.
+const BOILERPLATE =
+  /(^|\s)((vize|final|ara|bütünleme|mazeret|yariyil sonu|dönem sonu)\s+sinav|sinav(i|lar|lari)?(\s|$)|ders not|lecture notes|ad\s*soyad|öğrenci no|sayfa\s*\d|page\s*\d)/u;
+// A Turkish copula or verb ending: "Java platform bağımsızdır" is a statement, not a heading.
+const STATEMENT_END = /(d[iuü]r|t[iuü]r|d[iuü]rlar|d[iuü]rler|[ae]bilir|yor)$/u;
+
+/** True when the label only names the document ("Java Programlama", for "Java Programlama – Ders Notları"). */
+export function namesDocument(label: string, title?: string): boolean {
+  if (!title) return false;
+  const plain = (t: string) => words(t).filter((w) => !/^\d+$/.test(w) && !STOP.has(w));
+  const titleWords = plain(title);
+  const mine = plain(label);
+  return Boolean(titleWords.length && mine.length) && mine.every((w) => titleWords.some((t) => sameRoot(w, t)));
 }
 
-/** A short label: the part's heading, else its 1–2 most frequent subject words (by root), else its first words. */
-export function partLabel(text: string): string {
-  const h = heading(text);
-  if (h) return h;
-  // Words as written (Turkish lower case, apostrophe suffixes cut), grouped by root; a group is shown
-  // by its shortest form. Exam boilerplate is not filtered here: "final" is a Java keyword, not a header.
+/** Words written with a capital in the middle of a sentence ("… çalışan Java kodu", "… JVM üzerinde"):
+ *  names that keep their capital in a sentence-case heading. Folded word → written form. */
+function properNames(text: string): Map<string, string> {
+  const out = new Map<string, string>();
+  // After a word that starts in lower case: "Java Programlama" (a title line) names nothing.
+  for (const m of String(text).matchAll(/(?<=(?:^|\s)[\p{Ll}\d][\p{L}\d]*,? )(\p{Lu}[\p{L}\d+#]*)/gu)) out.set(fold(m[1]), m[1]);
+  return out;
+}
+
+/** "Veri Tipleri" → "Veri tipleri", "NESNE YÖNELİMLİ PROGRAMLAMA" → "Nesne yönelimli programlama"; short
+ *  all-capital words (JVM) and names the text writes with a capital (Java) keep their form. */
+function sentenceCase(label: string, names: Map<string, string>): string {
+  const shouting = !/\p{Ll}/u.test(label);
+  const out = label
+    .split(/(\s+)/)
+    .map((w) => {
+      if (/^\s+$/.test(w)) return w;
+      const core = w.replace(/['’].*$/u, "").replace(/[^\p{L}\p{N}+#]+$/u, "");
+      const name = names.get(fold(core));
+      if (name) return name + w.slice(core.length);
+      const acronym = core.length >= 2 && core.length <= 5 && core === core.toLocaleUpperCase("tr") && /\p{Lu}/u.test(core);
+      return !shouting && acronym ? w : w.toLocaleLowerCase("tr");
+    })
+    .join("");
+  return out.charAt(0).toLocaleUpperCase("tr") + out.slice(1);
+}
+
+/**
+ * A line cleaned into a topic, or null when it is not one: the section number is dropped and the rest is
+ * written in sentence case. Refused: a piece of a sentence (starts in lower case, ends in "ve", a word cut
+ * "eri-" or "eri…"), a statement, exam and document boilerplate, and the document's own name.
+ */
+export function cleanHeading(raw: string, opts: { title?: string; text?: string } = {}): string | null {
+  const line = String(raw).trim();
+  if (/(…|\.\.\.|\p{L}[-‐­])$/u.test(line)) return null;
+  const h = line.replace(NUMBERING, "").replace(/[\s:;,.–-]+$/u, "").trim();
+  if (h.length < 4 || h.length > 60) return null;
+  const tokens = h.split(/\s+/);
+  if (tokens.length > 8 || !/^\p{Lu}/u.test(h) || /^\p{L}[,;]/u.test(h)) return null;
+  const letters = [...h].filter((ch) => /\p{L}/u.test(ch)).length;
+  if (letters / h.length < 0.6 || /[.!?]/.test(h)) return null;
+  if (/^(chapter|bölüm|ünite|unit|lecture|ders|hafta|week)\s*\d*$/iu.test(h)) return null;
+  const last = fold(tokens[tokens.length - 1]).replace(/[^\p{L}\p{N}]/gu, "");
+  if (STOP.has(last) || (tokens.length > 1 && STATEMENT_END.test(last))) return null;
+  if (BOILERPLATE.test(fold(h)) || namesDocument(h, opts.title)) return null;
+  return sentenceCase(h, properNames(opts.text ?? ""));
+}
+
+/** Heading lines of a part, best first: numbered section lines ("4. Veri Tipleri"), then the first line
+ *  (a slide title). A one-line part is a sentence, not a heading. */
+function headingLines(text: string): string[] {
+  const lines = String(text).split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  if (lines.length < 2) return [];
+  const numbered = lines.slice(0, -1).filter((l) => NUMBERED_LINE.test(l));
+  return [...new Set([...numbered, lines[0]])];
+}
+
+/** All headings of a part, cleaned (see cleanHeading). */
+export function headings(text: string, title?: string): string[] {
+  const out: string[] = [];
+  const lines = headingLines(text);
+  // Names are read from the running text only: every word of a heading line starts with a capital.
+  const body = String(text).split(/\r?\n/).filter((l) => !lines.includes(l.trim())).join("\n");
+  for (const line of lines) {
+    const h = cleanHeading(line, { title, text: body });
+    if (h && !out.some((o) => fold(o) === fold(h))) out.push(h);
+  }
+  return out;
+}
+
+/** A heading worth asking about: the part's best heading line, cleaned; null when it has none. */
+export function heading(text: string, title?: string): string | null {
+  return headings(text, title)[0] ?? null;
+}
+
+/**
+ * What a part without a heading is about, or null when nothing in it can name a topic: its most frequent
+ * noun (by root, at least twice), or the two-word phrase it usually stands in ("Garbage collector", not
+ * "collector"). Never an inflected verb ("çevrilir", "çalışabilmesinin"), a function word or a word of the
+ * document's title (a page header repeats them, and they name the document, not the part).
+ */
+export function subjectLabel(text: string, title?: string, minCount = 2): string | null {
+  const titleWords = title ? words(title) : [];
+  // A short boilerplate line (the page header "1 JAVA PROGRAMLAMA - VİZE SINAVI") is not what the part is about.
+  const running = String(text)
+    .split(/\r?\n/)
+    .filter((l) => !(l.trim().split(/\s+/).length <= 8 && BOILERPLATE.test(fold(l))))
+    .join("\n");
+  const usable = (w: string, min = 4) => nounLike(fold(w), min) && !titleWords.some((t) => sameRoot(t, w));
+  // Words as written (Turkish lower case, apostrophe suffixes cut), grouped by root; a group is shown by its
+  // shortest form. Exam boilerplate is not filtered here: "final" is a Java keyword, not a header.
   const groups: { forms: string[]; n: number; first: number }[] = [];
-  const written = String(text).toLocaleLowerCase("tr").match(/[\p{L}\p{N}]+(?:['’][\p{L}]+)?/gu) ?? [];
-  written.forEach((raw, i) => {
-    const w = raw.replace(/['’].*$/u, "");
-    if (w.length < 4 || STOP.has(fold(w)) || /^\d+$/.test(w) || /[ae]bilme/.test(w)) return;
-    const hit = groups.find((g) => sameRoot(g.forms[0], w));
-    if (hit) {
-      hit.n++;
-      if (!hit.forms.includes(w)) hit.forms.push(w);
-    } else groups.push({ forms: [w], n: 1, first: i });
-  });
-  const top = groups
-    .sort((a, b) => b.n - a.n || a.first - b.first)
-    .slice(0, 2)
-    .map((g) => [...g.forms].sort((a, b) => a.length - b.length)[0]);
-  const label = top.length ? top.join(", ") : String(text).trim().split(/\s+/).slice(0, 6).join(" ");
+  // Two neighbouring words of one clause (punctuation breaks a phrase), by their folded form.
+  const pairs = new Map<string, { written: string; n: number; words: [string, string] }>();
+  let position = 0;
+  for (const clause of running.split(/[,.;:!?()[\]{}"“”\n]+/u)) {
+    const written = (clause.toLocaleLowerCase("tr").match(/[\p{L}\p{N}]+(?:['’][\p{L}]+)?/gu) ?? []).map((raw) =>
+      raw.replace(/['’].*$/u, ""),
+    );
+    written.forEach((w, i) => {
+      const at = position++;
+      if (usable(w)) {
+        const hit = groups.find((g) => sameRoot(g.forms[0], w));
+        if (hit) {
+          hit.n++;
+          if (!hit.forms.includes(w)) hit.forms.push(w);
+        } else groups.push({ forms: [w], n: 1, first: at });
+      }
+      const next = written[i + 1];
+      if (next && usable(w, 3) && usable(next, 3)) {
+        const key = `${fold(w)} ${fold(next)}`;
+        const pair = pairs.get(key) ?? { written: `${w} ${next}`, n: 0, words: [w, next] as [string, string] };
+        pair.n++;
+        pairs.set(key, pair);
+      }
+    });
+  }
+  const top = groups.sort((a, b) => b.n - a.n || a.first - b.first)[0];
+  if (!top || top.n < minCount) return null; // a word met once says little about the part
+  // The phrase the word stands in: met twice or more, and holding at least half of the word's uses
+  // ("Kalıtım kodu" once next to "Kalıtım" twice is a sentence, not a name).
+  const phrase = [...pairs.values()]
+    .filter((p) => p.words.some((w) => sameRoot(w, top.forms[0])))
+    .sort((a, b) => b.n - a.n)[0];
+  const label = phrase && phrase.n >= Math.max(2, Math.ceil(top.n / 2)) ? phrase.written : [...top.forms].sort((a, b) => a.length - b.length)[0];
   return label.charAt(0).toLocaleUpperCase("tr") + label.slice(1, 80);
+}
+
+/** A short label for an exam topic (every part needs one): the part's heading, else its subject (a noun met
+ *  twice, then one met once), else its first whole words outside page headers (never cut). */
+export function partLabel(text: string, title?: string): string {
+  const label = heading(text, title) ?? subjectLabel(text, title) ?? subjectLabel(text, title, 1);
+  if (label) return label;
+  const body = String(text)
+    .split(/\r?\n/)
+    .filter((l) => !(l.trim().split(/\s+/).length <= 8 && BOILERPLATE.test(fold(l))))
+    .join(" ");
+  const first = (body.trim() || String(text).trim()).split(/\s+/).slice(0, 6);
+  while (first.length > 1 && STOP.has(fold(first[first.length - 1]))) first.pop();
+  const joined = first.join(" ").replace(/[\s,;:–-]+$/u, "");
+  return joined.charAt(0).toLocaleUpperCase("tr") + joined.slice(1, 80);
+}
+
+/** Headings of the pool's parts, with running page headers left out: a heading that opens three or more
+ *  parts of one material is the page header ("1 JAVA PROGRAMLAMA" on every page), not a section. */
+function poolHeadings(parts: SourcePart[]): Map<string, string[]> {
+  const all = new Map(parts.map((p) => [p.key, headings(p.text, p.title)]));
+  const counts = new Map<string, number>();
+  for (const p of parts) for (const h of all.get(p.key)!) {
+    const k = `${p.material_id}|${fold(h)}`;
+    counts.set(k, (counts.get(k) ?? 0) + 1);
+  }
+  for (const p of parts) all.set(p.key, all.get(p.key)!.filter((h) => (counts.get(`${p.material_id}|${fold(h)}`) ?? 0) < 3));
+  return all;
 }
 
 /** How strongly a part is about these words: distinct words found (by root), then their occurrences. */
@@ -98,10 +257,60 @@ export function rankParts(topic: string, parts: SourcePart[], retrieved: string[
     .map((x) => x.p);
 }
 
+/** A part's heading names the topic: every topic word is in one of its section headings (by root). */
+function headedBy(topicWords: string[], headingList: string[]): boolean {
+  return headingList.some((h) => {
+    const hw = words(h);
+    return topicWords.every((t) => hw.some((w) => sameRoot(t, w)));
+  });
+}
+
+/**
+ * The parts a chosen quiz topic may use, best first. Only parts that are about the topic, never "the rest of
+ * the search": a search always returns its top hits, so for "Veri tipleri" it also brings the inheritance
+ * page and the Java history page.
+ *  1. Parts holding the most topic words (by root), when that is at least half of them; a section whose
+ *     heading names the topic keeps its following parts of the same material up to the next heading.
+ *  2. No part holds enough of the words (a topic in other words or another language): the parts the search
+ *     returned, as before.
+ *  A topic without content words keeps the old ranking (search hits spread over the parts).
+ * Fewer parts than questions is fine: the plan then writes fewer questions and says so (capacityNote).
+ */
+export function quizParts(topic: string, parts: SourcePart[], retrieved: string[] = []): SourcePart[] {
+  const topicWords = contentWords(topic);
+  if (!topicWords.length) return rankParts(topic, parts, retrieved);
+  const scored = parts.map((p) => ({ p, ...score(topicWords, p) }));
+  const best = Math.max(0, ...scored.map((s) => s.found));
+  if (best === 0 || best / topicWords.length < 0.5) {
+    const hits = new Set(retrieved);
+    return rankParts(topic, parts, retrieved).filter((p) => hits.has(p.id));
+  }
+  const direct = scored
+    .filter((s) => s.found === best)
+    .sort((a, b) => b.hits - a.hits || a.p.order - b.p.order)
+    .map((s) => s.p);
+  const taken = new Set(direct.map((p) => p.key));
+  const sectionHeadings = poolHeadings(parts);
+  const byOrder = [...parts].sort((a, b) => a.order - b.order);
+  const followers: SourcePart[] = [];
+  for (const start of direct) {
+    if (!headedBy(topicWords, sectionHeadings.get(start.key) ?? [])) continue;
+    for (const p of byOrder) {
+      if (p.order <= start.order || p.material_id !== start.material_id) continue;
+      if ((sectionHeadings.get(p.key) ?? []).length) break; // the next section starts
+      if (!taken.has(p.key)) {
+        taken.add(p.key);
+        followers.push(p);
+      }
+    }
+  }
+  return [...direct, ...followers];
+}
+
 /** The quiz topic as written, bound to its parts; VALIDATION_ERROR when the pool has nothing on it. */
 export function quizTopic(topic: string, pool: SourcePool, retrieved: string[] = []): PlannedTopic {
   const label = String(topic).trim().slice(0, 200);
-  const parts = rankParts(label, pool.parts, retrieved);
+  const parts = quizParts(label, pool.parts, retrieved);
   if (!parts.length)
     throw new ApiError("VALIDATION_ERROR", pool.transcriptsLeftOut ? TOPIC_NOT_IN_DOCUMENTS : TOPIC_NOT_IN_SOURCES);
   return { label, parts };
@@ -143,10 +352,37 @@ export function examTopics(terms: string[], pool: SourcePool, priority: Record<s
 
   // 2. Section headings, then 3. every part no topic holds yet, each a topic of its own.
   const ordered = byMaterial(pool.parts);
+  const found = poolHeadings(pool.parts);
   for (const p of ordered) {
-    const h = heading(p.text);
+    const h = found.get(p.key)![0];
     if (h && !labels.has(fold(h))) add(h, [p]);
   }
-  for (const p of ordered) if (!covered.has(p.key)) add(partLabel(p.text), [p]);
+  for (const p of ordered) if (!covered.has(p.key)) add(partLabel(p.text, p.title), [p]);
   return topics;
+}
+
+/** Topic ideas for the quiz form (GET /quiz-topics): short labels of what the sources are about. Section
+ *  headings first (numbered sections, then slide titles, in turn over the materials), cleaned to "Veri
+ *  tipleri"; then the parts' subject words. Never a piece of a sentence, a page header, exam boilerplate
+ *  or a file's, video's or document's own name. */
+export const SUGGESTIONS_MAX = 5;
+const LABEL_MAX = 60;
+export function suggestTopics(pool: SourcePool, max = SUGGESTIONS_MAX): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  const add = (label: string | null | undefined, title?: string) => {
+    if (!label || label.length > LABEL_MAX || seen.has(fold(label)) || out.length >= max || namesDocument(label, title)) return;
+    seen.add(fold(label));
+    out.push(label);
+  };
+  const ordered = byMaterial(pool.parts);
+  if (!max) return out;
+  const found = poolHeadings(pool.parts);
+  for (const p of ordered) for (const h of found.get(p.key)!) add(h, p.title);
+  // Subject words are computed only while more are needed: a long course has thousands of parts.
+  for (const p of ordered) {
+    if (out.length >= max) break;
+    if (!found.get(p.key)!.length) add(subjectLabel(p.text, p.title), p.title); // a part with a heading gave it
+  }
+  return out;
 }

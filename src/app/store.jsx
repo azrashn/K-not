@@ -2,7 +2,8 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 
 // ─── Hash router ────────────────────────────────────────────────────────────
 export function parseHash(hash) {
-  const parts = hash.replace(/^#\/?/, '').split('/').filter(Boolean)
+  // "?exam=…" belongs to the page (see lib/exam examFromHash), not to the route.
+  const parts = hash.replace(/^#\/?/, '').split('?')[0].split('/').filter(Boolean)
   if (parts[0] === 'dersler') {
     if (parts[1] && parts[2] === 'quiz') return { section:'quiz',view:'quiz',courseId:parts[1] }
     if (parts[1] && parts[2] === 'sinavlar') return { section: 'exams', view: 'exams', courseId: parts[1] }
