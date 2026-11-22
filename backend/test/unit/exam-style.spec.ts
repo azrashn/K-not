@@ -146,3 +146,81 @@ test('the hint names short answers and blanks only when the exam has them', () =
   expect(examStyleHint(buildExamProfile(MORE_KINDS))).toContain('kısa yanıt 2, boşluk doldurma 2, açık uçlu 2');
   expect(examStyleHint(buildExamProfile(EXAM))).not.toContain('kısa yanıt');
 });
+
+// ── what the reference set of real exams taught the reader ─────────────────────────────────────
+const one = (text: string) => {
+  const p = buildExamProfile(text);
+  return Object.entries(p.formats).filter(([, n]) => n > 0).map(([f, n]) => `${f}:${n}`).join(',');
+};
+
+describe('sub-questions are not options', () => {
+  test('(a) (b) (c) written as instructions or with points belong to one written question', () => {
+    expect(one([
+      '4. Türkiye\'de iç göçlerin büyük çoğunluğu kırsal kesimden kentlere doğru gerçekleşmektedir.',
+      'a) İç göçlerin temel ekonomik nedenlerinden ikisini yazınız. (10 Puan)',
+      'b) Yoğun göç alan büyükşehirlerde ortaya çıkan sorunlardan ikisini açıklayınız. (10 Puan)',
+      'c) Çözüm olarak üretilebilecek bir politikayı belirtiniz. (5 Puan)',
+    ].join('\n'))).toBe('OPEN:1');
+    expect(one([
+      '1. A database has 4 transactions.',
+      '(a) Find all frequent itemsets using the Apriori algorithm.',
+      '(b) List all strong association rules.',
+      '(c) Show your work.',
+    ].join('\n'))).toBe('CALCULATION:1');
+  });
+
+  test('descriptive options that merely contain a verb stay options', () => {
+    expect(one([
+      '2. Select the best description of inheritance:',
+      'a) Allows a programmer to extend classes without code duplication.',
+      'b) Allows a programmer to write a subclass that overrides private methods.',
+      'c) Allows a programmer to write a concrete subclass without overriding abstract methods.',
+      'd) Prevents a programmer from reusing code.',
+    ].join('\n'))).toBe('MULTIPLE_CHOICE:1');
+  });
+});
+
+describe('true / false markers', () => {
+  test('"T F", "TRUE FALSE", "TRUE/FALSE:" and a capital YES NO mark a statement', () => {
+    expect(one('1. T F A density-based clustering algorithm can generate non-globular clusters.')).toBe('TRUE_FALSE:1');
+    expect(one('1. A Java class may implement multiple interfaces. TRUE FALSE')).toBe('TRUE_FALSE:1');
+    expect(one('1. TRUE/FALSE: This fragment compiles without errors or warnings.')).toBe('TRUE_FALSE:1');
+    expect(one('1. Indicate whether the following lines compile.\nA YES NO\nB YES NO')).toBe('TRUE_FALSE:1');
+  });
+
+  test('a group instruction turns the (a) (b) (c) lines into statements, not options', () => {
+    expect(one([
+      '1. Identify each statement as true or false by filling in the appropriate bubble.',
+      '(a) Comments in a Java program are ignored by the compiler.',
+      '(b) A variable declared in a for loop is accessible after the loop.',
+      '(c) An int holds 32 bits.',
+    ].join('\n'))).toBe('TRUE_FALSE:1');
+    expect(one([
+      '1. Aşağıdaki ifadelerin başına doğru ise (D), yanlış ise (Y) yazınız.',
+      'a) Enzimler tepkimelerden değişmeden çıkar.',
+      'b) Prokaryot hücrede çekirdek bulunur.',
+      'c) Mitoz sonunda iki hücre oluşur.',
+    ].join('\n'))).toBe('TRUE_FALSE:1');
+  });
+
+  test('a lone "true" or a circled "Yes No" with a justification is not a true/false item', () => {
+    expect(one('1. Write a method that returns true when the array is sorted.')).toBe('OPEN:1');
+    expect(one('9. (4 points) Are the two clusters well separated? Circle an answer: Yes No. Now justify your answer.')).toBe('OPEN:1');
+  });
+});
+
+describe('calculation, short answers and numbering', () => {
+  test('English calculation cues', () => {
+    expect(one('3. How many calls are made to combRec when you execute combRec(4,2)?')).toBe('CALCULATION:1');
+    expect(one('3. Assuming min_sup = 60%, find all frequent itemsets. Show your work.')).toBe('CALCULATION:1');
+  });
+
+  test('"what does this program print" without options is a short answer; with options it is multiple choice', () => {
+    expect(one('4. What does this program print?\nclass P { }')).toBe('SHORT_ANSWER:1');
+    expect(one('5. Aşağıdaki programın ekran çıktısı ne olur?\na) 10\nb) 20\nc) 30\nd) Derleme hatası')).toBe('MULTIPLE_CHOICE:1');
+  });
+
+  test('a question numbered "1.a" starts a question', () => {
+    expect(one('1.a Which data type can handle both quantities?\na. int\nb. double\nc. float\nd. short')).toBe('MULTIPLE_CHOICE:1');
+  });
+});

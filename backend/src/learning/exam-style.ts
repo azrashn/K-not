@@ -18,7 +18,7 @@ export type ExamProfile = {
   topic_terms: string[];
 };
 
-const QUESTION_START = /^\s*(\d{1,2})[.)]\s+(.+)$/;
+const QUESTION_START = /^\s*(\d{1,2})(?:[.)]|\.[a-z](?=\s))\s+(.+)$/;
 const OPTION_LINE = /^\s*[A-Ea-e][.)]\s+\S/;
 /** Words of the question and of the exam paper, never a subject. Includes the list from
  *  origin/feature/quiz-quality-overhaul (Fatih): header and scoring words. */
@@ -116,33 +116,81 @@ function groupByRoot(counts: Map<string, number>): [string, number][] {
   });
 }
 
-function parseQuestions(text: string): { stem: string; options: number; body: string }[] {
-  const questions: { stem: string; options: number; body: string }[] = [];
-  let current: { stem: string; options: number; body: string } | null = null;
+type ParsedQuestion = { stem: string; options: number; optionTexts: string[]; body: string };
+
+function parseQuestions(text: string): ParsedQuestion[] {
+  const questions: ParsedQuestion[] = [];
+  let current: ParsedQuestion | null = null;
   for (const raw of text.split(/\r?\n/)) {
     const start = raw.match(QUESTION_START);
     if (start) {
-      current = { stem: start[2].trim(), options: 0, body: start[2] };
+      current = { stem: start[2].trim(), options: 0, optionTexts: [], body: start[2] };
       questions.push(current);
       continue;
     }
     if (!current) continue;
     // One option per line, or all of them on one line ("a) Microsoft b) Sun Microsystems c) Apple d) IBM").
-    if (OPTION_LINE.test(raw)) current.options += Math.max(1, inlineOptionCount(raw));
-    else if (raw.trim()) current.body += " " + raw.trim();
+    if (OPTION_LINE.test(raw)) {
+      const items = labelledItems(raw);
+      const texts = items.length ? items : [raw.replace(/^\s*[A-Ea-e][.)]\s+/, "").trim()];
+      current.options += texts.length;
+      current.optionTexts.push(...texts);
+    } else if (raw.trim()) current.body += " " + raw.trim();
   }
   return questions.slice(0, EXAM_QUESTIONS_MAX);
 }
 
-/** Options written on the question's own line, as a PDF often has them: "… hangi şirket? a) Microsoft b) Sun
- *  c) Apple d) IBM". Counted only as an ordered run a, b, c, … so "A) " elsewhere in a sentence is not an option. */
-export function inlineOptionCount(text: string): number {
-  let next = 0;
-  for (const m of text.matchAll(/(?:^|\s)\(?([A-Ea-e])[.)]\s*\S/g)) {
-    if (m[1].toLowerCase() === String.fromCharCode(97 + next)) next += 1;
+/** The texts after the labels a, b, c, … of a line, in order. Labels count only as an ordered run starting at a,
+ *  so "A) " elsewhere in a sentence is not one. */
+export function labelledItems(text: string): string[] {
+  const marks: { at: number; end: number }[] = [];
+  for (const m of text.matchAll(/(?:^|\s)\(?([A-Ea-e])[.)]\s*(?=\S)/g)) {
+    if (m[1].toLowerCase() === String.fromCharCode(97 + marks.length))
+      marks.push({ at: m.index ?? 0, end: (m.index ?? 0) + m[0].length });
   }
-  return next;
+  return marks.map((m, i) => text.slice(m.end, marks[i + 1]?.at ?? text.length).trim());
 }
+
+/** Options written on the question's own line, as a PDF often has them: "… hangi şirket? a) Microsoft b) Sun
+ *  c) Apple d) IBM". */
+export function inlineOptionCount(text: string): number {
+  return labelledItems(text).length;
+}
+
+// A labelled item that is a question or an instruction of its own ("(a) Find all frequent itemsets …",
+// "a) Fermanın ilan edilmesinde etkili olan bir gelişmeyi yazınız. (10 Puan)"), not an option: an English
+// instruction starts the item, a Turkish one ends it, or it ends in "?" or carries points. A verb inside a
+// descriptive option ("Allows a programmer to write a subclass …") does not make it one.
+const SUB_QUESTION_START = new RegExp(
+  "^(?:find|list|show|explain|describe|compute|calculate|write|justify|state|draw|compare|prove|give|identify|" +
+    "determine|discuss|name|define|what|why|how|which|who|when)(?!\\p{L})",
+  "iu",
+);
+const SUB_QUESTION_END = new RegExp(
+  "(?<!\\p{L})(?:yazınız|açıklayınız|hesaplayınız|bulunuz|belirtiniz|listeleyiniz|karşılaştırınız|gösteriniz|" +
+    "çiziniz|yorumlayınız|veriniz|sayınız)[.:]?\\s*(?:\\([^)]*\\)|\\[[^\\]]*\\])?\\s*$|\\?\\s*$",
+  "iu",
+);
+const POINTS = /\(\s*\d+\s*(?:puan|points?|pts?)\s*\)|\[\s*\d+\s*p\s*\]/i;
+const isSubQuestion = (item: string) => SUB_QUESTION_START.test(item.trim()) || SUB_QUESTION_END.test(item.trim()) || POINTS.test(item);
+/** Labelled items that are mostly questions or instructions are sub-questions of one written question. */
+function isSubQuestionList(items: string[]): boolean {
+  return items.length >= 2 && items.filter(isSubQuestion).length * 2 >= items.length;
+}
+
+/** "Identify each statement as true or false", "başına doğru ise (D), yanlış ise (Y) yazınız": the labelled lines
+ *  below are statements to mark, not options. */
+const TF_INSTRUCTION =
+  /(?:identify|mark|circle|indicate|decide|state)\b.{0,60}\b(?:true|false)\b|(?:doğru|yanlış)\s+ise\s*\(?[DY]\)?/i;
+/** Markers of a true/false item: "T F", "TRUE FALSE", "TRUE/FALSE", "YES NO" (capitals, as printed on the paper),
+ *  "true … false", "(D) / (Y)", "doğru / yanlış". A "Yes No" circled in a question that asks for a justification
+ *  is not one. */
+const TF_CAPS = /(?<![A-Za-z])T\s+F(?![A-Za-z])|(?<![A-Za-z])YES\s+NO(?![A-Za-z])/;
+const TF_MARK = new RegExp(
+  "\\b(?:true|false)\\b.{0,30}\\b(?:true|false)\\b|(?<!\\p{L})(?:doğru|yanlış)(?!\\p{L}).{0,25}(?<!\\p{L})(?:doğru|yanlış)(?!\\p{L})" +
+    "|\\(\\s*[DY]\\s*\\)|\\[\\s*D\\s*\\]\\s*/?\\s*\\[\\s*Y\\s*\\]",
+  "isu",
+);
 
 /** A blank to fill: "______", "......" or "boşluğu doldurunuz / boşlukları tamamlayınız". */
 const BLANK = /_{3,}|\.{4,}|boşlu(?:ğ|k)\w*\s+(?:doldur|tamamla)/i;
@@ -150,12 +198,20 @@ const BLANK = /_{3,}|\.{4,}|boşlu(?:ğ|k)\w*\s+(?:doldur|tamamla)/i;
  *  it asks for an explanation, so it stays an open question. */
 const SHORT = /kısa\s+(?:yanıt|cevap)|tek\s+(?:kelime|sözcük)|bir\s+(?:kelime|sözcük)le|ne\s+denir/i;
 
-function formatOf(q: { options: number; body: string }): ExamFormat {
-  if (q.options >= 3 || inlineOptionCount(q.body) >= 3) return "MULTIPLE_CHOICE";
-  if (/\b(doğru|yanlış|true|false)\b/i.test(q.body)) return "TRUE_FALSE";
+/** A question that asks what a program prints, with no options: a short answer. */
+const PRINTS = /what\s+does\s+(?:this|the)\s+(?:program|code|method)\s+print|ekran\s+çıktısı\s+(?:ne|nedir)|çıktısı\s+nedir/i;
+const CALCULATE =
+  /(hesapla|bulunuz|bulun|hesaplay|kaç|calculate|compute|find\s+all|show\s+your\s+work|how\s+many)/i;
+
+function formatOf(q: ParsedQuestion): ExamFormat {
+  // Statements to mark true or false come first: their (a), (b), (c) labels are not options.
+  if (TF_INSTRUCTION.test(q.body)) return "TRUE_FALSE";
+  const items = [...q.optionTexts, ...labelledItems(q.body)];
+  if (items.length >= 3 && !isSubQuestionList(items)) return "MULTIPLE_CHOICE";
+  if (TF_CAPS.test(q.body) || TF_MARK.test(q.body)) return "TRUE_FALSE";
   if (BLANK.test(q.body)) return "CLOZE";
-  if (/(hesapla|bulunuz|bulun|hesaplay|kaç|calculate|compute)/i.test(q.body)) return "CALCULATION";
-  if (SHORT.test(q.body)) return "SHORT_ANSWER";
+  if (CALCULATE.test(q.body)) return "CALCULATION";
+  if (SHORT.test(q.body) || PRINTS.test(q.body)) return "SHORT_ANSWER";
   return "OPEN";
 }
 

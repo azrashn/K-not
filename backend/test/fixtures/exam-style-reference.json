@@ -1,0 +1,175 @@
+{
+ "note": "Short excerpts of public exam PDFs, extracted with the ai-service PDF reader (pypdf). The expected format is the one a person gives the question. Each excerpt is cited by its source.",
+ "sources": {
+  "fordham": {
+   "title": "Fordham CISC 4631 Data Mining, Practice Final Solutions",
+   "url": "https://storm.cis.fordham.edu/~gweiss/classes/cisc4631/data-mining-practice-final-sol.pdf"
+  },
+  "csu": {
+   "title": "Colorado State CS 165, Spring 2020 Midterm 1 Practice",
+   "url": "https://www.cs.colostate.edu/~cs165/.Spring20/studyguides/M1Practice.pdf"
+  },
+  "unbc": {
+   "title": "UNBC CPSC 101, Winter 2017 Midterm I",
+   "url": "https://csweb.unbc.ca/casper/assets/pdf/cpsc101/2025/2017-cpsc101-midterm1.pdf"
+  },
+  "m005": {
+   "title": "MIT 6.005 Software Construction, Quiz 1 (2016)",
+   "url": "https://ocw.mit.edu/courses/6-005-software-construction-spring-2016/b041ab0cec88df93e808e908aca1af5f_MIT6_005S16_Quiz1_soln.pdf"
+  },
+  "m100": {
+   "title": "MIT 1.00 Intro to Computers, Quiz 1 (2011)",
+   "url": "https://ocw.mit.edu/courses/1-00-introduction-to-computers-and-engineering-problem-solving-spring-2012/3794cc0838232e0db3ccf2e183c73a6a_MIT1_00S12_Quiz1_S11.pdf"
+  },
+  "m034f": {
+   "title": "MIT 6.034 Artificial Intelligence, Final 2007",
+   "url": "https://ocw.mit.edu/courses/6-034-artificial-intelligence-fall-2010/c397cd7083422b1f3d1c6d86d1b9e327_MIT6_034F10_final_2007.pdf"
+  },
+  "ytu": {
+   "title": "Yildiz Technical University, Bilgisayar/Yazilim alan sinavi, A kitapcigi (27 Ocak 2019)",
+   "url": "https://sinav.yildiz.edu.tr/dosya/A-Sorular_BY.pdf"
+  },
+  "sau": {
+   "title": "Sakarya Univ. / O. Coban, Java Programlama sorulari (EK-3, 2018)",
+   "url": "https://cobankod.wordpress.com/wp-content/uploads/2018/09/ek3javaprogramlamabaskc4b13sorular.pdf"
+  },
+  "pri": {
+   "title": "Princeton COS 126, Fall 2026 Midterm",
+   "url": "https://www.cs.princeton.edu/courses/archive/fall26/cos126/static/exams/f26-we1/exam.pdf"
+  }
+ },
+ "cases": [
+  {
+   "id": "fordham-tf-1",
+   "source": "fordham",
+   "expected": "TRUE_FALSE",
+   "text": "1. T F Our use of association analysis will yield the same frequent itemsets and strong\nassociation rules whether a specific item occurs once or three times in an indiv idual\ntransaction."
+  },
+  {
+   "id": "fordham-tf-2",
+   "source": "fordham",
+   "expected": "TRUE_FALSE",
+   "text": "2. T F The k -means clustering algorithm that we s tudied will automatically find the best\nvalue of k as part of its normal operation."
+  },
+  {
+   "id": "fordham-tf-3",
+   "source": "fordham",
+   "expected": "TRUE_FALSE",
+   "text": "3. T F A density-based clustering algorithm can generate non-globular clusters."
+  },
+  {
+   "id": "fordham-mc-5",
+   "source": "fordham",
+   "expected": "MULTIPLE_CHOICE",
+   "text": "5. In the figure below, there are two clusters. They are connected by a line which represents the\ndistance used to determine inter-cluster similarity.\n\n\nWhich inter-cluster similarity metric does this line represent (circle one)?\na. MIN\nb. MAX\nc. Group Average\nd. Distance between centroids"
+  },
+  {
+   "id": "fordham-open-6",
+   "source": "fordham",
+   "expected": "OPEN",
+   "text": "6. (4 points) We generally will be more interested in association rules with high confidence. However,\noften we will not be interest ed in association rules that have a confidence of 100%. Why? Then\nspecifically explain why association rules with 99% confidence may be interesting (i.e., what might\nthey indicate)?"
+  },
+  {
+   "id": "fordham-open-8",
+   "source": "fordham",
+   "expected": "OPEN",
+   "text": "8. (4 points) Discuss the basic difference between the agglomerative and divisive hierarchical\nclustering algorithms and mention which type of hierarchical clustering algorithm is more commonly\nused."
+  },
+  {
+   "id": "fordham-open-9",
+   "source": "fordham",
+   "expected": "OPEN",
+   "text": "9. (4 points) Are the two clusters shown below well separated? Circle an answer: Yes No\nNow in one or two sentences justify your answer."
+  },
+  {
+   "id": "fordham-long-calc",
+   "source": "fordham",
+   "expected": "CALCULATION",
+   "text": "1. A database has 4 transactions, shown below.\nTID Date items_bought\nT100 10/15/04 {K, A, D, B}\nT200 10/15/04 {D, A, C, E, B}\nT300 10/19/04 {C, A, B, E}\nT400 10/22/04 {B, A, D}\n\nAssuming a minimum level of support min_sup = 60% and a minimum level of confidence\nmin_conf = 80%:\n(a) Find all frequent itemsets (not just the ones with the maximum width/length) using the\nApriori algorithm. Show your work —just showing the final answer is no t acceptable. For\neach iteration show the candidate and acceptable frequent itemsets. You should show your\nwork similar to the way the example was done in the PowerPoint slides.\nAnswer:\n\nC1/L1 C2/L2\nItemset Support Count\n{A} 4\n{B} 4\n{C} 2\n{D} 3\n{E} 2\n{K} 1\n\nItemset Support Count\n{A, B} 4\n{A, D} 3\n{B, D} 3\n\nC3/L3\nItemset Support Count\n{A, B, D} 3\n\nThe final answer is: {{A}, {B}, {D}, {A, B}, {B, D}, {A, B, D}}\n(include {A,D} above)\n\n Page 4 of 5"
+  },
+  {
+   "id": "csu-mc-polymorphism",
+   "source": "csu",
+   "expected": "MULTIPLE_CHOICE",
+   "text": "3. Select the best description of polymorphism as implemented by the Java language:\na) Prevents multiple objects in an inheritance hierarchy from being stored in a single collection.\nb) Ensures that the methods associated with the class used to create the object (not the type of\nthe reference variable) are called.\nc) Provides dynamic binding which allows any method in any class to be loaded and executed.\nd) Lets the programmer decide which method in the inheritance tree is called for a given object."
+  },
+  {
+   "id": "csu-mc-inheritance",
+   "source": "csu",
+   "expected": "MULTIPLE_CHOICE",
+   "text": "2. Select the best description of the utility of inheritance as implemented by the Java language:\na) Allows a programmer to extend classes (to specialize them) without code duplication.\nb) Allows a programmer to override legacy code that works with new code that has defects!\nc) Allows a programmer to write a subclass that overrides private methods in the super class.\nd) Allows a programmer to write a concrete subclass without overriding abstract methods."
+  },
+  {
+   "id": "csu-tf-fragment-c",
+   "source": "csu",
+   "expected": "TRUE_FALSE",
+   "text": "1. // Fragment C\nArrayList<Integer> a3 = new ArrayList<>();\na3.add(45);\na3.add(\"45\");\nCollections.sort(a3);\nSystem.out.println(a3);\n\nTRUE/FALSE: This fragment compiles without errors or warnings.\nTRUE/FALSE: This fragment executes without exceptions."
+  },
+  {
+   "id": "unbc-tf-f-g",
+   "source": "unbc",
+   "expected": "TRUE_FALSE",
+   "text": "1. (f) A J/a.sc /v.sc /a.scclass may implement multiple interfaces. TRUE FALSE\n(g) A J/a.sc /v.sc /a.scclass may extend multiple classes. TRUE FALSE"
+  },
+  {
+   "id": "m005-mc-underdetermined",
+   "source": "m005",
+   "expected": "MULTIPLE_CHOICE",
+   "text": "1. (a) Which of the following must be true of an underdetermined function speciﬁcation? (choose all that\napply)\nA. An underdetermined spec means the implementation is unwritten.\nB. An underdetermined spec means the implementation is nondeterministic.\nC. An underdetermined spec allows multiple valid outputs for some input.\nD. An underdetermined spec allows multiple valid inputs that give some output."
+  },
+  {
+   "id": "m005-mc-array",
+   "source": "m005",
+   "expected": "MULTIPLE_CHOICE",
+   "text": "1. (b) After the following code is executed, what is the value of array arr? (choose one answer)\nfinal String[] arr = new String[2];\nString s = \"6.005\";\narr[0] = s;\ns = \"is\";\narr[1] = s;\nString t = arr[0];\nt = \"fun\";\nA. [ \"is\", \"is\" ]\nB. [ \"6.005\", \"is\" ]\nC. [ \"fun\", \"is\" ]\nD. none of the above"
+  },
+  {
+   "id": "m005-mc-hashcode",
+   "source": "m005",
+   "expected": "MULTIPLE_CHOICE",
+   "text": "1. (d) Alyssa P. Hacker is designing an immutable type to represent users in her computer system. TheUser’s\nlogin name is stored as:\n2 Solutions to Quiz 1 (March 14, 2016)\nprivate final String kerberos;\nShe deﬁnes two User objects as equal if their login names are the same, ignoring case:\n@Override public boolean equals(Object other) {\nif (!(other instanceof User)) { return false ; }\nUser that = (User)other;\nreturn this .kerberos.equalsIgnoreCase(that.kerberos);\n}\n@Override public int hashCode() { /* TODO */ }\nWhich of the following implementations of hashCode() would be valid, satisfying the Object contract?\n(choose all that apply)\nA. return 31;\nB. return this.kerberos.hashCode();\nC. return this.kerberos.toLowerCase().hashCode();\nD. return this.kerberos.toUpperCase().hashCode();"
+  },
+  {
+   "id": "m100-mc-datatype",
+   "source": "m100",
+   "expected": "MULTIPLE_CHOICE",
+   "text": "1.a Some of the quantities of interes\nt include the distance between Earth and Mars,\nwhich can vary from 56×106 kilometers to 401×106 kilometers, and the angles\nthat describe each planet’s inclination: 0 to 7 degrees. The inclination quantities\nrequire 10 significant digits. Your program will need to handle both quantities with\na single data type. You will use two variables, one for each quantity.\nWhich of the following data types can handle both the distance and angular\nquantities and requires the lowest number of bits to store the variable? Circle the\ncorrect answer:\na. int\nb. double\nc. float\nd. short"
+  },
+  {
+   "id": "m034f-mc-svm",
+   "source": "m034f",
+   "expected": "MULTIPLE_CHOICE",
+   "text": "1. A support vector machine finds a classifier that:\n a. has the most support vectors\n b. has the maximum margin\n c. minimized disorder\n d. none of the above\n e. all of the above"
+  },
+  {
+   "id": "ytu-mc-oop-principles",
+   "source": "ytu",
+   "expected": "MULTIPLE_CHOICE",
+   "text": "14. Aşağıdakilerden hangisi Nesne Yönelimli\nProgramlamanın “Majör” prensiplerinden\ndeğildir.\n\na) Concurrency  b) Encapsulation\nc) Modularity d) Hierarchy\ne) Abstraction"
+  },
+  {
+   "id": "ytu-mc-abstract-final",
+   "source": "ytu",
+   "expected": "MULTIPLE_CHOICE",
+   "text": "17. Aşağıda verilen Java kodu çalıştırıldığında\nekran çıktısı ne olur?\n\nabstract class demo {\n public int a;\n demo() { a = 10; }\n abstract public void set();\n abstract final public void get();\n}\nclass Test extends demo {\n public void set(int a) {\n  this.a = a;\n }\n final public void get() {\n  System.out.println(\"a = \" + a);\n }\n public static void main(String[] args)\n {\n  Test obj = new Test();\n  obj.set(20);  obj.get();\n }\n}\n\na) 10\nb) 20\nc) 30\nd) null\ne) Derleme hatası alınır program çalışmaz"
+  },
+  {
+   "id": "ytu-mc-code-blanks",
+   "source": "ytu",
+   "expected": "MULTIPLE_CHOICE",
+   "text": "29. Aşağıdaki C fonksiyonu kendisine parametre\nolarak gönderilen liste yapısındaki son elemanı\nilk yapmak için tasarlanmıştır. Buna göre\nverilen fonksiyonda /*1*/,/*2*/ ve */3*/ nolu\nsatırlara sırasıyla aşağıdakilerden hangisi\ngelmelidir?\n\ntypedef struct node\n{\n       int value;\n       struct node *next;\n}Node;\nNode *move_to_front(Node *head)\n{\n      Node *p, *q;\n      if ((head == NULL: || (head->next == NULL))\nreturn head;\n      q = NULL; p = head;\n      while (p-> next !=NULL)\n      {\n           q = p;\n           p = p->next;\n      }\n      /*1*/ …..\n     /*2*/ ….\n   /*3*/….\n      return head;\n}\n\na) q = NULL; p->next = head; head = p;\nb) q->next = NULL; head = p; p->next = head;\nc) head = p; p->next = q; q->next = NULL;\nd) q->next = NULL; p->next = head; head = p;\ne) head=NULL;p->next=q;q=NULL;"
+  },
+  {
+   "id": "sau-mc-increment",
+   "source": "sau",
+   "expected": "MULTIPLE_CHOICE",
+   "text": "24.  Aşağıdaki program parçasının ekran\nçıktısı ne olur?\nint x = 2;\nSystem.out.println(++x - x++ - x-- +\nx++);\n\na)  0\nb) -1\nc)  4\nd) 1\ne) 2"
+  },
+  {
+   "id": "pri-tf-properties",
+   "source": "pri",
+   "expected": "TRUE_FALSE",
+   "text": "1. Java Language Properties (5 points).\nIdentify each statement as true or false by filling in the appropriate bubble.\ntrue false\n(a) Comments in a Java program are ignored by the compiler.\n(b) In Java’smain(String[] args),args.lengthis always at least 1.\n(c) A variable declared inside aforloop is accessible after the loop ends.\n(d) Two functions in the same.javafile can have the same name.\n(e) Avoidfunction may contain one or morereturnstatements.\n(f) Aprivatefunction can be called by any other function in the same.javafile.\n(g) An array created withnew int[8]has its last element at index 8.\n(h) A function that returns a value may also produce side effects.\n(i) Two functions with the same name must have different return types.\n(j) You must declare each variable to have a specific type, but you can change its type\nwith a subsequent declaration statement.\n4COS 126 MIDTERM, FALL 2026, PRIN"
+  }
+ ]
+}
