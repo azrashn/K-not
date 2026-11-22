@@ -36,6 +36,14 @@ describe('yanlış defteri yardımcıları', () => {
 })
 
 describe('Yanlış defteri bileşeni', () => {
+  test('son denemede doğru kayıtta eski yanlış cevap "Verdiğin cevap" diye gösterilmez', async () => {
+    signIn()
+    fakeApi({ [`GET /courses/${C}/review`]: { body: review([group([item('q1', { status: 'LAST_CORRECT' }), item('q2')])], [], { open: 1, last_correct: 1 }) } })
+    render(<WrongNotebook courseId={C} onOpenSource={() => {}} onRetry={() => {}} />)
+    await screen.findByText('Soru q1?')
+    expect(screen.getByText('Önceki yanlış cevabın: a')).toBeInTheDocument()
+    expect(screen.getAllByText(/Verdiğin cevap/)).toHaveLength(1)
+  })
   test('boş durum sade metindir', async () => {
     signIn()
     fakeApi({ [`GET /courses/${C}/review`]: { body: review([]) } })

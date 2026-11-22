@@ -11,7 +11,11 @@ function Item({ item, onRetry }) {
         {item.wrong_count > 1 && <span className="source-badge mono">{item.wrong_count} kez yanlış</span>}
       </div>
       <p className="review-question">{item.question}</p>
-      {item.your_answer && <p className="review-answer">Verdiğin cevap: {item.your_answer}</p>}
+      {item.your_answer && (
+        <p className="review-answer">
+          {item.status === 'LAST_CORRECT' ? 'Önceki yanlış cevabın' : 'Verdiğin cevap'}: {item.your_answer}
+        </p>
+      )}
       {item.correct_answer && (
         <details className="review-reveal">
           <summary>Doğru cevabı göster</summary>
