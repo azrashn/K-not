@@ -3108,7 +3108,7 @@ nav[aria-label='Ana gezinme'] { z-index: 2; }
 .self-check-web blockquote { flex-basis: 100%; margin: 6px 0 0; padding-left: 10px; border-left: 2px solid var(--color-line-strong); overflow-wrap: anywhere; }
 .transcript-garbled { color: var(--color-ink-3); font-style: italic; }
 
-/* ── Yanlış defteri ─────────────────────────────────────────────────────────
+/* ── Tekrar defteri ─────────────────────────────────────────────────────────
    Yalnızca token renkleri; 1px kenarlık, 8px yarıçap, hap yok. Animasyon yok. */
 .review-panel {
   margin: 0 0 16px;
@@ -3120,8 +3120,6 @@ nav[aria-label='Ana gezinme'] { z-index: 2; }
 .review-panel[hidden] { display: none; }
 .review-panel-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .review-panel-head h2 { margin: 0; font-size: 16px; font-weight: 600; letter-spacing: -0.03em; }
-.review-open { display: inline-flex; align-items: center; gap: 6px; }
-.review-open svg { flex: none; }
 .review-notice {
   display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
   margin: 0 0 12px; padding: 8px 12px;

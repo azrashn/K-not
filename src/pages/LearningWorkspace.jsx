@@ -17,8 +17,7 @@ import ClaimSupport from "../components/ClaimSupport";
 import MaterialFind from "../components/MaterialFind";
 import MaterialLinks from "../components/MaterialLinks";
 import SelfCheck from "../components/SelfCheck";
-import { ClipboardText, NotePencil } from "@phosphor-icons/react";
-import WrongNotebook from "../components/WrongNotebook";
+import { ClipboardText } from "@phosphor-icons/react";
 import WorkspaceStart from "../components/WorkspaceStart";
 import RichText from "../components/RichText";
 import { lastMaterial, rememberMaterial } from "../lib/last-material";
@@ -126,12 +125,8 @@ export default function LearningWorkspace({ courseId }) {
     [chatLoading, setChatLoading] = useState(false),
     [assistantOpen, setAssistantOpen] = useState(true),
     [selfCheckOpen, setSelfCheckOpen] = useState(false),
-    [reviewOpen, setReviewOpen] = useState(false),
-    [reviewKey, setReviewKey] = useState(0),
-    [reviewNotice, setReviewNotice] = useState(""),
     [materialFilter, setMaterialFilter] = useState("");
   const selfCheckButton = useRef(null);
-  const reviewButton = useRef(null);
   useEffect(() => {
     if (selfCheckOpen) document.querySelector("#self-check-panel textarea")?.focus();
   }, [selfCheckOpen]);
@@ -866,21 +861,6 @@ export default function LearningWorkspace({ courseId }) {
             Beni kontrol et
           </button>
           <button
-            type="button"
-            className="workspace-toggle review-open"
-            aria-expanded={reviewOpen}
-            aria-controls="review-panel"
-            ref={reviewButton}
-            onClick={() => {
-              setReviewNotice("");
-              if (!reviewOpen) setReviewKey((k) => k + 1);
-              setReviewOpen((v) => !v);
-            }}
-          >
-            <NotePencil size={14} weight="bold" aria-hidden="true" />
-            Yanlış defteri
-          </button>
-          <button
             className="workspace-toggle"
             aria-expanded={assistantOpen}
             onClick={() => setAssistantOpen((v) => !v)}
@@ -920,49 +900,6 @@ export default function LearningWorkspace({ courseId }) {
           }}
         />
       </section>
-      <section
-        id="review-panel"
-        className="review-panel"
-        aria-label="Yanlış defteri"
-        hidden={!reviewOpen}
-        onKeyDown={(e) => {
-          if (e.key === "Escape") {
-            setReviewOpen(false);
-            reviewButton.current?.focus();
-          }
-        }}
-      >
-        <div className="review-panel-head">
-          <h2>Yanlış defteri</h2>
-          <button type="button" className="product-link" onClick={() => { setReviewOpen(false); reviewButton.current?.focus(); }}>
-            Kapat
-          </button>
-        </div>
-        <p className="product-note">
-          Alıştırma ve sınavlarda yanlış yaptığın sorular, kaynağıyla birlikte. Puan ya da hazırlık tahmini verilmez.
-        </p>
-        {reviewOpen && (
-          <WrongNotebook
-            courseId={courseId}
-            refreshKey={reviewKey}
-            onOpenSource={(source, label) => {
-              // Defter korunur; panel kapanır ki açılan kaynak görünsün, kısa bildirim deftere dönüş verir.
-              setReviewOpen(false);
-              setReviewNotice(label.replace(/^Kaynak: /, ""));
-              return openEvidence(source);
-            }}
-            onRetry={(quizId) => navigate(`/dersler/${courseId}/quiz`, { quizId })}
-          />
-        )}
-      </section>
-      {reviewNotice && !reviewOpen && (
-        <p className="review-notice" role="status">
-          {reviewNotice} açıldı
-          <button type="button" className="product-link" onClick={() => { setReviewOpen(true); setReviewNotice(""); }}>
-            Deftere dön
-          </button>
-        </p>
-      )}
       {error && (
         <p role="alert" className="product-error workspace-error">
           {error}

@@ -35,7 +35,7 @@ describe('yanlış defteri yardımcıları', () => {
   })
 })
 
-describe('Yanlış defteri bileşeni', () => {
+describe('Tekrar defteri bileşeni', () => {
   test('son denemede doğru kayıtta eski yanlış cevap "Verdiğin cevap" diye gösterilmez', async () => {
     signIn()
     fakeApi({ [`GET /courses/${C}/review`]: { body: review([group([item('q1', { status: 'LAST_CORRECT' }), item('q2')])], [], { open: 1, last_correct: 1 }) } })
@@ -48,7 +48,7 @@ describe('Yanlış defteri bileşeni', () => {
     signIn()
     fakeApi({ [`GET /courses/${C}/review`]: { body: review([]) } })
     render(<WrongNotebook courseId={C} onOpenSource={() => {}} onRetry={() => {}} />)
-    expect(await screen.findByText('Yanlış defterin boş.')).toBeInTheDocument()
+    expect(await screen.findByText('Tekrar defterin boş. Alıştırma ve sınavlarda yanlış yaptığın sorular burada toplanır.')).toBeInTheDocument()
   })
 
   test('kaynak sayfaya göre gruplanır; her grupta Sayfaya bak, her satırda Tekrar çöz', async () => {
@@ -113,6 +113,6 @@ describe('Yanlış defteri bileşeni', () => {
     fakeApi({ [`GET /courses/${C}/review`]: () => (++calls === 1 ? { status: 500, body: { error: { code: 'X', message: 'x' } } } : { body: review([]) }) })
     render(<WrongNotebook courseId={C} onOpenSource={() => {}} onRetry={() => {}} />)
     await userEvent.click(await screen.findByRole('button', { name: 'Yeniden dene' }))
-    await waitFor(() => expect(screen.getByText('Yanlış defterin boş.')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('Tekrar defterin boş. Alıştırma ve sınavlarda yanlış yaptığın sorular burada toplanır.')).toBeInTheDocument())
   })
 })

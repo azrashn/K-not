@@ -30,21 +30,21 @@ function Item({ item, onRetry }) {
 }
 
 /**
- * Yanlış defteri. Yalnızca kayıtlı cevap denemelerinden türetilir (GET /courses/:id/review);
+ * Tekrar defteri. Yalnızca kayıtlı cevap denemelerinden türetilir (GET /courses/:id/review);
  * kaynak bağlantısı yalnızca kaynağı kayıtlı sorularda görünür.
  */
 export default function WrongNotebook({ courseId, refreshKey = 0, onOpenSource, onRetry }) {
   const { data, error, loading, reload } = useResource((signal) => api.review(courseId, signal), [courseId, refreshKey])
-  if (loading && !data) return <p className="product-note" role="status">Yanlış defteri yükleniyor…</p>
+  if (loading && !data) return <p className="product-note" role="status">Tekrar defteri yükleniyor…</p>
   if (error)
     return (
       <p className="product-error" role="alert">
-        Yanlış defteri yüklenemedi.{' '}
+        Tekrar defteri yüklenemedi.{' '}
         <button type="button" className="product-link" onClick={reload}>Yeniden dene</button>
       </p>
     )
   const { groups = [], unlinked = [], counts = { open: 0, last_correct: 0 } } = data || {}
-  if (!groups.length && !unlinked.length) return <p className="product-note">Yanlış defterin boş.</p>
+  if (!groups.length && !unlinked.length) return <p className="product-note">Tekrar defterin boş. Alıştırma ve sınavlarda yanlış yaptığın sorular burada toplanır.</p>
   return (
     <div className="review-notebook">
       <p className="review-counts mono" data-testid="review-counts">

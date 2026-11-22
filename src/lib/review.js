@@ -1,4 +1,4 @@
-// Yanlış defteri yardımcıları: yalnızca kayıtlı konumu ve etiketi biçimler. Tahmin ya da puan üretmez.
+// Tekrar defteri yardımcıları: yalnızca kayıtlı konumu ve etiketi biçimler. Tahmin ya da puan üretmez.
 
 /** Kaynak kaydı (kind + location) -> sayfa ya da zaman; konumu olmayan kaynak için null. Sayfa uydurmaz. */
 export function locatorOf(kind, location) {

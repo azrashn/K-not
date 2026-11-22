@@ -11,6 +11,7 @@ import { PageFrame, Btn, TextLink } from '../components/ui'
 import { MobileBar } from '../components/PageBits'
 import StatusTrack from '../components/StatusTrack'
 import CoverageMap from '../components/CoverageMap'
+import WrongNotebook from '../components/WrongNotebook'
 import { LoadState } from './Courses'
 import { EASE_OUT } from '../lib/motion'
 
@@ -262,6 +263,19 @@ export default function CourseDetail({ courseId }) {
             ))}
           </AnimatePresence>
         </ul>
+      </section>
+      <section className="review-panel mt-12" aria-label="Tekrar defteri">
+        <div className="review-panel-head">
+          <h2>Tekrar defteri</h2>
+        </div>
+        <p className="product-note">
+          Alıştırma ve sınavlarda yanlış yaptığın sorular, kaynağıyla birlikte. Puan ya da hazırlık tahmini verilmez.
+        </p>
+        <WrongNotebook
+          courseId={courseId}
+          onOpenSource={(source) => navigate(`/dersler/${courseId}/ogrenme`, { openSource: source })}
+          onRetry={(quizId) => navigate(`/dersler/${courseId}/quiz`, { quizId })}
+        />
       </section>
       <CoverageMap courseId={courseId} onOpenPage={(m, page) => navigate(`/dersler/${courseId}/ogrenme`, { openPage: { materialId: m.material_id, page } })} />
     </PageFrame>
