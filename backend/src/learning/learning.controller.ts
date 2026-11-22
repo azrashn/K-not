@@ -20,7 +20,8 @@ import { CurrentUser } from "../auth/auth.decorators";
 import { AuthUser } from "../common/request-context";
 import { LearningService } from "./learning.service";
 class Start {
-  @IsString() @MinLength(1) @MaxLength(200) @Matches(/\S/) topic!: string;
+  /** Empty or missing: practice the whole course (v2 only). */
+  @IsOptional() @IsString() @MaxLength(200) topic?: string;
   /** MIXED ("Karışık"): the kinds in turn (v2 only). */
   @IsIn(["MULTIPLE_CHOICE", "TRUE_FALSE", "CLOZE", "SHORT_ANSWER", "OPEN", "MIXED"])
   kind!: string;

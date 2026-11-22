@@ -18,7 +18,7 @@ import { planQuestions, quizItems, type QuestionPlan, type QuizKindChoice } from
 import { RepeatGuard } from "./repeat-guard";
 import { runInBackground, startNote } from "./set-runner";
 import { loadPool, type SourcePart, type SourcePool } from "./source-pool";
-import { quizTopic } from "./topic-planner";
+import { examTopics, quizTopic } from "./topic-planner";
 
 /** The pool's parts that are not the topic's own, nearest first: the topic's materials before the others, and
  *  within a material the pages next to the topic's pages first. Used to complete a quiz the topic cannot carry. */
@@ -38,8 +38,13 @@ export const NOT_WATCHED =
 export const SET_MAX_TRIES = 3;
 export const SET_RUNNING = "Bu ders için bir alıştırma seti zaten hazırlanıyor. Bitmesini bekleyin.";
 
+/** Shown as the set's title when no topic is given: the whole course is practised. */
+export const WHOLE_COURSE = "Tüm ders";
+export const WHOLE_COURSE_WATCHED = "İzlenenlerden alıştırma için bir konu yazın.";
+
 export type QuizRequest = {
-  topic: string;
+  /** Empty or missing: questions are spread over the whole pool, one part after another. */
+  topic?: string;
   kind: QuizKindChoice;
   count?: number;
   scope?: any;
@@ -63,9 +68,12 @@ export class QuizBuilder {
    */
   private async prepare(u: AuthUser, c: string, b: QuizRequest): Promise<{ pool: SourcePool; plan: QuestionPlan }> {
     const items = quizItems(b.kind, b.count ?? 1); // refuses a bad count or kind before any work
+    const general = !String(b.topic ?? "").trim();
+    if (general && b.watched_only) throw new ApiError("VALIDATION_ERROR", WHOLE_COURSE_WATCHED);
     let retrieved: string[] = [];
     let eligible: Set<string> | undefined;
     try {
+      if (general) throw new Error("no topic to search");
       const found = await this.knowledge.ask(u, c, {
         question: b.topic,
         retrieve_only: true,
@@ -84,8 +92,13 @@ export class QuizBuilder {
     const pool = await loadPool(
       this.knowledge, u, c, { scope: b.scope, material_id: b.material_id, watched_only: b.watched_only }, this.policy, eligible,
     );
-    const topic = quizTopic(b.topic, pool, retrieved);
-    const plan = planQuestions(items, [topic], true, outsideParts(pool, topic.parts));
+    // No topic: every part of the pool is a topic of its own, taken in turn across the materials.
+    const plan = general
+      ? planQuestions(items, examTopics([], pool))
+      : (() => {
+          const topic = quizTopic(String(b.topic), pool, retrieved);
+          return planQuestions(items, [topic], true, outsideParts(pool, topic.parts));
+        })();
     if (!plan.slots.length) throw new ApiError("VALIDATION_ERROR", NOTHING_TO_ASK);
     return { pool, plan };
   }
@@ -115,7 +128,7 @@ export class QuizBuilder {
     });
     if (running) throw new ApiError("JOB_ALREADY_RUNNING", SET_RUNNING);
     const { pool, plan } = await this.prepare(u, c, b);
-    const topic = String(b.topic).trim().slice(0, 160);
+    const topic = String(b.topic ?? "").trim().slice(0, 160) || WHOLE_COURSE;
     const row = await this.prisma.generatedExam.create({
       data: {
         id: randomUUID(),

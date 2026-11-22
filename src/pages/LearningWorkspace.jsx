@@ -294,8 +294,12 @@ export default function LearningWorkspace({ courseId }) {
   useEffect(() => {
     setLinkNotice((n) => (n && n.openedId === selected?.id ? n : null));
   }, [selected?.id]);
+  // A newly shown material opens on its page; a source opened from a question for a material without a page
+  // view (a text file) asks for its text instead, because that is where the sentence is marked.
+  const nextTab = useRef(null);
   useEffect(() => {
-    setTab("sayfa");
+    setTab(nextTab.current ?? "sayfa");
+    nextTab.current = null;
   }, [selected?.id]);
   // The sentence a question rests on, opened from "İlgili kaynağı aç": marked on the page and in the text.
   const [highlight, setHighlight] = useState(null);
@@ -530,6 +534,7 @@ export default function LearningWorkspace({ courseId }) {
       const actual = await api.knowledgeSource(courseId, e.material_id, e.id);
       const material = materials.find((m) => m.id === e.material_id);
       if (!material) throw new Error("Material missing");
+      nextTab.current = e.quote && !["PDF", "PPTX", "VIDEO"].includes(material.kind) ? "metin" : null;
       await select(material, actual);
       if (e.quote) {
         const loc = actual?.location || {};

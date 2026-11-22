@@ -188,3 +188,26 @@ describe('POST /quizzes and GET /quiz-sets/:id through LearningService', () => {
       await expect(learning.start(u, 'c', body)).rejects.toMatchObject({ code: 'VALIDATION_ERROR', message: expect.stringContaining('yalnız yeni soru motoruyla') });
   });
 });
+
+describe('no topic: the whole course', () => {
+  test('one question is written from some part of the notes, no search is made', async () => {
+    const { builder, generator, k } = world([NOTES]);
+    const quiz = await builder.single(u, 'c', { kind: 'TRUE_FALSE' }, 130);
+    expect(quiz.kind).toBe('TRUE_FALSE');
+    expect(k.ask).not.toHaveBeenCalled();
+    expect(generator.generate.mock.calls[0][2].sources[0].material_id).toBe(NOTES.id);
+  });
+
+  test('a blank topic starts a set titled "Tüm ders"', async () => {
+    const { builder, prisma } = world([NOTES]);
+    await builder.startSet(u, 'c', { topic: '  ', kind: 'MULTIPLE_CHOICE', count: 3 }, 60);
+    expect(prisma.generatedExam.create.mock.calls[0][0].data).toMatchObject({ title: 'Tüm ders', topics: ['Tüm ders'], purpose: 'PRACTICE' });
+    await settle();
+  });
+
+  test('watched-only practice still needs a topic', async () => {
+    const { builder, generator } = world();
+    await expect(builder.single(u, 'c', { kind: 'OPEN', watched_only: true }, 130)).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+    expect(generator.generate).not.toHaveBeenCalled();
+  });
+});

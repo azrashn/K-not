@@ -405,14 +405,14 @@ export default function CourseQuiz({ courseId }) {
               </select>
             </label>
             <label>
-              Konu
+              Konu <span className="product-note">(isteğe bağlı)</span>
               <input
                 aria-label="Konu"
                 disabled={busy}
                 value={topic}
                 onChange={(e) => setTopic(e.target.value)}
                 maxLength={200}
-                placeholder="Kaynaklarında geçen bir konu yaz"
+                placeholder="Boş bırakırsan tüm ders kapsanır"
               />
             </label>
             {suggestions.length > 0 && (
@@ -467,7 +467,7 @@ export default function CourseQuiz({ courseId }) {
                   busy ||
                   setRunning ||
                   !course ||
-                  !topic.trim() ||
+                  (watchedOnly && !topic.trim()) ||
                   (scopeMode === "active" && !material) ||
                   (scopeMode === "selected" && !selectedMaterials.length)
                 }
@@ -602,7 +602,7 @@ export default function CourseQuiz({ courseId }) {
           {error && (
             <p role="alert" className="product-error">
               {error}{" "}
-              {!busy && course && topic.trim() && (
+              {!busy && course && (
                 <button type="button" className="product-link" onClick={() => start()}>
                   Yeniden dene
                 </button>

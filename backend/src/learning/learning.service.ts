@@ -188,6 +188,8 @@ export class LearningService {
     }
     if (count > 1 || b.kind === "MIXED")
       throw new ApiError("VALIDATION_ERROR", "Birden fazla soru ve “Karışık” tür yalnız yeni soru motoruyla kullanılabilir.");
+    if (!String(b.topic ?? "").trim())
+      throw new ApiError("VALIDATION_ERROR", "Eski soru motorunda bir konu yazmak gerekir.");
     return this.startLegacy(u, c, b);
   }
 
