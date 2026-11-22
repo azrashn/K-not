@@ -491,6 +491,17 @@ def number_sentences(sources: list[dict], avoid: list[str] | None = None, topic:
     return _number(sources, avoid, None)
 
 
+# A slide's running footer ("Network Layer: 5-119"): a label and a page or slide range, not
+# something the course says. Such a line is never numbered.
+_FOOTER = re.compile(r"(?:^|\s)[^\W\d_][^\n.!?:]{0,40}:\s*\d{1,4}\s*[-–]\s*\d{1,4}\s*$")
+
+
+def is_page_furniture(text: str) -> bool:
+    """A slide footer or page-number line: a label with a page range, or nothing but numbers."""
+    t = text.strip()
+    return bool(_FOOTER.search(t)) or not re.search(r"[^\W\d_]{2,}", t)
+
+
 def _number(sources: list[dict], avoid: list[str] | None, only: dict | None) -> list[dict]:
     avoid_keys = [k for k in dict.fromkeys(qc.canonical(v) for a in avoid or [] for v in (a, reflow(a))) if k]
     out: list[dict] = []
@@ -504,6 +515,8 @@ def _number(sources: list[dict], avoid: list[str] | None, only: dict | None) -> 
                 continue
             for chunk in _chunks(text[begin:end].strip()):
                 read = reflow(chunk)
+                if is_page_furniture(read):
+                    continue
                 if avoid_keys and (_used(chunk, avoid_keys) or _used(read, avoid_keys)):
                     continue
                 out.append({"id": len(out) + 1, "source": source["source"], "text": chunk, "read": read})
