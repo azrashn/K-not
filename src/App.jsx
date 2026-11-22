@@ -9,6 +9,7 @@ import Login from './pages/Login'
 import { EASE_DRAWER, EASE_OUT } from './lib/motion'
 import Home from './pages/HomeDashboard'
 import Courses from './pages/Courses'
+import CourseReview from './pages/CourseReview'
 
 // Ağır sayfalar ilk açılışta yüklenmez; rota açılınca ayrı parça olarak gelir.
 const CourseDetail = lazy(() => import('./pages/CourseDetail'))
@@ -42,6 +43,7 @@ function Page({ route }) {
     case 'list': return <Courses />
     case 'course': return <CourseDetail courseId={courseId} />
     case 'workspace': return <Workspace courseId={courseId} />
+    case 'review': return <CourseReview courseId={courseId} />
     case 'learning': return <LearningWorkspace key={courseId} courseId={courseId} />
     case 'videos': return <Videos courseId={courseId} />
     case 'quiz': return <Quiz courseId={courseId} />
@@ -59,7 +61,7 @@ function Shell() {
   const onNav = (id) => { setMenuOpen(false); navigate(pathFor(id)) }
   const pageKey = `${route.view}:${route.courseId || ''}`
   useEffect(() => {
-    const names = { home: 'Ana Sayfa', list: 'Dersler', course: 'Ders', workspace: 'Çalışma alanı', quiz: 'Quiz', exams: 'Sınav', analytics: 'Öğrenme Analizi' }
+    const names = { home: 'Ana Sayfa', list: 'Dersler', course: 'Ders', review: 'Tekrar defteri', workspace: 'Çalışma alanı', quiz: 'Quiz', exams: 'Sınav', analytics: 'Öğrenme Analizi' }
     document.title = `${route.view === 'videos' ? 'Ders videoları' : names[route.view] || 'K-not'} — K-not`
   }, [route.view])
 

@@ -7,6 +7,7 @@ export function parseHash(hash) {
     if (parts[1] && parts[2] === 'quiz') return { section:'quiz',view:'quiz',courseId:parts[1] }
     if (parts[1] && parts[2] === 'sinavlar') return { section: 'exams', view: 'exams', courseId: parts[1] }
     if (parts[1] && parts[2] === 'ogrenme') return { section: 'courses', view: 'learning', courseId: parts[1] }
+    if (parts[1] && parts[2] === 'tekrar') return { section: 'courses', view: 'review', courseId: parts[1] }
     if (parts[1] && parts[2] === 'videolar') return { section: 'courses', view: 'videos', courseId: parts[1] }
     if (parts[1] && parts[2] === 'calisma') return { section: 'courses', view: 'workspace', courseId: parts[1] }
     if (parts[1]) return { section: 'courses', view: 'course', courseId: parts[1] }

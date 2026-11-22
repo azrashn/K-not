@@ -220,6 +220,7 @@ export default function Courses() {
                       </button>
                     </>
                   )}
+                  <button className="course-card-review" onClick={() => navigate(`/dersler/${c.id}/tekrar`)}>Tekrar defteri</button>
                   <button
                     onClick={async () => {
                       try {
